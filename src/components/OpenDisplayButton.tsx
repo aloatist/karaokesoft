@@ -4,15 +4,20 @@ import { useSettingsStore } from '../store/settingsStore'
 type Props = {
   className?: string
   onOpened?: (mode: 'desktop' | 'browser') => void
+  onBeforeOpen?: () => void
+  disabled?: boolean
 }
 
-export function OpenDisplayButton({ className, onOpened }: Props) {
+export function OpenDisplayButton({ className, onOpened, onBeforeOpen, disabled = false }: Props) {
   const displayMonitorIndex = useSettingsStore((s) => s.displayMonitorIndex)
 
   return (
     <button
       className={className}
+      disabled={disabled}
       onClick={async () => {
+        if (disabled) return
+        onBeforeOpen?.()
         const desktopResult = await moManHinhTrinhChieu(displayMonitorIndex)
         if (desktopResult) {
           onOpened?.('desktop')

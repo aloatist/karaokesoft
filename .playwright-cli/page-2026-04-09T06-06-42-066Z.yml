@@ -1,0 +1,180 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]: KaraokeYT
+      - generic [ref=e7]: Màn hình điều khiển
+    - generic [ref=e8]:
+      - button "Mở màn hình trình chiếu" [ref=e9] [cursor=pointer]
+      - button "Cài đặt" [ref=e10] [cursor=pointer]
+  - generic [ref=e11]:
+    - generic [ref=e12]: "Trình chiếu: Chưa mở"
+    - generic [ref=e13]: "Autoplay: Bật"
+    - generic [ref=e14]: "Hàng chờ: 1 bài"
+    - generic [ref=e15]: "Phím tắt: Ctrl/Cmd + K, Alt + ←, Alt + →"
+  - main [ref=e16]:
+    - generic [ref=e17]:
+      - generic [ref=e18]:
+        - generic [ref=e19]:
+          - generic [ref=e20]: Tìm và xếp bài
+          - generic [ref=e21]: Tìm kiếm
+        - generic [ref=e22]: 12 kết quả
+      - generic [ref=e23]:
+        - generic [ref=e24]: Tìm bài karaoke
+        - textbox "Tìm bài karaoke" [ref=e25]:
+          - /placeholder: Tìm bài, ca sĩ hoặc mã YouTube…
+          - text: tinh
+        - button "Xoá nội dung tìm kiếm" [ref=e54] [cursor=pointer]: Xoá
+      - generic [ref=e27]:
+        - generic [ref=e28]:
+          - button "Chỉ karaoke" [ref=e29] [cursor=pointer]
+          - button "Bỏ karaoke" [ref=e30] [cursor=pointer]
+        - generic [ref=e31]: / hoặc Ctrl/Cmd + K để focus
+      - generic [ref=e33]:
+        - generic [ref=e55]:
+          - generic [ref=e57]:
+            - generic [ref=e58]: Karaoke - TÌNH Tone Nam | Văn Phụng | Lê Lâm Music
+            - generic [ref=e59]: "Kênh: Lê Lâm Music"
+          - generic [ref=e60]:
+            - button "Thêm kế" [ref=e61] [cursor=pointer]
+            - button "Cuối hàng" [ref=e62] [cursor=pointer]
+            - button "Phát ngay" [active] [ref=e63] [cursor=pointer]
+            - generic [ref=e163]: Da chuyen len dang phat
+        - generic [ref=e64]:
+          - generic [ref=e66]:
+            - generic [ref=e67]: Karaoke Tình Anh Tone Nam | Nhạc Sống Nguyễn Linh
+            - generic [ref=e68]: "Kênh: Nhạc sống Nguyễn Linh"
+          - generic [ref=e69]:
+            - button "Thêm kế" [ref=e70] [cursor=pointer]
+            - button "Cuối hàng" [ref=e71] [cursor=pointer]
+            - button "Phát ngay" [ref=e72] [cursor=pointer]
+        - generic [ref=e73]:
+          - generic [ref=e75]:
+            - generic [ref=e76]: "[Karaoke] Thất Tình - Trịnh Đình Quang Official | Nhạc trẻ hay nhất 2016"
+            - generic [ref=e77]: "Kênh: Trịnh Đình Quang Official"
+          - generic [ref=e78]:
+            - button "Thêm kế" [ref=e79] [cursor=pointer]
+            - button "Cuối hàng" [ref=e80] [cursor=pointer]
+            - button "Phát ngay" [ref=e81] [cursor=pointer]
+        - generic [ref=e82]:
+          - generic [ref=e84]:
+            - generic [ref=e85]: Karaoke - TÌNH Tone Nữ | Văn Phụng | Lê Lâm Music
+            - generic [ref=e86]: "Kênh: Lê Lâm Music"
+          - generic [ref=e87]:
+            - button "Thêm kế" [ref=e88] [cursor=pointer]
+            - button "Cuối hàng" [ref=e89] [cursor=pointer]
+            - button "Phát ngay" [ref=e90] [cursor=pointer]
+        - generic [ref=e91]:
+          - generic [ref=e93]:
+            - generic [ref=e94]: Nợ Tình - Karaoke Tone Nữ - Karaoke Nhạc Sống 1990 - Beat Mới
+            - generic [ref=e95]: "Kênh: NHẠC SỐNG 1990"
+          - generic [ref=e96]:
+            - button "Thêm kế" [ref=e97] [cursor=pointer]
+            - button "Cuối hàng" [ref=e98] [cursor=pointer]
+            - button "Phát ngay" [ref=e99] [cursor=pointer]
+        - generic [ref=e100]:
+          - generic [ref=e102]:
+            - generic [ref=e103]: Tình Đất Karaoke Tone Nam Nhạc Sống gia huy beat
+            - generic [ref=e104]: "Kênh: gia huy beat"
+          - generic [ref=e105]:
+            - button "Thêm kế" [ref=e106] [cursor=pointer]
+            - button "Cuối hàng" [ref=e107] [cursor=pointer]
+            - button "Phát ngay" [ref=e108] [cursor=pointer]
+        - generic [ref=e109]:
+          - generic [ref=e111]:
+            - generic [ref=e112]: Tình Đất Karaoke Tone Nữ ( Eb ) Nhạc Sống Dễ Hát | Trọng Hiếu
+            - generic [ref=e113]: "Kênh: Hiếu Organ"
+          - generic [ref=e114]:
+            - button "Thêm kế" [ref=e115] [cursor=pointer]
+            - button "Cuối hàng" [ref=e116] [cursor=pointer]
+            - button "Phát ngay" [ref=e117] [cursor=pointer]
+        - generic [ref=e118]:
+          - generic [ref=e120]:
+            - generic [ref=e121]: KARAOKE-TÌNH.sáng tác Văn Phụng.@Slowrock75music75
+            - generic [ref=e122]: "Kênh: Slowrock@music"
+          - generic [ref=e123]:
+            - button "Thêm kế" [ref=e124] [cursor=pointer]
+            - button "Cuối hàng" [ref=e125] [cursor=pointer]
+            - button "Phát ngay" [ref=e126] [cursor=pointer]
+        - generic [ref=e127]:
+          - generic [ref=e129]:
+            - generic [ref=e130]: KARAOKE TÌNH.tone NAM .sáng tác Văn Phụng @Slowrock75music75
+            - generic [ref=e131]: "Kênh: Slowrock@music"
+          - generic [ref=e132]:
+            - button "Thêm kế" [ref=e133] [cursor=pointer]
+            - button "Cuối hàng" [ref=e134] [cursor=pointer]
+            - button "Phát ngay" [ref=e135] [cursor=pointer]
+        - generic [ref=e136]:
+          - generic [ref=e138]:
+            - generic [ref=e139]: Biển Tình Karaoke Tone Nữ Nhạc Sống | Trọng Hiếu
+            - generic [ref=e140]: "Kênh: Hiếu Organ"
+          - generic [ref=e141]:
+            - button "Thêm kế" [ref=e142] [cursor=pointer]
+            - button "Cuối hàng" [ref=e143] [cursor=pointer]
+            - button "Phát ngay" [ref=e144] [cursor=pointer]
+        - generic [ref=e145]:
+          - generic [ref=e147]:
+            - generic [ref=e148]: Karaoke Tình Ka (Lofi ver) - Danhka
+            - generic [ref=e149]: "Kênh: G5R Karaoke"
+          - generic [ref=e150]:
+            - button "Thêm kế" [ref=e151] [cursor=pointer]
+            - button "Cuối hàng" [ref=e152] [cursor=pointer]
+            - button "Phát ngay" [ref=e153] [cursor=pointer]
+        - generic [ref=e154]:
+          - generic [ref=e156]:
+            - generic [ref=e157]: karaoke Tình |tone Nữ|
+            - generic [ref=e158]: "Kênh: Đoàn Đức Tú"
+          - generic [ref=e159]:
+            - button "Thêm kế" [ref=e160] [cursor=pointer]
+            - button "Cuối hàng" [ref=e161] [cursor=pointer]
+            - button "Phát ngay" [ref=e162] [cursor=pointer]
+    - generic [ref=e34]:
+      - generic [ref=e35]:
+        - generic [ref=e36]:
+          - generic [ref=e37]:
+            - generic [ref=e38]: Trung tâm điều khiển
+            - generic [ref=e39]: Đang phát
+          - generic [ref=e40]: 0 bài chờ sau bài hiện tại
+        - generic [ref=e42]:
+          - generic [ref=e164]: Bài hiện tại
+          - generic [ref=e165]: Karaoke - TÌNH Tone Nam | Văn Phụng | Lê Lâm Music
+          - generic [ref=e166]: "Kênh: Lê Lâm Music"
+          - generic [ref=e167]: "Tiếp theo: Chưa có bài kế tiếp"
+          - generic [ref=e168]:
+            - generic [ref=e169]:
+              - generic [ref=e170]: "1"
+              - generic [ref=e171]: Tổng bài
+            - generic [ref=e172]:
+              - generic [ref=e173]: "0"
+              - generic [ref=e174]: Sắp tới
+            - generic [ref=e175]:
+              - generic [ref=e176]: 80%
+              - generic [ref=e177]: Âm lượng
+          - generic [ref=e178]:
+            - button "Bài trước" [ref=e179] [cursor=pointer]
+            - button "Phát" [ref=e180] [cursor=pointer]
+            - button "Tạm dừng" [ref=e181] [cursor=pointer]
+            - button "Bỏ qua" [ref=e182] [cursor=pointer]
+          - generic [ref=e183]:
+            - generic [ref=e184]:
+              - generic [ref=e185]: Âm lượng trình chiếu
+              - generic [ref=e186]: 80%
+            - slider [ref=e187]: "80"
+      - generic [ref=e44]:
+        - generic [ref=e45]:
+          - generic [ref=e46]:
+            - generic [ref=e47]: Quản lý lượt hát
+            - generic [ref=e48]: Hàng chờ
+          - button "Xoá hết" [ref=e50] [cursor=pointer]
+        - generic [ref=e51]: Kéo để đổi thứ tự. Bấm Phát ở từng dòng để nhảy bài ngay.
+        - generic [ref=e189]:
+          - button "Kéo để sắp xếp" [ref=e190]: ⋮⋮
+          - 'button "Karaoke - TÌNH Tone Nam | Văn Phụng | Lê Lâm Music Đang phát Kênh: Lê Lâm Music" [ref=e191] [cursor=pointer]':
+            - generic [ref=e192]:
+              - generic [ref=e193]: Karaoke - TÌNH Tone Nam | Văn Phụng | Lê Lâm Music
+              - generic [ref=e194]: Đang phát
+            - generic [ref=e195]: "Kênh: Lê Lâm Music"
+          - generic [ref=e196]:
+            - button "Đang phát" [ref=e197] [cursor=pointer]
+            - button "Xoá" [ref=e198] [cursor=pointer]
+        - status [ref=e199]
+  - generic [ref=e200]: Đã chuyển sang bài vừa chọn

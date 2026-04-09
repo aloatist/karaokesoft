@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 type YTPlayer = {
   playVideo: () => void
@@ -10,6 +10,7 @@ type YTPlayer = {
   isMuted: () => boolean
   setVolume: (v: number) => void
   loadVideoById: (videoId: string) => void
+  seekTo?: (seconds: number, allowSeekAhead?: boolean) => void
   getPlayerState?: () => number
 }
 
@@ -89,13 +90,17 @@ export function useYouTubePlayer(opts: {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const playerRef = useRef<YTPlayer | null>(null)
   const [ready, setReady] = useState(false)
-  const [requiresGesture, setRequiresGesture] = useState(false)
+  const [requiresGestureVideoId, setRequiresGestureVideoId] = useState<string | null>(null)
   const [playerState, setPlayerState] = useState<
     'idle' | 'unstarted' | 'playing' | 'paused' | 'ended' | 'buffering' | 'cued'
   >('idle')
-  const [lastError, setLastError] = useState<number | null>(null)
+  const [lastErrorState, setLastErrorState] = useState<{ code: number; videoId?: string } | null>(null)
+  const [activeVideoId, setActiveVideoId] = useState<string | null>(null)
+  const playbackProbeRef = useRef<number | null>(null)
   const volumeRef = useRef(opts.volume)
   const videoIdRef = useRef(opts.videoId)
+  const playerStateRef = useRef(playerState)
+  const lastErrorRef = useRef(lastErrorState)
 
   const playerVars = useMemo(() => {
     const playerConfig: Record<string, number | string> = {
@@ -130,6 +135,14 @@ export function useYouTubePlayer(opts: {
   }, [opts.videoId])
 
   useEffect(() => {
+    playerStateRef.current = playerState
+  }, [playerState])
+
+  useEffect(() => {
+    lastErrorRef.current = lastErrorState
+  }, [lastErrorState])
+
+  useEffect(() => {
     let cancelled = false
 
     async function boot() {
@@ -140,18 +153,33 @@ export function useYouTubePlayer(opts: {
       const onStateChange = (e: { data: number }) => {
         // 0 = ended, 1 = playing, 2 = paused
         if (e.data === 1) {
+          if (playbackProbeRef.current !== null) {
+            window.clearTimeout(playbackProbeRef.current)
+            playbackProbeRef.current = null
+          }
+          setActiveVideoId(videoIdRef.current ?? null)
           setPlayerState('playing')
-          setRequiresGesture(false)
+          setRequiresGestureVideoId(null)
+          setLastErrorState(null)
         } else if (e.data === 2) {
+          setActiveVideoId(videoIdRef.current ?? null)
           setPlayerState('paused')
         } else if (e.data === 0) {
+          if (playbackProbeRef.current !== null) {
+            window.clearTimeout(playbackProbeRef.current)
+            playbackProbeRef.current = null
+          }
+          setActiveVideoId(videoIdRef.current ?? null)
           setPlayerState('ended')
           onEndedRef.current()
         } else if (e.data === 3) {
+          setActiveVideoId(videoIdRef.current ?? null)
           setPlayerState('buffering')
         } else if (e.data === 5) {
+          setActiveVideoId(videoIdRef.current ?? null)
           setPlayerState('cued')
         } else if (e.data === -1) {
+          setActiveVideoId(videoIdRef.current ?? null)
           setPlayerState('unstarted')
         }
       }
@@ -164,19 +192,38 @@ export function useYouTubePlayer(opts: {
         events: {
           onReady: () => {
             setReady(true)
+            setActiveVideoId(videoIdRef.current ?? null)
+            setLastErrorState(null)
+            setRequiresGestureVideoId(null)
             try {
               player.mute()
               player.setVolume(volumeRef.current)
               player.playVideo()
-              // Chỉ tắt overlay khi thật sự "playing" (xử lý trong onStateChange).
+              if (playbackProbeRef.current !== null) {
+                window.clearTimeout(playbackProbeRef.current)
+              }
+              const targetVideoId = videoIdRef.current
+              playbackProbeRef.current = window.setTimeout(() => {
+                if (videoIdRef.current !== targetVideoId) return
+                if (playerStateRef.current === 'playing') return
+                if (lastErrorRef.current?.videoId === targetVideoId) return
+                setRequiresGestureVideoId(targetVideoId ?? null)
+              }, 1200)
             } catch {
-              setRequiresGesture(true)
+              setRequiresGestureVideoId(videoIdRef.current ?? null)
             }
           },
           onStateChange,
           onError: (e) => {
-            setLastError(typeof e?.data === 'number' ? e.data : -1)
-            setRequiresGesture(true)
+            if (playbackProbeRef.current !== null) {
+              window.clearTimeout(playbackProbeRef.current)
+              playbackProbeRef.current = null
+            }
+            setLastErrorState({
+              code: typeof e?.data === 'number' ? e.data : -1,
+              videoId: videoIdRef.current,
+            })
+            setRequiresGestureVideoId(null)
           },
         },
       })
@@ -184,10 +231,17 @@ export function useYouTubePlayer(opts: {
       playerRef.current = player
     }
 
-    boot().catch(() => setRequiresGesture(true))
+    boot().catch(() => {
+      setLastErrorState({ code: -2, videoId: videoIdRef.current })
+      setRequiresGestureVideoId(null)
+    })
 
     return () => {
       cancelled = true
+      if (playbackProbeRef.current !== null) {
+        window.clearTimeout(playbackProbeRef.current)
+        playbackProbeRef.current = null
+      }
       if (typeof playerRef.current?.destroy === 'function') {
         playerRef.current.destroy()
       }
@@ -211,12 +265,72 @@ export function useYouTubePlayer(opts: {
     try {
       playerRef.current?.loadVideoById(id)
       playerRef.current?.playVideo()
+      if (playbackProbeRef.current !== null) {
+        window.clearTimeout(playbackProbeRef.current)
+      }
+      playbackProbeRef.current = window.setTimeout(() => {
+        if (videoIdRef.current !== id) return
+        if (playerStateRef.current === 'playing') return
+        if (lastErrorRef.current?.videoId === id) return
+        setRequiresGestureVideoId(id)
+      }, 1200)
     } catch {
       window.setTimeout(() => {
-        setRequiresGesture(true)
+        setRequiresGestureVideoId(id)
       }, 0)
     }
   }, [opts.videoId, ready])
+
+  const requiresGesture = requiresGestureVideoId === (opts.videoId ?? null)
+  const lastError =
+    lastErrorState && lastErrorState.videoId === opts.videoId ? lastErrorState.code : null
+
+  const play = useCallback(() => {
+    playerRef.current?.playVideo()
+  }, [])
+
+  const pause = useCallback(() => {
+    playerRef.current?.pauseVideo()
+  }, [])
+
+  const restart = useCallback(() => {
+    const p = playerRef.current
+    if (!p) return
+    try {
+      p.seekTo?.(0, true)
+      p.playVideo()
+    } catch {
+      const currentVideoId = videoIdRef.current
+      if (!currentVideoId) return
+      try {
+        p.loadVideoById(currentVideoId)
+        p.playVideo()
+      } catch {
+        setRequiresGestureVideoId(currentVideoId)
+      }
+    }
+  }, [])
+
+  const setPlayerVolume = useCallback((v: number) => {
+    playerRef.current?.setVolume(v)
+  }, [])
+
+  const getRawPlayerState = useCallback(() => {
+    const p = playerRef.current
+    return typeof p?.getPlayerState === 'function' ? p.getPlayerState() : undefined
+  }, [])
+
+  const unmuteAndPlay = useCallback(() => {
+    const p = playerRef.current
+    if (!p) return
+    try {
+      if (p.isMuted()) p.unMute()
+      p.playVideo()
+      // Không tắt overlay vội; chờ onStateChange xác nhận playing.
+    } catch {
+      setRequiresGestureVideoId(videoIdRef.current ?? null)
+    }
+  }, [])
 
   return {
     containerRef,
@@ -224,23 +338,12 @@ export function useYouTubePlayer(opts: {
     requiresGesture,
     playerState,
     lastError,
-    play: () => playerRef.current?.playVideo(),
-    pause: () => playerRef.current?.pauseVideo(),
-    setVolume: (v: number) => playerRef.current?.setVolume(v),
-    getRawPlayerState: () => {
-      const p = playerRef.current
-      return typeof p?.getPlayerState === 'function' ? p.getPlayerState() : undefined
-    },
-    unmuteAndPlay: () => {
-      const p = playerRef.current
-      if (!p) return
-      try {
-        if (p.isMuted()) p.unMute()
-        p.playVideo()
-        // Không tắt overlay vội; chờ onStateChange xác nhận playing.
-      } catch {
-        setRequiresGesture(true)
-      }
-    },
+    activeVideoId,
+    play,
+    pause,
+    restart,
+    setVolume: setPlayerVolume,
+    getRawPlayerState,
+    unmuteAndPlay,
   }
 }

@@ -1,0 +1,109 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]: KaraokeYT
+      - generic [ref=e7]: Màn hình điều khiển
+    - generic [ref=e8]:
+      - generic [ref=e9]:
+        - generic [ref=e10]: Người dùng
+        - combobox [ref=e11]:
+          - option "Quản trị · Quản trị" [selected]
+          - option "Điều khiển · Điều khiển"
+          - option "Khách xem · Chỉ xem"
+      - button "Mở màn hình trình chiếu" [ref=e12] [cursor=pointer]
+      - button "Cài đặt" [ref=e13] [cursor=pointer]
+  - generic [ref=e14]:
+    - generic [ref=e15]: "Trình chiếu: Chưa mở"
+    - generic [ref=e16]: "Autoplay: Bật"
+    - generic [ref=e17]: "Hàng chờ: 3 bài"
+    - generic [ref=e18]: "Vai trò: Quản trị · Quản trị"
+    - generic [ref=e19]: "Phím tắt: Ctrl/Cmd + K, Alt + ←, Alt + →"
+  - main [ref=e20]:
+    - generic [ref=e21]:
+      - generic [ref=e22]:
+        - generic [ref=e23]:
+          - generic [ref=e24]: Tìm và xếp bài
+          - generic [ref=e25]: Tìm kiếm
+        - generic [ref=e26]: Sẵn sàng
+      - generic [ref=e27]:
+        - generic [ref=e28]: Tìm bài karaoke
+        - textbox "Tìm bài karaoke" [ref=e29]:
+          - /placeholder: Tìm bài, ca sĩ hoặc mã YouTube…
+      - generic [ref=e31]:
+        - generic [ref=e32]:
+          - button "Chỉ karaoke" [ref=e33] [cursor=pointer]
+          - button "Bỏ karaoke" [ref=e34] [cursor=pointer]
+        - generic [ref=e35]: / hoặc Ctrl/Cmd + K để focus
+      - generic [ref=e37]: Nhập tên bài để tìm kiếm.
+    - generic [ref=e38]:
+      - generic [ref=e39]:
+        - generic [ref=e40]:
+          - generic [ref=e41]: Trung tâm điều khiển
+          - generic [ref=e42]: Đang phát
+        - generic [ref=e43]:
+          - 'button "Phát lại: Không lặp" [ref=e44] [cursor=pointer]'
+          - generic [ref=e45]: 1 bài chờ sau bài hiện tại
+      - generic [ref=e47]:
+        - generic [ref=e48]: Bài hiện tại
+        - generic [ref=e49]: Karaoke Bản Tone Nam Nhạc Sống | Nhật Nguyễn với tiêu đề kéo dài nhiều dòng để kiểm tra hàng chờ và trung tâm điều khiển
+        - generic [ref=e50]: "Kênh: Karaoke Nhật Nguyễn Official"
+        - generic [ref=e51]: "Tiếp theo: Mai lỡ hai mình xa nhau Karaoke Remix Miền Tây Tiêu đề rất dài để test mobile và desktop tránh che chữ"
+        - generic [ref=e52]:
+          - generic [ref=e53]:
+            - generic [ref=e54]: "3"
+            - generic [ref=e55]: Tổng bài
+          - generic [ref=e56]:
+            - generic [ref=e57]: "1"
+            - generic [ref=e58]: Sắp tới
+          - generic [ref=e59]:
+            - generic [ref=e60]: 80%
+            - generic [ref=e61]: Âm lượng
+        - generic [ref=e62]:
+          - button "Bài trước" [ref=e63] [cursor=pointer]
+          - button "Từ đầu" [ref=e64] [cursor=pointer]
+          - button "Phát" [ref=e65] [cursor=pointer]
+          - button "Tạm dừng" [ref=e66] [cursor=pointer]
+          - button "Tiếp theo" [ref=e67] [cursor=pointer]
+        - generic [ref=e68]:
+          - generic [ref=e69]:
+            - generic [ref=e70]: Âm lượng trình chiếu
+            - generic [ref=e71]: 80%
+          - slider [ref=e72]: "80"
+    - generic [ref=e73]:
+      - generic [ref=e74]:
+        - generic [ref=e75]:
+          - generic [ref=e76]: Quản lý lượt hát
+          - generic [ref=e77]: Hàng chờ
+        - button "Xoá hết" [ref=e79] [cursor=pointer]
+      - generic [ref=e80]: Kéo để đổi thứ tự. Bấm Phát ở từng dòng để nhảy bài ngay.
+      - generic [ref=e81]:
+        - generic [ref=e82]:
+          - generic [ref=e83]:
+            - button "Kéo để sắp xếp" [ref=e84]: ⋮⋮
+            - 'button "Sợi Nhớ Sợi Thương Karaoke Tone Nữ [ Mi thứ ] Nhạc Sống gia huy karaoke cực dài để kiểm tra hiển thị trong hàng chờ Kênh: Gia Huy Karaoke Miền Tây Bolero Trữ Tình" [ref=e85] [cursor=pointer]':
+              - generic [ref=e86]:
+                - generic [ref=e87]: Sợi Nhớ Sợi Thương Karaoke Tone Nữ [ Mi thứ ] Nhạc Sống gia huy karaoke cực dài để kiểm tra hiển thị trong hàng chờ
+                - generic [ref=e88]: "Kênh: Gia Huy Karaoke Miền Tây Bolero Trữ Tình"
+            - generic [ref=e89]:
+              - button "Phát" [ref=e90] [cursor=pointer]
+              - button "Xoá" [ref=e91] [cursor=pointer]
+          - generic [ref=e92]:
+            - button "Kéo để sắp xếp" [ref=e93]: ⋮⋮
+            - 'button "Karaoke Bản Tone Nam Nhạc Sống | Nhật Nguyễn với tiêu đề kéo dài nhiều dòng để kiểm tra hàng chờ và trung tâm điều khiển Kênh: Karaoke Nhật Nguyễn Official Đang phát" [ref=e94] [cursor=pointer]':
+              - generic [ref=e95]:
+                - generic [ref=e96]: Karaoke Bản Tone Nam Nhạc Sống | Nhật Nguyễn với tiêu đề kéo dài nhiều dòng để kiểm tra hàng chờ và trung tâm điều khiển
+                - generic [ref=e97]: "Kênh: Karaoke Nhật Nguyễn Official"
+                - generic [ref=e99]: Đang phát
+            - generic [ref=e100]:
+              - button "Đang phát" [ref=e101] [cursor=pointer]
+              - button "Xoá" [ref=e102] [cursor=pointer]
+          - generic [ref=e103]:
+            - button "Kéo để sắp xếp" [ref=e104]: ⋮⋮
+            - 'button "Mai lỡ hai mình xa nhau Karaoke Remix Miền Tây Tiêu đề rất dài để test mobile và desktop tránh che chữ Kênh: Karaoke Tuyết Nhi Official" [ref=e105] [cursor=pointer]':
+              - generic [ref=e106]:
+                - generic [ref=e107]: Mai lỡ hai mình xa nhau Karaoke Remix Miền Tây Tiêu đề rất dài để test mobile và desktop tránh che chữ
+                - generic [ref=e108]: "Kênh: Karaoke Tuyết Nhi Official"
+            - generic [ref=e109]:
+              - button "Phát" [ref=e110] [cursor=pointer]
+              - button "Xoá" [ref=e111] [cursor=pointer]
+        - status [ref=e112]

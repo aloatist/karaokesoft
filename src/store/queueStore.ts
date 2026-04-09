@@ -116,7 +116,11 @@ export const useQueueStore = create<QueueState>()(
     }),
     {
       name: 'karaokeyt-queue',
-      version: 3,
+      version: 4,
+      partialize: (state) => ({
+        queue: state.queue,
+        currentIndex: state.currentIndex,
+      }),
       migrate: (persisted) => {
         const base = (persisted ?? {}) as Record<string, unknown>
         const s = base as unknown as { queue?: SongItem[]; currentIndex?: number }
@@ -130,7 +134,7 @@ export const useQueueStore = create<QueueState>()(
             ? 0
             : clamp(typeof s.currentIndex === 'number' ? s.currentIndex : 0, 0, queue.length - 1)
 
-        return { ...base, queue, currentIndex }
+        return { queue, currentIndex }
       },
     },
   ),

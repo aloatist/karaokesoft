@@ -2,7 +2,7 @@ import { useCallback, useMemo, useRef, useState } from 'react'
 import { NextSongTicker } from '../components/NextSongTicker'
 import { SongOverlay } from '../components/SongOverlay'
 import { YouTubePlayer } from '../components/YouTubePlayer'
-import { phatBaoHetBai, useBroadcastReceiver } from '../hooks/useBroadcastSync'
+import { phatBaoHetBai, phatBaoLoiPlayer, useBroadcastReceiver } from '../hooks/useBroadcastSync'
 import { chuanHoaMucHangCho } from '../lib/queue'
 import type { SongItem, SyncMessage } from '../types'
 
@@ -30,7 +30,7 @@ function docQueueTuLocalStorage(): ViewState | null {
 export function DisplayScreen() {
   const [state, setState] = useState<ViewState>(() => docQueueTuLocalStorage() ?? { queue: [], currentIndex: 0 })
   const [volume, setVolume] = useState(80)
-  const [cmd, setCmd] = useState<{ type: 'play' | 'pause' | 'volume'; value?: number; nonce: number }>()
+  const [cmd, setCmd] = useState<{ type: 'play' | 'pause' | 'volume' | 'restart'; value?: number; nonce: number }>()
   const nonceRef = useRef(1)
 
   const onMsg = useCallback((msg: SyncMessage) => {
@@ -40,6 +40,7 @@ export function DisplayScreen() {
     if (msg.type === 'PLAYER_CMD') {
       if (msg.cmd === 'play') setCmd({ type: 'play', nonce: nonceRef.current++ })
       if (msg.cmd === 'pause') setCmd({ type: 'pause', nonce: nonceRef.current++ })
+      if (msg.cmd === 'restart') setCmd({ type: 'restart', nonce: nonceRef.current++ })
       if (msg.cmd === 'skip') {
         // Control sẽ tự nextSong; Display chỉ cần nhận QUEUE_UPDATE kế tiếp
       }
@@ -58,17 +59,48 @@ export function DisplayScreen() {
 
   return (
     <div className="displayRoot">
+      <div className="displayAura displayAuraWarm" />
+      <div className="displayAura displayAuraCool" />
       <div className="displayVideo">
-        <YouTubePlayer
-          videoId={baiDangPhat?.videoId}
-          volume={volume}
-          command={cmd}
-          onEnded={() => phatBaoHetBai()}
-        />
+        {baiDangPhat ? (
+          <YouTubePlayer
+            videoId={baiDangPhat.videoId}
+            volume={volume}
+            command={cmd}
+            onEnded={() => phatBaoHetBai()}
+            onError={(code, failedVideoId) => phatBaoLoiPlayer(code, failedVideoId)}
+          />
+        ) : null}
       </div>
 
-      {baiDangPhat ? <SongOverlay title={baiDangPhat.title} channelTitle={baiDangPhat.channelTitle} /> : null}
-      <NextSongTicker nextTitle={baiTiepTheo?.title} />
+      {baiDangPhat ? (
+        <>
+          <SongOverlay title={baiDangPhat.title} channelTitle={baiDangPhat.channelTitle} />
+          <NextSongTicker nextTitle={baiTiepTheo?.title} />
+        </>
+      ) : (
+        <div className="displayPlaceholder">
+          <div className="displayEyebrow">KaraokeYT</div>
+          <div className="displayTitle">Màn hình trình chiếu đang sẵn sàng</div>
+          <div className="displaySub">
+            Hãy chọn bài từ màn hình điều khiển. Tên bài hiện tại và bài kế tiếp sẽ tự động xuất hiện tại đây.
+          </div>
+          <div className="displayHintRow">
+            <div className="displayHintCard">
+              <div className="displayHintStep">1</div>
+              <div className="displayHintText">Tìm bài trên màn điều khiển</div>
+            </div>
+            <div className="displayHintCard">
+              <div className="displayHintStep">2</div>
+              <div className="displayHintText">Bấm Phát ngay hoặc xếp hàng chờ</div>
+            </div>
+            <div className="displayHintCard">
+              <div className="displayHintStep">3</div>
+              <div className="displayHintText">Màn hình này sẽ tự chuyển sang video</div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

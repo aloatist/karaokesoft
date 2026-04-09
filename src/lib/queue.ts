@@ -15,7 +15,11 @@ function taoQueueId() {
 
 export function taoMucHangCho(song: SearchSong): SongItem {
   return {
-    ...song,
+    videoId: song.videoId,
+    title: song.title,
+    channelTitle: song.channelTitle,
+    thumbnail: song.thumbnail,
+    duration: song.duration,
     queueId: taoQueueId(),
     addedAt: Date.now(),
   }

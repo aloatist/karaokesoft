@@ -1,6 +1,6 @@
 import { useSettingsStore } from '../store/settingsStore'
 
-export function SearchModeToggle() {
+export function SearchModeToggle({ disabled = false }: { disabled?: boolean }) {
   const karaokeFilterEnabled = useSettingsStore((s) => s.karaokeFilterEnabled)
   const { capNhat } = useSettingsStore((s) => s.actions)
 
@@ -8,6 +8,7 @@ export function SearchModeToggle() {
     <div className="seg">
       <button
         className={`segBtn ${karaokeFilterEnabled ? 'segBtnActive' : ''}`}
+        disabled={disabled}
         onClick={() => capNhat({ karaokeFilterEnabled: true })}
         type="button"
       >
@@ -15,6 +16,7 @@ export function SearchModeToggle() {
       </button>
       <button
         className={`segBtn ${!karaokeFilterEnabled ? 'segBtnActive' : ''}`}
+        disabled={disabled}
         onClick={() => capNhat({ karaokeFilterEnabled: false })}
         type="button"
       >
@@ -23,4 +25,3 @@ export function SearchModeToggle() {
     </div>
   )
 }
-

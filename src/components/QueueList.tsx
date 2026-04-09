@@ -10,6 +10,8 @@ function QueueRow({
   title,
   channelTitle,
   active,
+  activeActionKey,
+  disabled,
   onPlayNow,
   onRemove,
 }: {
@@ -17,6 +19,8 @@ function QueueRow({
   title: string
   channelTitle: string
   active: boolean
+  activeActionKey?: string | null
+  disabled?: boolean
   onPlayNow: () => void
   onRemove: () => void
 }) {
@@ -31,21 +35,37 @@ function QueueRow({
 
   return (
     <div ref={setNodeRef} style={style} className={`row ${active ? 'rowActive' : ''}`}>
-      <button className="drag" {...attributes} {...listeners} aria-label="Kéo để sắp xếp">
+      <button className="drag" {...attributes} {...listeners} aria-label="Kéo để sắp xếp" disabled={disabled}>
         ⋮⋮
       </button>
-      <button className="rowMain" onClick={onPlayNow} type="button">
-        <div className="rowHead">
+      <button className="rowMain" onClick={onPlayNow} type="button" disabled={disabled}>
+        <div className="rowHead rowHeadStack">
           <div className="title">{title}</div>
-          {active ? <span className="liveBadge">Đang phát</span> : null}
+          <div className="sub">Kênh: {channelTitle}</div>
+          {active ? (
+            <div className="rowBadgeLine">
+              <span className="liveBadge">Đang phát</span>
+            </div>
+          ) : null}
         </div>
-        <div className="sub">Kênh: {channelTitle}</div>
       </button>
       <div className="rowActions">
-        <button className="ghost compactButton" onClick={onPlayNow} type="button">
+        <button
+          className={`ghost compactButton ${active ? 'buttonToneSuccess buttonStateActive' : 'buttonToneMuted'} ${activeActionKey === `queue-play:${queueId}` ? 'buttonStateActive' : ''}`}
+          data-pressed={active || activeActionKey === `queue-play:${queueId}`}
+          disabled={disabled}
+          onClick={onPlayNow}
+          type="button"
+        >
           {active ? 'Đang phát' : 'Phát'}
         </button>
-        <button className="danger compactButton" onClick={onRemove} type="button">
+        <button
+          className={`ghost compactButton buttonToneDanger ${activeActionKey === `queue-remove:${queueId}` ? 'buttonStateActive' : ''}`}
+          data-pressed={activeActionKey === `queue-remove:${queueId}`}
+          disabled={disabled}
+          onClick={onRemove}
+          type="button"
+        >
           Xoá
         </button>
       </div>
@@ -56,12 +76,16 @@ function QueueRow({
 export function QueueList({
   queue,
   currentIndex,
+  activeActionKey,
+  disabled,
   onMove,
   onPlayNow,
   onRemove,
 }: {
   queue: SongItem[]
   currentIndex: number
+  activeActionKey?: string | null
+  disabled?: boolean
   onMove: (from: number, to: number) => void
   onPlayNow: (queueId: string) => void
   onRemove: (queueId: string) => void
@@ -82,6 +106,7 @@ export function QueueList({
       sensors={sensors}
       collisionDetection={closestCenter}
       onDragEnd={({ active, over }) => {
+        if (disabled) return
         if (!over || active.id === over.id) return
         const oldIndex = ids.indexOf(String(active.id))
         const newIndex = ids.indexOf(String(over.id))
@@ -100,6 +125,8 @@ export function QueueList({
               title={it.title}
               channelTitle={it.channelTitle}
               active={idx === currentIndex}
+              activeActionKey={activeActionKey}
+              disabled={disabled}
               onPlayNow={() => onPlayNow(it.queueId)}
               onRemove={() => onRemove(it.queueId)}
             />

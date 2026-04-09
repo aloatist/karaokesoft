@@ -1,7 +1,9 @@
 import { useEffect, useId, useMemo, useState } from 'react'
+import { USER_ROLE_LABEL, moTaVaiTro } from '../lib/auth'
 import { dangChayDesktop, layDanhSachManHinh, moManHinhTrinhChieu } from '../services/desktopBridge'
+import { useAuthStore } from '../store/authStore'
 import { useSettingsStore } from '../store/settingsStore'
-import type { DesktopDisplayInfo } from '../types'
+import type { DesktopDisplayInfo, UserRole } from '../types'
 
 type Props = {
   open: boolean
@@ -12,15 +14,21 @@ export function SettingsModal({ open, onClose }: Props) {
   const apiKey = useSettingsStore((s) => s.youtubeApiKey)
   const karaokeFilterEnabled = useSettingsStore((s) => s.karaokeFilterEnabled)
   const autoplayNext = useSettingsStore((s) => s.autoplayNext)
+  const replayMode = useSettingsStore((s) => s.replayMode)
   const displayMonitorIndex = useSettingsStore((s) => s.displayMonitorIndex)
   const searchLanguage = useSettingsStore((s) => s.searchLanguage)
   const theme = useSettingsStore((s) => s.theme)
   const { capNhat } = useSettingsStore((s) => s.actions)
+  const users = useAuthStore((s) => s.users)
+  const currentUserId = useAuthStore((s) => s.currentUserId)
+  const { themNguoiDung, capNhatVaiTro, xoaNguoiDung, chuyenNguoiDung } = useAuthStore((s) => s.actions)
   const laDesktop = dangChayDesktop()
 
   const apiId = useId()
   const [localKey, setLocalKey] = useState(apiKey)
   const [displays, setDisplays] = useState<DesktopDisplayInfo[]>([])
+  const [newUserName, setNewUserName] = useState('')
+  const [newUserRole, setNewUserRole] = useState<UserRole>('operator')
 
   const canSave = useMemo(() => localKey.trim().length === 0 || localKey.trim().length >= 10, [localKey])
 
@@ -92,6 +100,24 @@ export function SettingsModal({ open, onClose }: Props) {
           </div>
 
           <div className="field">
+            <div className="label">Chế độ phát lại</div>
+            <select
+              className="input"
+              value={replayMode}
+              onChange={(e) =>
+                capNhat({
+                  replayMode:
+                    e.target.value === 'repeat-one' || e.target.value === 'repeat-all' ? e.target.value : 'normal',
+                })
+              }
+            >
+              <option value="normal">Không lặp</option>
+              <option value="repeat-one">Lặp bài hiện tại</option>
+              <option value="repeat-all">Lặp cả danh sách</option>
+            </select>
+          </div>
+
+          <div className="field">
             <div className="label">Màn hình trình chiếu</div>
             <select
               className="input"
@@ -143,6 +169,86 @@ export function SettingsModal({ open, onClose }: Props) {
               <option value="dark">Tối</option>
               <option value="light">Sáng</option>
             </select>
+          </div>
+
+          <div className="field">
+            <div className="label">Người dùng và phân quyền</div>
+            <div className="userAdminList">
+              {users.map((user) => (
+                <div key={user.id} className="userAdminRow">
+                  <div className="userAdminMeta">
+                    <div className="userAdminNameRow">
+                      <div className="userAdminName">{user.name}</div>
+                      {user.id === currentUserId ? <span className="miniBadge">Đang dùng</span> : null}
+                    </div>
+                    <div className="hint">{moTaVaiTro(user.role)}</div>
+                  </div>
+                  <div className="userAdminActions">
+                    <select
+                      className="input compactSelect"
+                      value={user.role}
+                      onChange={(e) =>
+                        capNhatVaiTro(
+                          user.id,
+                          e.target.value === 'admin' || e.target.value === 'operator' ? e.target.value : 'viewer',
+                        )
+                      }
+                    >
+                      <option value="admin">{USER_ROLE_LABEL.admin}</option>
+                      <option value="operator">{USER_ROLE_LABEL.operator}</option>
+                      <option value="viewer">{USER_ROLE_LABEL.viewer}</option>
+                    </select>
+                    {user.id !== currentUserId ? (
+                      <button className="ghost compactButton" onClick={() => chuyenNguoiDung(user.id)} type="button">
+                        Dùng user này
+                      </button>
+                    ) : null}
+                    <button
+                      className="ghost compactButton buttonToneDanger"
+                      disabled={users.length <= 1}
+                      onClick={() => xoaNguoiDung(user.id)}
+                      type="button"
+                    >
+                      Xoá
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="userCreateCard">
+              <input
+                className="input"
+                value={newUserName}
+                onChange={(e) => setNewUserName(e.target.value)}
+                placeholder="Tên user mới"
+              />
+              <select
+                className="input compactSelect"
+                value={newUserRole}
+                onChange={(e) =>
+                  setNewUserRole(
+                    e.target.value === 'admin' || e.target.value === 'viewer' ? e.target.value : 'operator',
+                  )
+                }
+              >
+                <option value="admin">{USER_ROLE_LABEL.admin}</option>
+                <option value="operator">{USER_ROLE_LABEL.operator}</option>
+                <option value="viewer">{USER_ROLE_LABEL.viewer}</option>
+              </select>
+              <button
+                className="primary"
+                disabled={!newUserName.trim()}
+                onClick={() => {
+                  themNguoiDung(newUserName, newUserRole)
+                  setNewUserName('')
+                  setNewUserRole('operator')
+                }}
+                type="button"
+              >
+                Thêm user
+              </button>
+            </div>
           </div>
         </div>
 

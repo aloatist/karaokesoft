@@ -1,0 +1,321 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]: KaraokeYT
+      - generic [ref=e7]: Màn hình điều khiển
+    - generic [ref=e8]:
+      - generic [ref=e9]:
+        - generic [ref=e10]: Người dùng
+        - combobox [ref=e11]:
+          - option "Quản trị · Quản trị" [selected]
+          - option "Điều khiển · Điều khiển"
+          - option "Khách xem · Chỉ xem"
+      - button "Mở màn hình trình chiếu" [ref=e12] [cursor=pointer]
+      - button "Cài đặt" [active] [ref=e13] [cursor=pointer]
+  - generic [ref=e14]:
+    - generic [ref=e15]: "Trình chiếu: Chưa mở"
+    - generic [ref=e16]: "Autoplay: Bật"
+    - generic [ref=e17]: "Phát lại: Không lặp"
+    - generic [ref=e18]: "Hàng chờ: 2 bài"
+    - generic [ref=e19]: "Vai trò: Quản trị · Quản trị"
+    - generic [ref=e20]: "Phím tắt: Ctrl/Cmd + K, Alt + ←, Alt + →"
+  - main [ref=e21]:
+    - generic [ref=e22]:
+      - generic [ref=e23]:
+        - generic [ref=e24]:
+          - generic [ref=e25]: Tìm và xếp bài
+          - generic [ref=e26]: Tìm kiếm
+        - generic [ref=e27]: 12 kết quả
+      - generic [ref=e28]:
+        - generic [ref=e29]: Tìm bài karaoke
+        - textbox "Tìm bài karaoke" [ref=e30]:
+          - /placeholder: Tìm bài, ca sĩ hoặc mã YouTube…
+          - text: ta
+        - button "Xoá nội dung tìm kiếm" [ref=e115] [cursor=pointer]: Xoá
+      - generic [ref=e32]:
+        - generic [ref=e33]:
+          - button "Chỉ karaoke" [ref=e34] [cursor=pointer]
+          - button "Bỏ karaoke" [ref=e35] [cursor=pointer]
+        - generic [ref=e36]: / hoặc Ctrl/Cmd + K để focus
+      - generic [ref=e37]:
+        - generic [ref=e38]:
+          - generic [ref=e39]:
+            - generic [ref=e40]: Thư viện theo tab
+            - generic [ref=e41]: Danh sách tự tạo
+          - generic [ref=e42]: 1 tab
+        - generic [ref=e262]:
+          - 'textbox "Ví dụ: Nhạc remix, Nhạc miền Tây…" [ref=e263]'
+          - button "Tạo tab" [disabled] [ref=e264]
+        - generic [ref=e105]:
+          - button "Nhạc remix 1" [ref=e236] [cursor=pointer]:
+            - text: Nhạc remix
+            - generic [ref=e107]: "1"
+          - button "Xoá" [ref=e265] [cursor=pointer]
+        - generic [ref=e109]:
+          - generic [ref=e110]:
+            - generic [ref=e111]: Nhạc remix
+            - generic [ref=e112]: 1 bài đã lưu
+          - generic [ref=e237]:
+            - generic [ref=e238]:
+              - generic [ref=e239]: Karaoke Đa Tạ | Nhạc Sống Tone Nam | Huỳnh Lê
+              - generic [ref=e240]: "Kênh: Karaoke Huỳnh Lê"
+            - generic [ref=e241]:
+              - button "Thêm kế" [ref=e242] [cursor=pointer]
+              - button "Phát" [ref=e243] [cursor=pointer]
+              - button "Xoá" [ref=e266] [cursor=pointer]
+      - generic [ref=e49]:
+        - generic [ref=e116]:
+          - generic [ref=e118]:
+            - generic [ref=e119]: Karaoke Đa Tạ | Nhạc Sống Tone Nam | Huỳnh Lê
+            - generic [ref=e120]: "Kênh: Karaoke Huỳnh Lê"
+          - generic [ref=e121]:
+            - button "Thêm kế" [ref=e122] [cursor=pointer]
+            - button "Cuối hàng" [ref=e123] [cursor=pointer]
+            - button "Phát ngay" [ref=e124] [cursor=pointer]
+            - button "Lưu tab" [ref=e125] [cursor=pointer]
+        - generic [ref=e126]:
+          - generic [ref=e128]:
+            - generic [ref=e129]: Karaoke | Có Mình Và Ta - Nguyễn Vĩ | Beat Chuẩn
+            - generic [ref=e130]: "Kênh: Nguyễn Vĩ OFFICIAL"
+          - generic [ref=e131]:
+            - button "Thêm kế" [ref=e132] [cursor=pointer]
+            - button "Cuối hàng" [ref=e133] [cursor=pointer]
+            - button "Phát ngay" [ref=e134] [cursor=pointer]
+            - button "Lưu tab" [ref=e135] [cursor=pointer]
+        - generic [ref=e136]:
+          - generic [ref=e138]:
+            - generic [ref=e139]: Karaoke Tone Nữ Có mình và ta - Nguyễn Vĩ (Guitar Solo Beat) | Thiện Trung Guitar
+            - generic [ref=e140]: "Kênh: Thiện Trung Guitar"
+          - generic [ref=e141]:
+            - button "Thêm kế" [ref=e142] [cursor=pointer]
+            - button "Cuối hàng" [ref=e143] [cursor=pointer]
+            - button "Phát ngay" [ref=e144] [cursor=pointer]
+            - button "Lưu tab" [ref=e145] [cursor=pointer]
+        - generic [ref=e146]:
+          - generic [ref=e148]:
+            - generic [ref=e149]: Em Thua Cô Ta Karaoke Tone Nữ (F#m) Nhạc Sống Beat Hay | Huỳnh Lê
+            - generic [ref=e150]: "Kênh: Karaoke Huỳnh Lê"
+          - generic [ref=e151]:
+            - button "Thêm kế" [ref=e152] [cursor=pointer]
+            - button "Cuối hàng" [ref=e153] [cursor=pointer]
+            - button "Phát ngay" [ref=e154] [cursor=pointer]
+            - button "Lưu tab" [ref=e155] [cursor=pointer]
+        - generic [ref=e156]:
+          - generic [ref=e158]:
+            - generic [ref=e159]: Karaoke Có mình và ta - Nguyễn Vĩ (Guitar Solo Beat) | Thiện Trung Guitar
+            - generic [ref=e160]: "Kênh: Thiện Trung Guitar"
+          - generic [ref=e161]:
+            - button "Thêm kế" [ref=e162] [cursor=pointer]
+            - button "Cuối hàng" [ref=e163] [cursor=pointer]
+            - button "Phát ngay" [ref=e164] [cursor=pointer]
+            - button "Lưu tab" [ref=e165] [cursor=pointer]
+        - generic [ref=e166]:
+          - generic [ref=e168]:
+            - generic [ref=e169]: KARAOKE TONE NỮ | EM THUA CÔ TA - MIN QUỲNH ANH | cô ấy tốt hơn em à karaoke
+            - generic [ref=e170]: "Kênh: JIN TUẤN NAM - Muzik"
+          - generic [ref=e171]:
+            - button "Thêm kế" [ref=e172] [cursor=pointer]
+            - button "Cuối hàng" [ref=e173] [cursor=pointer]
+            - button "Phát ngay" [ref=e174] [cursor=pointer]
+            - button "Lưu tab" [ref=e175] [cursor=pointer]
+        - generic [ref=e176]:
+          - generic [ref=e178]:
+            - generic [ref=e179]: Karaoke Em Thua Cô Ta Tone Nữ ( Beat Dễ Hát ) Karaoke Thanh Duy
+            - generic [ref=e180]: "Kênh: Thanh Duy Organ"
+          - generic [ref=e181]:
+            - button "Thêm kế" [ref=e182] [cursor=pointer]
+            - button "Cuối hàng" [ref=e183] [cursor=pointer]
+            - button "Phát ngay" [ref=e184] [cursor=pointer]
+            - button "Lưu tab" [ref=e185] [cursor=pointer]
+        - generic [ref=e186]:
+          - generic [ref=e188]:
+            - generic [ref=e189]: Tạ Từ Trong Đêm Karaoke Tone Nam Nhạc Sống | Trọng Hiếu
+            - generic [ref=e190]: "Kênh: Hiếu Organ"
+          - generic [ref=e191]:
+            - button "Thêm kế" [ref=e192] [cursor=pointer]
+            - button "Cuối hàng" [ref=e193] [cursor=pointer]
+            - button "Phát ngay" [ref=e194] [cursor=pointer]
+            - button "Lưu tab" [ref=e195] [cursor=pointer]
+        - generic [ref=e196]:
+          - generic [ref=e198]:
+            - generic [ref=e199]: Đa Tạ Karaoke Tone Nam Nhạc Sống gia huy beat
+            - generic [ref=e200]: "Kênh: gia huy beat"
+          - generic [ref=e201]:
+            - button "Thêm kế" [ref=e202] [cursor=pointer]
+            - button "Cuối hàng" [ref=e203] [cursor=pointer]
+            - button "Phát ngay" [ref=e204] [cursor=pointer]
+            - button "Lưu tab" [ref=e205] [cursor=pointer]
+        - generic [ref=e206]:
+          - generic [ref=e208]:
+            - generic [ref=e209]: "KARAOKE - TA - Tone Nam (St: Quốc Dũng - Cs: Trần Thái Hòa) - Beat chuẩn JB Thanh Hưng"
+            - generic [ref=e210]: "Kênh: JB Thanh Hưng Music"
+          - generic [ref=e211]:
+            - button "Thêm kế" [ref=e212] [cursor=pointer]
+            - button "Cuối hàng" [ref=e213] [cursor=pointer]
+            - button "Phát ngay" [ref=e214] [cursor=pointer]
+            - button "Lưu tab" [ref=e215] [cursor=pointer]
+        - generic [ref=e216]:
+          - generic [ref=e218]:
+            - generic [ref=e219]: "Thương Mấy Cũng Chồng Người Ta - Karaoke Vọng cổ Dây Đào - Tác giả: Nguyễn Chung - Thanh Đạm"
+            - generic [ref=e220]: "Kênh: NGUYỄN HOÀI NAM"
+          - generic [ref=e221]:
+            - button "Thêm kế" [ref=e222] [cursor=pointer]
+            - button "Cuối hàng" [ref=e223] [cursor=pointer]
+            - button "Phát ngay" [ref=e224] [cursor=pointer]
+            - button "Lưu tab" [ref=e225] [cursor=pointer]
+        - generic [ref=e226]:
+          - generic [ref=e228]:
+            - generic [ref=e229]: Có Mình Và Ta Nguyễn Vĩ Út Nhị Mino Karaoke - Một sương hai nắng dãi dầu cùng nhau...
+            - generic [ref=e230]: "Kênh: Hoàng Dũng Karaoke"
+          - generic [ref=e231]:
+            - button "Thêm kế" [ref=e232] [cursor=pointer]
+            - button "Cuối hàng" [ref=e233] [cursor=pointer]
+            - button "Phát ngay" [ref=e234] [cursor=pointer]
+            - button "Lưu tab" [ref=e235] [cursor=pointer]
+    - generic [ref=e50]:
+      - generic [ref=e51]:
+        - generic [ref=e52]:
+          - generic [ref=e53]: Trung tâm điều khiển
+          - generic [ref=e54]: Đang phát
+        - generic [ref=e55]: 0 bài chờ sau bài hiện tại
+      - generic [ref=e57]:
+        - generic [ref=e58]: Bài hiện tại
+        - generic [ref=e59]: Karaoke Đa Tạ | Nhạc Sống Tone Nam | Huỳnh Lê
+        - generic [ref=e60]: "Kênh: Karaoke Huỳnh Lê"
+        - generic [ref=e61]: "Tiếp theo: Chưa có bài kế tiếp"
+        - generic [ref=e62]:
+          - generic [ref=e63]:
+            - generic [ref=e64]: "2"
+            - generic [ref=e65]: Tổng bài
+          - generic [ref=e66]:
+            - generic [ref=e67]: "0"
+            - generic [ref=e68]: Sắp tới
+          - generic [ref=e69]:
+            - generic [ref=e70]: 80%
+            - generic [ref=e71]: Âm lượng
+        - 'button "Phát lại: Không lặp" [ref=e73] [cursor=pointer]'
+        - generic [ref=e74]:
+          - button "Bài trước" [ref=e75] [cursor=pointer]
+          - button "Phát" [ref=e76] [cursor=pointer]
+          - button "Tạm dừng" [ref=e77] [cursor=pointer]
+          - button "Tiếp theo" [ref=e78] [cursor=pointer]
+        - generic [ref=e79]:
+          - generic [ref=e80]:
+            - generic [ref=e81]: Âm lượng trình chiếu
+            - generic [ref=e82]: 80%
+          - slider [ref=e83]: "80"
+    - generic [ref=e84]:
+      - generic [ref=e85]:
+        - generic [ref=e86]:
+          - generic [ref=e87]: Quản lý lượt hát
+          - generic [ref=e88]: Hàng chờ
+        - button "Xoá hết" [ref=e90] [cursor=pointer]
+      - generic [ref=e91]: Kéo để đổi thứ tự. Bấm Phát ở từng dòng để nhảy bài ngay.
+      - generic [ref=e92]:
+        - generic [ref=e93]:
+          - generic [ref=e94]:
+            - button "Kéo để sắp xếp" [ref=e95]: ⋮⋮
+            - 'button "Karaoke Đa Tạ | Nhạc Sống Tone Nam | Huỳnh Lê Kênh: Karaoke Huỳnh Lê" [ref=e248] [cursor=pointer]':
+              - generic [ref=e98]: Karaoke Đa Tạ | Nhạc Sống Tone Nam | Huỳnh Lê
+              - generic [ref=e100]: "Kênh: Karaoke Huỳnh Lê"
+            - generic [ref=e101]:
+              - button "Phát" [ref=e249] [cursor=pointer]
+              - button "Xoá" [ref=e103] [cursor=pointer]
+          - generic [ref=e250]:
+            - button "Kéo để sắp xếp" [ref=e251]: ⋮⋮
+            - 'button "Karaoke Đa Tạ | Nhạc Sống Tone Nam | Huỳnh Lê Đang phát Kênh: Karaoke Huỳnh Lê" [ref=e252] [cursor=pointer]':
+              - generic [ref=e253]:
+                - generic [ref=e254]: Karaoke Đa Tạ | Nhạc Sống Tone Nam | Huỳnh Lê
+                - generic [ref=e255]: Đang phát
+              - generic [ref=e256]: "Kênh: Karaoke Huỳnh Lê"
+            - generic [ref=e257]:
+              - button "Đang phát" [ref=e258] [cursor=pointer]
+              - button "Xoá" [ref=e259] [cursor=pointer]
+        - status [ref=e104]
+  - dialog "Cài đặt" [ref=e267]:
+    - generic [ref=e268]:
+      - generic [ref=e269]:
+        - generic [ref=e270]: Cài đặt
+        - button "Đóng" [ref=e271] [cursor=pointer]
+      - generic [ref=e272]:
+        - generic [ref=e273]:
+          - generic [ref=e274]: YouTube API Key
+          - textbox "YouTube API Key" [ref=e275]:
+            - /placeholder: Nhập API key…
+            - text: AIzaSyBZV_hoHpo5qTyasXG4EMkIOKbpHHJ8d0M
+          - generic [ref=e276]: Key được lưu trong máy bạn (localStorage), không in ra console.
+        - generic [ref=e278]:
+          - checkbox "Ưu tiên lọc “karaoke” khi tìm kiếm" [checked] [ref=e279]
+          - generic [ref=e280]: Ưu tiên lọc “karaoke” khi tìm kiếm
+        - generic [ref=e282]:
+          - checkbox "Tự động phát bài tiếp theo" [checked] [ref=e283]
+          - generic [ref=e284]: Tự động phát bài tiếp theo
+        - generic [ref=e285]:
+          - generic [ref=e286]: Chế độ phát lại
+          - combobox [ref=e287]:
+            - option "Không lặp" [selected]
+            - option "Lặp bài hiện tại"
+            - option "Lặp cả danh sách"
+        - generic [ref=e288]:
+          - generic [ref=e289]: Màn hình trình chiếu
+          - combobox [disabled] [ref=e290]:
+            - option "Chỉ áp dụng khi chạy Electron" [selected]
+          - generic [ref=e291]: Ở chế độ web, nút mở màn hình trình chiếu sẽ dùng window.open làm fallback.
+        - generic [ref=e292]:
+          - generic [ref=e293]: Ngôn ngữ tìm kiếm
+          - combobox [ref=e294]:
+            - option "Tiếng Việt" [selected]
+            - option "Tiếng Anh"
+            - option "Tiếng Hàn"
+            - option "Tiếng Nhật"
+            - option "Tiếng Trung"
+        - generic [ref=e295]:
+          - generic [ref=e296]: Giao diện
+          - combobox [ref=e297]:
+            - option "Tối" [selected]
+            - option "Sáng"
+        - generic [ref=e298]:
+          - generic [ref=e299]: Người dùng và phân quyền
+          - generic [ref=e300]:
+            - generic [ref=e301]:
+              - generic [ref=e302]:
+                - generic [ref=e303]:
+                  - generic [ref=e304]: Quản trị
+                  - generic [ref=e305]: Đang dùng
+                - generic [ref=e306]: Toàn quyền cài đặt, quản lý user và thư viện.
+              - generic [ref=e307]:
+                - combobox [ref=e308]:
+                  - option "Quản trị" [selected]
+                  - option "Điều khiển"
+                  - option "Chỉ xem"
+                - button "Xoá" [ref=e309] [cursor=pointer]
+            - generic [ref=e310]:
+              - generic [ref=e311]:
+                - generic [ref=e313]: Điều khiển
+                - generic [ref=e314]: Được tìm bài, xếp hàng chờ và điều khiển phát.
+              - generic [ref=e315]:
+                - combobox [ref=e316]:
+                  - option "Quản trị"
+                  - option "Điều khiển" [selected]
+                  - option "Chỉ xem"
+                - button "Dùng user này" [ref=e317] [cursor=pointer]
+                - button "Xoá" [ref=e318] [cursor=pointer]
+            - generic [ref=e319]:
+              - generic [ref=e320]:
+                - generic [ref=e322]: Khách xem
+                - generic [ref=e323]: Chỉ xem thư viện tab và trạng thái phát.
+              - generic [ref=e324]:
+                - combobox [ref=e325]:
+                  - option "Quản trị"
+                  - option "Điều khiển"
+                  - option "Chỉ xem" [selected]
+                - button "Dùng user này" [ref=e326] [cursor=pointer]
+                - button "Xoá" [ref=e327] [cursor=pointer]
+          - generic [ref=e328]:
+            - textbox "Tên user mới" [ref=e329]
+            - combobox [ref=e330]:
+              - option "Quản trị"
+              - option "Điều khiển" [selected]
+              - option "Chỉ xem"
+            - button "Thêm user" [disabled] [ref=e331]
+      - button "Lưu" [ref=e333] [cursor=pointer]

@@ -1,0 +1,180 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]: KaraokeYT
+      - generic [ref=e7]: Màn hình điều khiển
+    - generic [ref=e8]:
+      - button "Mở màn hình trình chiếu" [ref=e9] [cursor=pointer]
+      - button "Cài đặt" [ref=e10] [cursor=pointer]
+  - generic [ref=e11]:
+    - generic [ref=e12]: "Trình chiếu: Chưa mở"
+    - generic [ref=e13]: "Autoplay: Bật"
+    - generic [ref=e14]: "Hàng chờ: 1 bài"
+    - generic [ref=e15]: "Phím tắt: Ctrl/Cmd + K, Alt + ←, Alt + →"
+  - main [ref=e16]:
+    - generic [ref=e17]:
+      - generic [ref=e18]:
+        - generic [ref=e19]:
+          - generic [ref=e20]: Tìm và xếp bài
+          - generic [ref=e21]: Tìm kiếm
+        - generic [ref=e22]: 12 kết quả
+      - generic [ref=e23]:
+        - generic [ref=e24]: Tìm bài karaoke
+        - textbox "Tìm bài karaoke" [ref=e25]:
+          - /placeholder: Tìm bài, ca sĩ hoặc mã YouTube…
+          - text: ta
+        - button "Xoá nội dung tìm kiếm" [ref=e90] [cursor=pointer]: Xoá
+      - generic [ref=e27]:
+        - generic [ref=e28]:
+          - button "Chỉ karaoke" [ref=e29] [cursor=pointer]
+          - button "Bỏ karaoke" [ref=e30] [cursor=pointer]
+        - generic [ref=e31]: / hoặc Ctrl/Cmd + K để focus
+      - generic [ref=e33]:
+        - generic [ref=e91]:
+          - generic [ref=e93]:
+            - generic [ref=e94]: Karaoke Đa Tạ | Nhạc Sống Tone Nam | Huỳnh Lê
+            - generic [ref=e95]: "Kênh: Karaoke Huỳnh Lê"
+          - generic [ref=e96]:
+            - button "Thêm kế" [ref=e97] [cursor=pointer]
+            - button "Cuối hàng" [active] [ref=e98] [cursor=pointer]
+            - button "Phát ngay" [ref=e99] [cursor=pointer]
+            - generic [ref=e199]: Đã thêm vào cuối hàng chờ
+        - generic [ref=e100]:
+          - generic [ref=e102]:
+            - generic [ref=e103]: Karaoke | Có Mình Và Ta - Nguyễn Vĩ | Beat Chuẩn
+            - generic [ref=e104]: "Kênh: Nguyễn Vĩ OFFICIAL"
+          - generic [ref=e105]:
+            - button "Thêm kế" [ref=e106] [cursor=pointer]
+            - button "Cuối hàng" [ref=e107] [cursor=pointer]
+            - button "Phát ngay" [ref=e108] [cursor=pointer]
+        - generic [ref=e109]:
+          - generic [ref=e111]:
+            - generic [ref=e112]: Karaoke Tone Nữ Có mình và ta - Nguyễn Vĩ (Guitar Solo Beat) | Thiện Trung Guitar
+            - generic [ref=e113]: "Kênh: Thiện Trung Guitar"
+          - generic [ref=e114]:
+            - button "Thêm kế" [ref=e115] [cursor=pointer]
+            - button "Cuối hàng" [ref=e116] [cursor=pointer]
+            - button "Phát ngay" [ref=e117] [cursor=pointer]
+        - generic [ref=e118]:
+          - generic [ref=e120]:
+            - generic [ref=e121]: Em Thua Cô Ta Karaoke Tone Nữ (F#m) Nhạc Sống Beat Hay | Huỳnh Lê
+            - generic [ref=e122]: "Kênh: Karaoke Huỳnh Lê"
+          - generic [ref=e123]:
+            - button "Thêm kế" [ref=e124] [cursor=pointer]
+            - button "Cuối hàng" [ref=e125] [cursor=pointer]
+            - button "Phát ngay" [ref=e126] [cursor=pointer]
+        - generic [ref=e127]:
+          - generic [ref=e129]:
+            - generic [ref=e130]: Karaoke Có mình và ta - Nguyễn Vĩ (Guitar Solo Beat) | Thiện Trung Guitar
+            - generic [ref=e131]: "Kênh: Thiện Trung Guitar"
+          - generic [ref=e132]:
+            - button "Thêm kế" [ref=e133] [cursor=pointer]
+            - button "Cuối hàng" [ref=e134] [cursor=pointer]
+            - button "Phát ngay" [ref=e135] [cursor=pointer]
+        - generic [ref=e136]:
+          - generic [ref=e138]:
+            - generic [ref=e139]: KARAOKE TONE NỮ | EM THUA CÔ TA - MIN QUỲNH ANH | cô ấy tốt hơn em à karaoke
+            - generic [ref=e140]: "Kênh: JIN TUẤN NAM - Muzik"
+          - generic [ref=e141]:
+            - button "Thêm kế" [ref=e142] [cursor=pointer]
+            - button "Cuối hàng" [ref=e143] [cursor=pointer]
+            - button "Phát ngay" [ref=e144] [cursor=pointer]
+        - generic [ref=e145]:
+          - generic [ref=e147]:
+            - generic [ref=e148]: Tạ Từ Trong Đêm Karaoke Tone Nam Nhạc Sống | Trọng Hiếu
+            - generic [ref=e149]: "Kênh: Hiếu Organ"
+          - generic [ref=e150]:
+            - button "Thêm kế" [ref=e151] [cursor=pointer]
+            - button "Cuối hàng" [ref=e152] [cursor=pointer]
+            - button "Phát ngay" [ref=e153] [cursor=pointer]
+        - generic [ref=e154]:
+          - generic [ref=e156]:
+            - generic [ref=e157]: Đa Tạ Karaoke Tone Nam Nhạc Sống gia huy beat
+            - generic [ref=e158]: "Kênh: gia huy beat"
+          - generic [ref=e159]:
+            - button "Thêm kế" [ref=e160] [cursor=pointer]
+            - button "Cuối hàng" [ref=e161] [cursor=pointer]
+            - button "Phát ngay" [ref=e162] [cursor=pointer]
+        - generic [ref=e163]:
+          - generic [ref=e165]:
+            - generic [ref=e166]: Karaoke Em Thua Cô Ta Tone Nữ ( Beat Dễ Hát ) Karaoke Thanh Duy
+            - generic [ref=e167]: "Kênh: Thanh Duy Organ"
+          - generic [ref=e168]:
+            - button "Thêm kế" [ref=e169] [cursor=pointer]
+            - button "Cuối hàng" [ref=e170] [cursor=pointer]
+            - button "Phát ngay" [ref=e171] [cursor=pointer]
+        - generic [ref=e172]:
+          - generic [ref=e174]:
+            - generic [ref=e175]: "KARAOKE - TA - Tone Nam (St: Quốc Dũng - Cs: Trần Thái Hòa) - Beat chuẩn JB Thanh Hưng"
+            - generic [ref=e176]: "Kênh: JB Thanh Hưng Music"
+          - generic [ref=e177]:
+            - button "Thêm kế" [ref=e178] [cursor=pointer]
+            - button "Cuối hàng" [ref=e179] [cursor=pointer]
+            - button "Phát ngay" [ref=e180] [cursor=pointer]
+        - generic [ref=e181]:
+          - generic [ref=e183]:
+            - generic [ref=e184]: Có Mình Và Ta Nguyễn Vĩ Út Nhị Mino Karaoke - Một sương hai nắng dãi dầu cùng nhau...
+            - generic [ref=e185]: "Kênh: Hoàng Dũng Karaoke"
+          - generic [ref=e186]:
+            - button "Thêm kế" [ref=e187] [cursor=pointer]
+            - button "Cuối hàng" [ref=e188] [cursor=pointer]
+            - button "Phát ngay" [ref=e189] [cursor=pointer]
+        - generic [ref=e190]:
+          - generic [ref=e192]:
+            - generic [ref=e193]: "Thương Mấy Cũng Chồng Người Ta - Karaoke Vọng cổ Dây Đào - Tác giả: Nguyễn Chung - Thanh Đạm"
+            - generic [ref=e194]: "Kênh: NGUYỄN HOÀI NAM"
+          - generic [ref=e195]:
+            - button "Thêm kế" [ref=e196] [cursor=pointer]
+            - button "Cuối hàng" [ref=e197] [cursor=pointer]
+            - button "Phát ngay" [ref=e198] [cursor=pointer]
+    - generic [ref=e34]:
+      - generic [ref=e35]:
+        - generic [ref=e36]:
+          - generic [ref=e37]: Trung tâm điều khiển
+          - generic [ref=e38]: Đang phát
+        - generic [ref=e39]: 0 bài chờ sau bài hiện tại
+      - generic [ref=e41]:
+        - generic [ref=e200]: Bài hiện tại
+        - generic [ref=e201]: Karaoke Đa Tạ | Nhạc Sống Tone Nam | Huỳnh Lê
+        - generic [ref=e202]: "Kênh: Karaoke Huỳnh Lê"
+        - generic [ref=e203]: "Tiếp theo: Chưa có bài kế tiếp"
+        - generic [ref=e204]:
+          - generic [ref=e205]:
+            - generic [ref=e206]: "1"
+            - generic [ref=e207]: Tổng bài
+          - generic [ref=e208]:
+            - generic [ref=e209]: "0"
+            - generic [ref=e210]: Sắp tới
+          - generic [ref=e211]:
+            - generic [ref=e212]: 80%
+            - generic [ref=e213]: Âm lượng
+        - generic [ref=e214]:
+          - button "Bài trước" [ref=e215] [cursor=pointer]
+          - button "Phát" [ref=e216] [cursor=pointer]
+          - button "Tạm dừng" [ref=e217] [cursor=pointer]
+          - button "Tiếp theo" [ref=e218] [cursor=pointer]
+        - generic [ref=e219]:
+          - generic [ref=e220]:
+            - generic [ref=e221]: Âm lượng trình chiếu
+            - generic [ref=e222]: 80%
+          - slider [ref=e223]: "80"
+    - generic [ref=e66]:
+      - generic [ref=e67]:
+        - generic [ref=e68]:
+          - generic [ref=e69]: Quản lý lượt hát
+          - generic [ref=e70]: Hàng chờ
+        - button "Xoá hết" [ref=e72] [cursor=pointer]
+      - generic [ref=e73]: Kéo để đổi thứ tự. Bấm Phát ở từng dòng để nhảy bài ngay.
+      - generic [ref=e74]:
+        - generic [ref=e225]:
+          - button "Kéo để sắp xếp" [ref=e226]: ⋮⋮
+          - 'button "Karaoke Đa Tạ | Nhạc Sống Tone Nam | Huỳnh Lê Đang phát Kênh: Karaoke Huỳnh Lê" [ref=e227] [cursor=pointer]':
+            - generic [ref=e228]:
+              - generic [ref=e229]: Karaoke Đa Tạ | Nhạc Sống Tone Nam | Huỳnh Lê
+              - generic [ref=e230]: Đang phát
+            - generic [ref=e231]: "Kênh: Karaoke Huỳnh Lê"
+          - generic [ref=e232]:
+            - button "Đang phát" [ref=e233] [cursor=pointer]
+            - button "Xoá" [ref=e234] [cursor=pointer]
+        - status [ref=e235]
+  - generic [ref=e236]: Đã thêm vào cuối hàng chờ

@@ -18,8 +18,42 @@ type SearchResponse = {
   items: SearchItem[]
 }
 
+type VideoDetailsItem = {
+  id: string
+  contentDetails?: {
+    duration?: string
+  }
+  status?: {
+    embeddable?: boolean
+  }
+}
+
+type VideoDetailsResponse = {
+  items?: VideoDetailsItem[]
+}
+
 function getThumbnailUrl(item: SearchItem) {
   return item.snippet.thumbnails?.medium?.url ?? item.snippet.thumbnails?.default?.url ?? ''
+}
+
+async function fetchVideoDetails(videoIds: string[], apiKey: string) {
+  if (!videoIds.length) return new Map<string, VideoDetailsItem>()
+
+  const params = new URLSearchParams({
+    key: apiKey,
+    id: videoIds.join(','),
+    part: 'contentDetails,status',
+    maxResults: String(videoIds.length),
+  })
+
+  const res = await fetch(`${BASE_URL}/videos?${params}`)
+  if (!res.ok) {
+    return new Map<string, VideoDetailsItem>()
+  }
+
+  const json = (await res.json()) as VideoDetailsResponse
+  const items = Array.isArray(json.items) ? json.items : []
+  return new Map(items.map((item) => [item.id, item]))
 }
 
 export async function searchSongs(
@@ -55,16 +89,25 @@ export async function searchSongs(
 
   const json = (await res.json()) as SearchResponse
   const items = Array.isArray(json.items) ? json.items : []
+  const detailsById = await fetchVideoDetails(
+    items
+      .map((item) => item.id?.videoId)
+      .filter((videoId): videoId is string => Boolean(videoId)),
+    apiKey,
+  )
 
   return items
     .map((item): SearchSong | null => {
       const videoId = item.id?.videoId
       if (!videoId) return null
+      const details = detailsById.get(videoId)
       return {
         videoId,
         title: item.snippet?.title ?? '(Không có tiêu đề)',
         channelTitle: item.snippet?.channelTitle ?? '(Không rõ kênh)',
         thumbnail: getThumbnailUrl(item),
+        duration: details?.contentDetails?.duration,
+        embeddable: details?.status?.embeddable,
       }
     })
     .filter((x): x is SearchSong => x !== null)

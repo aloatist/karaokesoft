@@ -1,0 +1,49 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]: KaraokeYT
+      - generic [ref=e7]: Màn hình điều khiển
+    - generic [ref=e8]:
+      - button "Mở màn hình trình chiếu" [ref=e9] [cursor=pointer]
+      - button "Cài đặt" [ref=e10] [cursor=pointer]
+  - generic [ref=e11]:
+    - generic [ref=e12]: "Trình chiếu: Chưa mở"
+    - generic [ref=e13]: "Autoplay: Bật"
+    - generic [ref=e14]: "Hàng chờ: 0 bài"
+    - generic [ref=e15]: "Phím tắt: Ctrl/Cmd + K, Alt + ←, Alt + →"
+  - main [ref=e16]:
+    - generic [ref=e17]:
+      - generic [ref=e18]:
+        - generic [ref=e19]:
+          - generic [ref=e20]: Tìm và xếp bài
+          - generic [ref=e21]: Tìm kiếm
+        - generic [ref=e22]: Sẵn sàng
+      - generic [ref=e23]:
+        - generic [ref=e24]: Tìm bài karaoke
+        - textbox "Tìm bài karaoke" [ref=e25]:
+          - /placeholder: Tìm bài, ca sĩ hoặc mã YouTube…
+      - generic [ref=e27]:
+        - generic [ref=e28]:
+          - button "Chỉ karaoke" [ref=e29] [cursor=pointer]
+          - button "Bỏ karaoke" [ref=e30] [cursor=pointer]
+        - generic [ref=e31]: / hoặc Ctrl/Cmd + K để focus
+      - generic [ref=e33]: Nhập tên bài để tìm kiếm.
+    - separator "Kéo để đổi độ rộng khung tìm kiếm" [ref=e34]
+    - generic [ref=e35]:
+      - generic [ref=e36]:
+        - generic [ref=e37]:
+          - generic [ref=e38]: Trung tâm điều khiển
+          - generic [ref=e39]: Đang phát
+        - generic [ref=e40]: Sẵn sàng nhận bài mới
+      - generic [ref=e41]:
+        - generic [ref=e42]: Chưa có bài nào trong lượt phát
+        - generic [ref=e43]: Dùng Phát ngay để chuyển thẳng bài vừa tìm được lên màn hình trình chiếu, hoặc Thêm kế để xếp lượt kế tiếp.
+    - separator "Kéo để đổi độ rộng khung điều khiển và hàng chờ" [ref=e44]
+    - generic [ref=e45]:
+      - generic [ref=e46]:
+        - generic [ref=e47]:
+          - generic [ref=e48]: Quản lý lượt hát
+          - generic [ref=e49]: Hàng chờ
+        - button "Xoá hết" [disabled] [ref=e51] [cursor=pointer]
+      - generic [ref=e52]: Kéo để đổi thứ tự. Bấm Phát ở từng dòng để nhảy bài ngay.
+      - generic [ref=e54]: Hàng chờ đang trống.

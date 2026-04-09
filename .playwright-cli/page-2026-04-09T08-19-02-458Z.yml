@@ -1,0 +1,57 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]: KaraokeYT
+      - generic [ref=e7]: Màn hình điều khiển
+    - generic [ref=e8]:
+      - generic [ref=e9]:
+        - generic [ref=e10]: Người dùng
+        - combobox [ref=e11]:
+          - option "Quản trị · Quản trị" [selected]
+          - option "Điều khiển · Điều khiển"
+          - option "Khách xem · Chỉ xem"
+      - button "Mở màn hình trình chiếu" [ref=e12] [cursor=pointer]
+      - button "Cài đặt" [ref=e13] [cursor=pointer]
+  - generic [ref=e14]:
+    - generic [ref=e15]: "Trình chiếu: Chưa mở"
+    - generic [ref=e16]: "Autoplay: Bật"
+    - generic [ref=e17]: "Phát lại: Không lặp"
+    - generic [ref=e18]: "Hàng chờ: 0 bài"
+    - generic [ref=e19]: "Vai trò: Quản trị · Quản trị"
+    - generic [ref=e20]: "Phím tắt: Ctrl/Cmd + K, Alt + ←, Alt + →"
+  - main [ref=e21]:
+    - generic [ref=e22]:
+      - generic [ref=e23]:
+        - generic [ref=e24]:
+          - generic [ref=e25]: Tìm và xếp bài
+          - generic [ref=e26]: Tìm kiếm
+        - generic [ref=e27]: Sẵn sàng
+      - generic [ref=e28]:
+        - generic [ref=e29]: Tìm bài karaoke
+        - textbox "Tìm bài karaoke" [ref=e30]:
+          - /placeholder: Tìm bài, ca sĩ hoặc mã YouTube…
+      - generic [ref=e32]:
+        - generic [ref=e33]:
+          - button "Chỉ karaoke" [ref=e34] [cursor=pointer]
+          - button "Bỏ karaoke" [ref=e35] [cursor=pointer]
+        - generic [ref=e36]: / hoặc Ctrl/Cmd + K để focus
+      - generic [ref=e38]: Nhập tên bài để tìm kiếm.
+    - separator "Kéo để đổi độ rộng khung tìm kiếm" [ref=e39]
+    - generic [ref=e40]:
+      - generic [ref=e41]:
+        - generic [ref=e42]:
+          - generic [ref=e43]: Trung tâm điều khiển
+          - generic [ref=e44]: Đang phát
+        - generic [ref=e45]: Sẵn sàng nhận bài mới
+      - generic [ref=e46]:
+        - generic [ref=e47]: Chưa có bài nào trong lượt phát
+        - generic [ref=e48]: Dùng Phát ngay để chuyển thẳng bài vừa tìm được lên màn hình trình chiếu, hoặc Thêm kế để xếp lượt kế tiếp.
+    - separator "Kéo để đổi độ rộng khung điều khiển và hàng chờ" [ref=e49]
+    - generic [ref=e50]:
+      - generic [ref=e51]:
+        - generic [ref=e52]:
+          - generic [ref=e53]: Quản lý lượt hát
+          - generic [ref=e54]: Hàng chờ
+        - button "Xoá hết" [disabled] [ref=e56]
+      - generic [ref=e57]: Kéo để đổi thứ tự. Bấm Phát ở từng dòng để nhảy bài ngay.
+      - generic [ref=e59]: Hàng chờ đang trống.

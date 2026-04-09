@@ -28,6 +28,11 @@ export function phatBaoHetBai() {
   guiDongBo(msg)
 }
 
+export function phatBaoLoiPlayer(code: number, videoId?: string) {
+  const msg: SyncMessage = { type: 'PLAYER_ERROR', code, videoId }
+  guiDongBo(msg)
+}
+
 export function useBroadcastSender() {
   useEffect(() => {
     const initial = useQueueStore.getState()
