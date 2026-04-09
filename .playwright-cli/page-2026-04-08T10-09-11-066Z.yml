@@ -1,0 +1,99 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]: KaraokeYT
+      - generic [ref=e7]: Màn hình điều khiển
+    - generic [ref=e8]:
+      - button "Mở màn hình trình chiếu" [ref=e9] [cursor=pointer]
+      - button "Cài đặt" [ref=e10] [cursor=pointer]
+  - main [ref=e11]:
+    - generic [ref=e12]:
+      - generic [ref=e13]: Tìm kiếm
+      - generic [ref=e14]:
+        - generic [ref=e15]: Tìm bài karaoke
+        - textbox "Tìm bài karaoke" [ref=e16]:
+          - /placeholder: Tìm bài karaoke…
+          - text: sơn tùng
+        - button "Xoá nội dung tìm kiếm" [ref=e48] [cursor=pointer]: Xoá
+      - generic [ref=e18]:
+        - button "Chỉ karaoke" [ref=e19] [cursor=pointer]
+        - button "Bỏ karaoke" [ref=e20] [cursor=pointer]
+      - generic [ref=e22]:
+        - generic [ref=e153]:
+          - generic [ref=e155]:
+            - generic [ref=e156]: NƠI NÀY CÓ ANH | OFFICIAL MUSIC VIDEO | SƠN TÙNG M-TP
+            - generic [ref=e157]: "Kênh: Sơn Tùng M-TP Official"
+          - button "Thêm" [ref=e158] [cursor=pointer]
+        - generic [ref=e159]:
+          - generic [ref=e161]:
+            - generic [ref=e162]: SƠN TÙNG M-TP | ĐỪNG LÀM TRÁI TIM ANH ĐAU | OFFICIAL MUSIC VIDEO
+            - generic [ref=e163]: "Kênh: Sơn Tùng M-TP Official"
+          - button "Thêm" [ref=e164] [cursor=pointer]
+        - generic [ref=e165]:
+          - generic [ref=e167]:
+            - generic [ref=e168]: SƠN TÙNG M-TP | HÃY TRAO CHO ANH ft. Snoop Dogg | Official MV
+            - generic [ref=e169]: "Kênh: Sơn Tùng M-TP Official"
+          - button "Thêm" [ref=e170] [cursor=pointer]
+        - generic [ref=e171]:
+          - generic [ref=e173]:
+            - generic [ref=e174]: Âm Thầm Bên Em | OFFICIAL MUSIC VIDEO | Sơn Tùng M-TP
+            - generic [ref=e175]: "Kênh: Sơn Tùng M-TP Official"
+          - button "Thêm" [ref=e176] [cursor=pointer]
+        - generic [ref=e177]:
+          - generic [ref=e179]:
+            - generic [ref=e180]: Nơi Này Có Anh, Âm Thầm Bên Em, Buông Đôi Tay Nhau Ra - Playlist Nhạc Trẻ Hay Nhất Của Sơn Tùng M-TP
+            - generic [ref=e181]: "Kênh: Sky Lofi Chill"
+          - button "Thêm" [ref=e182] [cursor=pointer]
+        - generic [ref=e183]:
+          - generic [ref=e185]:
+            - generic [ref=e186]: Top 10 Bài Hát Hay Nhất Của Sơn Tùng M-TP - Chúng Ta Của Tương Lai, Đừng Làm Trái Tim Anh Đau
+            - generic [ref=e187]: "Kênh: Sky Lofi Chill"
+          - button "Thêm" [ref=e188] [cursor=pointer]
+        - generic [ref=e189]:
+          - generic [ref=e191]:
+            - generic [ref=e192]: Buông Đôi Tay Nhau Ra | OFFICIAL MUSIC VIDEO | Sơn Tùng M-TP
+            - generic [ref=e193]: "Kênh: Sơn Tùng M-TP Official"
+          - button "Thêm" [ref=e194] [cursor=pointer]
+        - generic [ref=e195]:
+          - generic [ref=e197]:
+            - generic [ref=e198]: Em Của Ngày Hôm Qua - Sơn Tùng MTP [OFFICIAL MV]
+            - generic [ref=e199]: "Kênh: Sơn Tùng M-TP"
+          - button "Thêm" [ref=e200] [cursor=pointer]
+        - generic [ref=e201]:
+          - generic [ref=e203]:
+            - generic [ref=e204]: LẠC TRÔI | OFFICIAL MUSIC VIDEO | SƠN TÙNG M-TP
+            - generic [ref=e205]: "Kênh: Sơn Tùng M-TP Official"
+          - button "Thêm" [ref=e206] [cursor=pointer]
+        - generic [ref=e207]:
+          - generic [ref=e209]:
+            - generic [ref=e210]: Chúng Ta Không Thuộc Về Nhau | Official Music Video | Sơn Tùng M-TP
+            - generic [ref=e211]: "Kênh: Sơn Tùng M-TP Official"
+          - button "Thêm" [ref=e212] [cursor=pointer]
+        - generic [ref=e213]:
+          - generic [ref=e215]:
+            - generic [ref=e216]: SƠN TÙNG M-TP | CHÚNG TA CỦA TƯƠNG LAI | OFFICIAL MUSIC VIDEO
+            - generic [ref=e217]: "Kênh: Sơn Tùng M-TP Official"
+          - button "Thêm" [ref=e218] [cursor=pointer]
+    - generic [ref=e23]:
+      - generic [ref=e24]: Điều khiển
+      - generic [ref=e25]:
+        - generic [ref=e26]: "Bài mẫu: Video YouTube (demo)"
+        - generic [ref=e27]: "Kênh: KaraokeYT"
+        - generic [ref=e28]: "Tiếp theo: —"
+        - generic [ref=e29]:
+          - button "Bài trước" [ref=e30] [cursor=pointer]
+          - button "Phát" [ref=e31] [cursor=pointer]
+          - button "Tạm dừng" [ref=e32] [cursor=pointer]
+          - button "Bỏ qua" [ref=e33] [cursor=pointer]
+          - button "Bài tiếp" [ref=e34] [cursor=pointer]
+        - generic [ref=e35]:
+          - generic [ref=e36]: Âm lượng
+          - slider [ref=e37]: "80"
+      - generic [ref=e39]: Hàng chờ
+      - generic [ref=e41]:
+        - button "Kéo để sắp xếp" [ref=e42]: ⋮⋮
+        - generic [ref=e43]:
+          - generic [ref=e44]: "Bài mẫu: Video YouTube (demo)"
+          - generic [ref=e45]: "Kênh: KaraokeYT"
+        - button "Xoá" [ref=e46] [cursor=pointer]
+      - status [ref=e47]

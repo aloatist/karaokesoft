@@ -1,0 +1,42 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]: KaraokeYT
+      - generic [ref=e7]: Màn hình điều khiển
+    - generic [ref=e8]:
+      - button "Mở màn hình trình chiếu" [ref=e9] [cursor=pointer]
+      - button "Cài đặt" [ref=e10] [cursor=pointer]
+  - main [ref=e11]:
+    - generic [ref=e12]:
+      - generic [ref=e13]: Tìm kiếm
+      - generic [ref=e14]:
+        - generic [ref=e15]: Tìm bài karaoke
+        - textbox "Tìm bài karaoke" [ref=e16]:
+          - /placeholder: Tìm bài karaoke…
+      - generic [ref=e18]:
+        - button "Chỉ karaoke" [ref=e19] [cursor=pointer]
+        - button "Bỏ karaoke" [active] [ref=e20] [cursor=pointer]
+      - generic [ref=e22]: Nhập tên bài để tìm kiếm.
+    - generic [ref=e23]:
+      - generic [ref=e24]: Điều khiển
+      - generic [ref=e25]:
+        - generic [ref=e26]: "Bài mẫu: Video YouTube (demo)"
+        - generic [ref=e27]: "Kênh: KaraokeYT"
+        - generic [ref=e28]: "Tiếp theo: —"
+        - generic [ref=e29]:
+          - button "Bài trước" [ref=e30] [cursor=pointer]
+          - button "Phát" [ref=e31] [cursor=pointer]
+          - button "Tạm dừng" [ref=e32] [cursor=pointer]
+          - button "Bỏ qua" [ref=e33] [cursor=pointer]
+          - button "Bài tiếp" [ref=e34] [cursor=pointer]
+        - generic [ref=e35]:
+          - generic [ref=e36]: Âm lượng
+          - slider [ref=e37]: "80"
+      - generic [ref=e39]: Hàng chờ
+      - generic [ref=e41]:
+        - button "Kéo để sắp xếp" [ref=e42]: ⋮⋮
+        - generic [ref=e43]:
+          - generic [ref=e44]: "Bài mẫu: Video YouTube (demo)"
+          - generic [ref=e45]: "Kênh: KaraokeYT"
+        - button "Xoá" [ref=e46] [cursor=pointer]
+      - status [ref=e47]

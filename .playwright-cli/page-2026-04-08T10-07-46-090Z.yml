@@ -1,0 +1,111 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]: KaraokeYT
+      - generic [ref=e7]: Màn hình điều khiển
+    - generic [ref=e8]:
+      - button "Mở màn hình trình chiếu" [ref=e9] [cursor=pointer]
+      - button "Cài đặt" [ref=e10] [cursor=pointer]
+  - main [ref=e11]:
+    - generic [ref=e12]:
+      - generic [ref=e13]: Tìm kiếm
+      - generic [ref=e14]:
+        - generic [ref=e15]: Tìm bài karaoke
+        - textbox "Tìm bài karaoke" [ref=e16]:
+          - /placeholder: Tìm bài karaoke…
+          - text: sơn tùng
+        - button "Xoá nội dung tìm kiếm" [ref=e48] [cursor=pointer]: Xoá
+      - generic [ref=e18]:
+        - button "Chỉ karaoke" [ref=e19] [cursor=pointer]
+        - button "Bỏ karaoke" [ref=e20] [cursor=pointer]
+      - generic [ref=e22]:
+        - generic [ref=e49]:
+          - generic [ref=e51]:
+            - generic [ref=e52]: "[KARAOKE] Nơi Này Có Anh - Beat gốc hạ tông dễ hát - Sơn Tùng - MTP Full HD"
+            - generic [ref=e53]: "Kênh: NTV Music (Karaoke Beat & Lyrics)"
+          - button "Thêm" [active] [ref=e54] [cursor=pointer]
+        - generic [ref=e55]:
+          - generic [ref=e57]:
+            - generic [ref=e58]: Karaoke HD Âm Thầm Bên Em - Sơn Tùng M TP Beat gốc
+            - generic [ref=e59]: "Kênh: Nguyễn Huy"
+          - button "Thêm" [ref=e60] [cursor=pointer]
+        - generic [ref=e61]:
+          - generic [ref=e63]:
+            - generic [ref=e64]: KARAOKE LÀM NGƯỜI LUÔN YÊU EM - SƠN TÙNG MTP (BEAT CHUẨN CÓ BÈ) LIVE MODERN MUSIC FESTIVAL
+            - generic [ref=e65]: "Kênh: KARA LIVEBAND"
+          - button "Thêm" [ref=e66] [cursor=pointer]
+        - generic [ref=e67]:
+          - generic [ref=e69]:
+            - generic [ref=e70]: Karaoke ĐỪNG LÀM TRÁI TIM ANH ĐAU | Unofficial Karaoke | Beat gốc có bè
+            - generic [ref=e71]: "Kênh: Nguyễn Minh Tâm VN"
+          - button "Thêm" [ref=e72] [cursor=pointer]
+        - generic [ref=e73]:
+          - generic [ref=e75]:
+            - generic [ref=e76]: SƠN TÙNG M-TP | CHÚNG TA CỦA HIỆN TẠI | KARAOKE VERSION
+            - generic [ref=e77]: "Kênh: Sơn Tùng M-TP Official"
+          - button "Thêm" [ref=e78] [cursor=pointer]
+        - generic [ref=e79]:
+          - generic [ref=e81]:
+            - generic [ref=e82]: Karaoke - Chắc ai đó sẽ về - Sơn Tùng M TP Beat gốc
+            - generic [ref=e83]: "Kênh: Nguyễn Huy"
+          - button "Thêm" [ref=e84] [cursor=pointer]
+        - generic [ref=e85]:
+          - generic [ref=e87]:
+            - generic [ref=e88]: Karaoke Nơi Này Có Anh - Sơn Tùng M-TP Guitar Solo Beat Acoustic | Anh Trường Guitar
+            - generic [ref=e89]: "Kênh: Anh Trường Guitar"
+          - button "Thêm" [ref=e90] [cursor=pointer]
+        - generic [ref=e91]:
+          - generic [ref=e93]:
+            - generic [ref=e94]: "SKY DECADE | DREAMS IN THE SKY | ĐIỆN BIÊN #1"
+            - generic [ref=e95]: "Kênh: Sơn Tùng M-TP Official"
+          - button "Thêm" [ref=e96] [cursor=pointer]
+        - generic [ref=e97]:
+          - generic [ref=e99]:
+            - generic [ref=e100]: KARAOKE CHÚNG TA CỦA TƯƠNG LAI - SƠN TÙNG MTP (BEAT GỐC CÓ BÈ)
+            - generic [ref=e101]: "Kênh: Nguyễn Minh Tâm VN"
+          - button "Thêm" [ref=e102] [cursor=pointer]
+        - generic [ref=e103]:
+          - generic [ref=e105]:
+            - generic [ref=e106]: "[ Karaoke ] Đừng Làm Trái Tim Anh Đau Karaoke Hạ 1 Tone - Sơn Tùng M-TP"
+            - generic [ref=e107]: "Kênh: SKYMTP"
+          - button "Thêm" [ref=e108] [cursor=pointer]
+        - generic [ref=e109]:
+          - generic [ref=e111]:
+            - generic [ref=e112]: (Beat Guitar Solo Karaoke) Nơi Này Có Anh - Sơn Tùng M-TP | Tone Gốc
+            - generic [ref=e113]: "Kênh: Ngầu TV"
+          - button "Thêm" [ref=e114] [cursor=pointer]
+        - generic [ref=e115]:
+          - generic [ref=e117]:
+            - generic [ref=e118]: NƠI NÀY CÓ ANH | OFFICIAL MUSIC VIDEO | SƠN TÙNG M-TP
+            - generic [ref=e119]: "Kênh: Sơn Tùng M-TP Official"
+          - button "Thêm" [ref=e120] [cursor=pointer]
+    - generic [ref=e23]:
+      - generic [ref=e24]: Điều khiển
+      - generic [ref=e25]:
+        - generic [ref=e26]: "Bài mẫu: Video YouTube (demo)"
+        - generic [ref=e27]: "Kênh: KaraokeYT"
+        - generic [ref=e28]: "Tiếp theo: [KARAOKE] Nơi Này Có Anh - Beat gốc hạ tông dễ hát - Sơn Tùng - MTP Full HD"
+        - generic [ref=e29]:
+          - button "Bài trước" [ref=e30] [cursor=pointer]
+          - button "Phát" [ref=e31] [cursor=pointer]
+          - button "Tạm dừng" [ref=e32] [cursor=pointer]
+          - button "Bỏ qua" [ref=e33] [cursor=pointer]
+          - button "Bài tiếp" [ref=e34] [cursor=pointer]
+        - generic [ref=e35]:
+          - generic [ref=e36]: Âm lượng
+          - slider [ref=e37]: "80"
+      - generic [ref=e39]: Hàng chờ
+      - generic [ref=e40]:
+        - generic [ref=e41]:
+          - button "Kéo để sắp xếp" [ref=e42]: ⋮⋮
+          - generic [ref=e43]:
+            - generic [ref=e44]: "Bài mẫu: Video YouTube (demo)"
+            - generic [ref=e45]: "Kênh: KaraokeYT"
+          - button "Xoá" [ref=e46] [cursor=pointer]
+        - generic [ref=e121]:
+          - button "Kéo để sắp xếp" [ref=e122]: ⋮⋮
+          - generic [ref=e123]:
+            - generic [ref=e124]: "[KARAOKE] Nơi Này Có Anh - Beat gốc hạ tông dễ hát - Sơn Tùng - MTP Full HD"
+            - generic [ref=e125]: "Kênh: NTV Music (Karaoke Beat & Lyrics)"
+          - button "Xoá" [ref=e126] [cursor=pointer]
+      - status [ref=e47]
