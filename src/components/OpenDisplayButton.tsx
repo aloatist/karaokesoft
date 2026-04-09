@@ -1,3 +1,4 @@
+import { AppIcon } from './AppIcon'
 import { moManHinhTrinhChieu } from '../services/desktopBridge'
 import { useSettingsStore } from '../store/settingsStore'
 
@@ -13,7 +14,7 @@ export function OpenDisplayButton({ className, onOpened, onBeforeOpen, disabled 
 
   return (
     <button
-      className={className}
+      className={className ? `${className} buttonWithIcon` : 'buttonWithIcon'}
       disabled={disabled}
       onClick={async () => {
         if (disabled) return
@@ -30,7 +31,8 @@ export function OpenDisplayButton({ className, onOpened, onBeforeOpen, disabled 
         onOpened?.('browser')
       }}
     >
-      Mở màn hình trình chiếu
+      <AppIcon name="screen" className="buttonIcon" />
+      <span className="buttonLabel">Mở màn hình trình chiếu</span>
     </button>
   )
 }

@@ -1,3 +1,4 @@
+import { AppIcon } from './AppIcon'
 import { useSettingsStore } from '../store/settingsStore'
 
 export function SearchModeToggle({ disabled = false }: { disabled?: boolean }) {
@@ -12,7 +13,8 @@ export function SearchModeToggle({ disabled = false }: { disabled?: boolean }) {
         onClick={() => capNhat({ karaokeFilterEnabled: true })}
         type="button"
       >
-        Chỉ karaoke
+        <AppIcon name="karaoke" className="buttonIcon" />
+        <span className="buttonLabel">Chỉ karaoke</span>
       </button>
       <button
         className={`segBtn ${!karaokeFilterEnabled ? 'segBtnActive' : ''}`}
@@ -20,7 +22,8 @@ export function SearchModeToggle({ disabled = false }: { disabled?: boolean }) {
         onClick={() => capNhat({ karaokeFilterEnabled: false })}
         type="button"
       >
-        Bỏ karaoke
+        <AppIcon name="search" className="buttonIcon" />
+        <span className="buttonLabel">Bỏ karaoke</span>
       </button>
     </div>
   )

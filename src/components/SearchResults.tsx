@@ -1,3 +1,4 @@
+import { AppIcon } from './AppIcon'
 import type { SearchSong } from '../types'
 
 export function SearchResults({
@@ -58,31 +59,34 @@ export function SearchResults({
               </div>
               <div className="resultActions">
                 <button
-                  className={`ghost compactButton buttonToneMuted ${activeButtonKey === `search-next:${it.videoId}` ? 'buttonStateActive' : ''}`}
+                  className={`ghost compactButton buttonToneMuted buttonWithIcon ${activeButtonKey === `search-next:${it.videoId}` ? 'buttonStateActive' : ''}`}
                   data-pressed={activeButtonKey === `search-next:${it.videoId}`}
                   disabled={khoaThaoTac}
                   onClick={() => onAddNext(it)}
                   type="button"
                 >
-                  Thêm kế
+                  <AppIcon name="add" className="buttonIcon" />
+                  <span className="buttonLabel">Thêm kế</span>
                 </button>
                 <button
-                  className={`ghost compactButton buttonToneMuted ${activeButtonKey === `search-end:${it.videoId}` ? 'buttonStateActive' : ''}`}
+                  className={`ghost compactButton buttonToneMuted buttonWithIcon ${activeButtonKey === `search-end:${it.videoId}` ? 'buttonStateActive' : ''}`}
                   data-pressed={activeButtonKey === `search-end:${it.videoId}`}
                   disabled={khoaThaoTac}
                   onClick={() => onAdd(it)}
                   type="button"
                 >
-                  Cuối hàng
+                  <AppIcon name="queue" className="buttonIcon" />
+                  <span className="buttonLabel">Cuối hàng</span>
                 </button>
                 <button
-                  className={`ghost compactButton buttonToneAccent ${activeButtonKey === `search-play:${it.videoId}` ? 'buttonStateActive' : ''}`}
+                  className={`ghost compactButton buttonToneAccent buttonWithIcon ${activeButtonKey === `search-play:${it.videoId}` ? 'buttonStateActive' : ''}`}
                   data-pressed={activeButtonKey === `search-play:${it.videoId}`}
                   disabled={khoaThaoTac}
                   onClick={() => onPlayNow(it)}
                   type="button"
                 >
-                  Phát ngay
+                  <AppIcon name="play" className="buttonIcon" />
+                  <span className="buttonLabel">Phát ngay</span>
                 </button>
                 {recentAction?.videoId === it.videoId ? (
                   <div className="resultActionNote" aria-live="polite">

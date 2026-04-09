@@ -1,3 +1,4 @@
+import { AppIcon } from './AppIcon'
 import { DndContext, KeyboardSensor, PointerSensor, TouchSensor, closestCenter, useSensor, useSensors } from '@dnd-kit/core'
 import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
@@ -51,22 +52,24 @@ function QueueRow({
       </button>
       <div className="rowActions">
         <button
-          className={`ghost compactButton ${active ? 'buttonToneSuccess buttonStateActive' : 'buttonToneMuted'} ${activeActionKey === `queue-play:${queueId}` ? 'buttonStateActive' : ''}`}
+          className={`ghost compactButton buttonWithIcon ${active ? 'buttonToneSuccess buttonStateActive' : 'buttonToneMuted'} ${activeActionKey === `queue-play:${queueId}` ? 'buttonStateActive' : ''}`}
           data-pressed={active || activeActionKey === `queue-play:${queueId}`}
           disabled={disabled}
           onClick={onPlayNow}
           type="button"
         >
-          {active ? 'Đang phát' : 'Phát'}
+          <AppIcon name="play" className="buttonIcon" />
+          <span className="buttonLabel">{active ? 'Đang phát' : 'Phát'}</span>
         </button>
         <button
-          className={`ghost compactButton buttonToneDanger ${activeActionKey === `queue-remove:${queueId}` ? 'buttonStateActive' : ''}`}
+          className={`ghost compactButton buttonToneDanger buttonWithIcon ${activeActionKey === `queue-remove:${queueId}` ? 'buttonStateActive' : ''}`}
           data-pressed={activeActionKey === `queue-remove:${queueId}`}
           disabled={disabled}
           onClick={onRemove}
           type="button"
         >
-          Xoá
+          <AppIcon name="clear" className="buttonIcon" />
+          <span className="buttonLabel">Xoá</span>
         </button>
       </div>
     </div>

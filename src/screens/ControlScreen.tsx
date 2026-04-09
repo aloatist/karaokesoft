@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { AppIcon } from '../components/AppIcon'
 import { OpenDisplayButton } from '../components/OpenDisplayButton'
 import { QueueList } from '../components/QueueList'
 import { SearchBar } from '../components/SearchBar'
@@ -505,115 +506,133 @@ export function ControlScreen() {
         </div>
         <div className="panelTitleActions">
           <button
-            className={`ghost compactButton buttonToneMuted ${replayMode !== 'normal' || activeButtonKey === 'transport-repeat' ? 'buttonStateActive' : ''}`}
+            className={`ghost compactButton buttonToneMuted buttonWithIcon ${replayMode !== 'normal' || activeButtonKey === 'transport-repeat' ? 'buttonStateActive' : ''}`}
             data-pressed={replayMode !== 'normal' || activeButtonKey === 'transport-repeat'}
             disabled={!canPlayback}
             onClick={chuyenCheDoLapLai}
             type="button"
           >
-            Phát lại: {nhanCheDoLapLai}
+            <AppIcon name="repeat" className="buttonIcon" />
+            <span className="buttonLabel">{isMobileLayout ? 'Lặp' : 'Phát lại'}: {nhanCheDoLapLai}</span>
           </button>
           <div className="sectionSub">{baiDangPhat ? `${soBaiSapToi} bài chờ sau bài hiện tại` : 'Sẵn sàng nhận bài mới'}</div>
         </div>
       </div>
 
-      {baiDangPhat ? (
-        <div className="commandCard">
-          <div className="nowPlaying">
-            <div className="nowPlayingLabel">Bài hiện tại</div>
-            <div className="npTitle">{baiDangPhat.title}</div>
-            <div className="npSub">Kênh: {baiDangPhat.channelTitle}</div>
-            <div className="npSub">Tiếp theo: {baiTiepTheo ? baiTiepTheo.title : 'Chưa có bài kế tiếp'}</div>
-            <div className="statsRow">
-              <div className="statBlock">
-                <div className="statValue">{tongBai}</div>
-                <div className="statLabel">Tổng bài</div>
+      <div className={isMobileLayout ? 'commandScrollAreaMobile' : undefined}>
+        {baiDangPhat ? (
+          <div className={`commandCard ${isMobileLayout ? 'commandCardMobile' : ''}`}>
+            <div className={`nowPlaying ${isMobileLayout ? 'nowPlayingCompact' : ''}`}>
+              <div className="nowPlayingHeading">
+                <div className="nowPlayingLabel">Bài hiện tại</div>
               </div>
-              <div className="statBlock">
-                <div className="statValue">{soBaiSapToi}</div>
-                <div className="statLabel">Sắp tới</div>
+              <div className="npTitle">{baiDangPhat.title}</div>
+              <div className="npMetaList">
+                <div className="npMetaItem">
+                  <div className="npMetaKey">Kênh</div>
+                  <div className="npMetaValue">{baiDangPhat.channelTitle}</div>
+                </div>
+                <div className="npMetaItem">
+                  <div className="npMetaKey">Tiếp theo</div>
+                  <div className="npMetaValue">{baiTiepTheo ? baiTiepTheo.title : 'Chưa có bài kế tiếp'}</div>
+                </div>
               </div>
-              <div className="statBlock">
-                <div className="statValue">{volume}%</div>
-                <div className="statLabel">Âm lượng</div>
+              <div className="statsRow">
+                <div className="statBlock">
+                  <div className="statValue">{tongBai}</div>
+                  <div className="statLabel">Tổng bài</div>
+                </div>
+                <div className="statBlock">
+                  <div className="statValue">{soBaiSapToi}</div>
+                  <div className="statLabel">Sắp tới</div>
+                </div>
+                <div className="statBlock">
+                  <div className="statValue">{volume}%</div>
+                  <div className="statLabel">Âm lượng</div>
+                </div>
               </div>
-            </div>
-            <div className="controlActions">
-              <button
-                className={`ghost strongButton buttonToneMuted ${activeButtonKey === 'transport-prev' ? 'buttonStateActive' : ''}`}
-                data-pressed={activeButtonKey === 'transport-prev'}
-                disabled={!canPlayback}
-                onClick={quaBaiTruoc}
-                type="button"
-              >
-                Bài trước
-              </button>
-              <button
-                className={`ghost strongButton buttonToneMuted ${activeButtonKey === 'transport-restart' ? 'buttonStateActive' : ''}`}
-                data-pressed={activeButtonKey === 'transport-restart'}
-                disabled={!canPlayback}
-                onClick={phatLaiTuDau}
-                type="button"
-              >
-                Từ đầu
-              </button>
-              <button
-                className={`ghost strongButton buttonToneAccent ${hienThiPlayerMode === 'playing' ? 'buttonStateActive' : ''}`}
-                data-pressed={hienThiPlayerMode === 'playing'}
-                disabled={!canPlayback}
-                onClick={batDauPhat}
-                type="button"
-              >
-                Phát
-              </button>
-              <button
-                className={`ghost strongButton buttonToneMuted ${hienThiPlayerMode === 'paused' ? 'buttonStateActive' : ''}`}
-                data-pressed={hienThiPlayerMode === 'paused'}
-                disabled={!canPlayback}
-                onClick={tamDungPhat}
-                type="button"
-              >
-                Tạm dừng
-              </button>
-              <button
-                className={`ghost strongButton buttonToneAccent ${activeButtonKey === 'transport-next' ? 'buttonStateActive' : ''}`}
-                data-pressed={activeButtonKey === 'transport-next'}
-                disabled={!canPlayback}
-                onClick={sangBaiTiepTheo}
-                type="button"
-              >
-                Tiếp theo
-              </button>
-            </div>
-            <div className="volCard">
-              <div className="volHead">
-                <div className="volLabel">Âm lượng trình chiếu</div>
-                <div className="volValue">{volume}%</div>
+              <div className="controlActions">
+                <button
+                  className={`ghost strongButton transportButton transportButtonPrev buttonToneMuted buttonWithIcon ${activeButtonKey === 'transport-prev' ? 'buttonStateActive' : ''}`}
+                  data-pressed={activeButtonKey === 'transport-prev'}
+                  disabled={!canPlayback}
+                  onClick={quaBaiTruoc}
+                  type="button"
+                >
+                  <AppIcon name="prev" className="buttonIcon" />
+                  <span className="buttonLabel">Bài trước</span>
+                </button>
+                <button
+                  className={`ghost strongButton transportButton transportButtonRestart buttonToneMuted buttonWithIcon ${activeButtonKey === 'transport-restart' ? 'buttonStateActive' : ''}`}
+                  data-pressed={activeButtonKey === 'transport-restart'}
+                  disabled={!canPlayback}
+                  onClick={phatLaiTuDau}
+                  type="button"
+                >
+                  <AppIcon name="restart" className="buttonIcon" />
+                  <span className="buttonLabel">Từ đầu</span>
+                </button>
+                <button
+                  className={`ghost strongButton transportButton transportButtonPlay buttonToneAccent buttonWithIcon ${hienThiPlayerMode === 'playing' ? 'buttonStateActive' : ''}`}
+                  data-pressed={hienThiPlayerMode === 'playing'}
+                  disabled={!canPlayback}
+                  onClick={batDauPhat}
+                  type="button"
+                >
+                  <AppIcon name="play" className="buttonIcon" />
+                  <span className="buttonLabel">Phát</span>
+                </button>
+                <button
+                  className={`ghost strongButton transportButton transportButtonPause buttonToneMuted buttonWithIcon ${hienThiPlayerMode === 'paused' ? 'buttonStateActive' : ''}`}
+                  data-pressed={hienThiPlayerMode === 'paused'}
+                  disabled={!canPlayback}
+                  onClick={tamDungPhat}
+                  type="button"
+                >
+                  <AppIcon name="pause" className="buttonIcon" />
+                  <span className="buttonLabel">Tạm dừng</span>
+                </button>
+                <button
+                  className={`ghost strongButton transportButton transportButtonNext buttonToneAccent buttonWithIcon ${activeButtonKey === 'transport-next' ? 'buttonStateActive' : ''}`}
+                  data-pressed={activeButtonKey === 'transport-next'}
+                  disabled={!canPlayback}
+                  onClick={sangBaiTiepTheo}
+                  type="button"
+                >
+                  <AppIcon name="next" className="buttonIcon" />
+                  <span className="buttonLabel">Tiếp theo</span>
+                </button>
               </div>
-              <input
-                className="range"
-                type="range"
-                min={0}
-                max={100}
-                disabled={!canPlayback}
-                value={volume}
-                onChange={(e) => {
-                  const nextVolume = Number(e.target.value)
-                  setVolume(nextVolume)
-                  phatLenhPlayer('volume', nextVolume)
-                }}
-              />
+              <div className="volCard">
+                <div className="volHead">
+                  <div className="volLabel">Âm lượng trình chiếu</div>
+                  <div className="volValue">{volume}%</div>
+                </div>
+                <input
+                  className="range"
+                  type="range"
+                  min={0}
+                  max={100}
+                  disabled={!canPlayback}
+                  value={volume}
+                  onChange={(e) => {
+                    const nextVolume = Number(e.target.value)
+                    setVolume(nextVolume)
+                    phatLenhPlayer('volume', nextVolume)
+                  }}
+                />
+              </div>
             </div>
           </div>
-        </div>
-      ) : (
-        <div className="emptyCard">
-          <div className="emptyTitle">Chưa có bài nào trong lượt phát</div>
-          <div className="emptyText">
-            Dùng Phát ngay để chuyển thẳng bài vừa tìm được lên màn hình trình chiếu, hoặc Thêm kế để xếp lượt kế tiếp.
+        ) : (
+          <div className="emptyCard">
+            <div className="emptyTitle">Chưa có bài nào trong lượt phát</div>
+            <div className="emptyText">
+              Dùng Phát ngay để chuyển thẳng bài vừa tìm được lên màn hình trình chiếu, hoặc Thêm kế để xếp lượt kế tiếp.
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </>
   )
 
@@ -626,13 +645,14 @@ export function ControlScreen() {
         </div>
         <div className="queueActions">
           <button
-            className={`ghost compactButton buttonToneMuted ${activeButtonKey === 'queue-clear' ? 'buttonStateActive' : ''}`}
+            className={`ghost compactButton buttonToneMuted buttonWithIcon ${activeButtonKey === 'queue-clear' ? 'buttonStateActive' : ''}`}
             data-pressed={activeButtonKey === 'queue-clear'}
             disabled={!queue.length || !canQueueSongs}
             onClick={xoaTatCa}
             type="button"
           >
-            Xoá hết
+            <AppIcon name="clear" className="buttonIcon" />
+            <span className="buttonLabel">Xoá hết</span>
           </button>
         </div>
       </div>
@@ -675,7 +695,7 @@ export function ControlScreen() {
             onOpened={moDisplayThanhCong}
           />
           <button
-            className={`primary buttonToneMuted ${activeButtonKey === 'open-settings' ? 'buttonStateActive' : ''}`}
+            className={`primary buttonToneMuted buttonWithIcon ${activeButtonKey === 'open-settings' ? 'buttonStateActive' : ''}`}
             data-pressed={activeButtonKey === 'open-settings'}
             disabled={!canOpenSettings}
             onClick={() => {
@@ -685,7 +705,8 @@ export function ControlScreen() {
             }}
             type="button"
           >
-            Cài đặt
+            <AppIcon name="settings" className="buttonIcon" />
+            <span className="buttonLabel">Cài đặt</span>
           </button>
         </div>
       </header>
@@ -712,7 +733,10 @@ export function ControlScreen() {
               onClick={() => setMobilePanel((current) => (current === 'command' ? null : 'command'))}
               type="button"
             >
-              Điều khiển
+              <span className="buttonLabel">
+                <AppIcon name="control" className="buttonIcon" />
+                Điều khiển
+              </span>
               <span className="mobileDockCount">{baiDangPhat ? '1' : '0'}</span>
             </button>
             <button
@@ -721,7 +745,10 @@ export function ControlScreen() {
               onClick={() => setMobilePanel((current) => (current === 'queue' ? null : 'queue'))}
               type="button"
             >
-              Hàng chờ
+              <span className="buttonLabel">
+                <AppIcon name="queue" className="buttonIcon" />
+                Hàng chờ
+              </span>
               <span className="mobileDockCount">{tongBai}</span>
             </button>
             <div className="mobileDockSummary">
@@ -734,20 +761,22 @@ export function ControlScreen() {
             <div className="mobileBottomSheetHandle" aria-hidden="true" />
             <div className="mobileBottomSheetTabs">
               <button
-                className={`ghost compactButton ${mobilePanel === 'command' ? 'buttonToneAccent buttonStateActive' : 'buttonToneMuted'}`}
+                className={`ghost compactButton buttonWithIcon ${mobilePanel === 'command' ? 'buttonToneAccent buttonStateActive' : 'buttonToneMuted'}`}
                 data-pressed={mobilePanel === 'command'}
                 onClick={() => setMobilePanel('command')}
                 type="button"
               >
-                Trung tâm điều khiển
+                <AppIcon name="control" className="buttonIcon" />
+                <span className="buttonLabel">{isMobileLayout ? 'Điều khiển' : 'Trung tâm điều khiển'}</span>
               </button>
               <button
-                className={`ghost compactButton ${mobilePanel === 'queue' ? 'buttonToneAccent buttonStateActive' : 'buttonToneMuted'}`}
+                className={`ghost compactButton buttonWithIcon ${mobilePanel === 'queue' ? 'buttonToneAccent buttonStateActive' : 'buttonToneMuted'}`}
                 data-pressed={mobilePanel === 'queue'}
                 onClick={() => setMobilePanel('queue')}
                 type="button"
               >
-                Quản lý lượt hát
+                <AppIcon name="queue" className="buttonIcon" />
+                <span className="buttonLabel">{isMobileLayout ? 'Lượt hát' : 'Quản lý lượt hát'}</span>
               </button>
             </div>
             <div className="mobileBottomSheetContent">

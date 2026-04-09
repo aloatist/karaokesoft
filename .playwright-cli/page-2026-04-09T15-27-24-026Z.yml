@@ -1,0 +1,117 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]: KaraokeYT
+      - generic [ref=e7]: Màn hình điều khiển
+    - generic [ref=e8]:
+      - generic [ref=e9]:
+        - generic [ref=e10]: Người dùng
+        - combobox [ref=e11]:
+          - option "Quản trị · Quản trị" [selected]
+          - option "Điều khiển · Điều khiển"
+          - option "Khách xem · Chỉ xem"
+      - button "Mở màn hình trình chiếu" [ref=e12] [cursor=pointer]:
+        - img [ref=e13]
+        - generic [ref=e15]: Mở màn hình trình chiếu
+      - button "Cài đặt" [ref=e16] [cursor=pointer]:
+        - img [ref=e17]
+        - generic [ref=e20]: Cài đặt
+  - generic [ref=e21]:
+    - generic [ref=e22]: "Trình chiếu: Chưa mở"
+    - generic [ref=e23]: "Autoplay: Bật"
+    - generic [ref=e24]: "Hàng chờ: 8 bài"
+  - main [ref=e25]:
+    - generic [ref=e26]:
+      - generic [ref=e27]:
+        - generic [ref=e28]:
+          - generic [ref=e29]: Tìm và xếp bài
+          - generic [ref=e30]: Tìm kiếm
+        - generic [ref=e31]: Sẵn sàng
+      - generic [ref=e32]:
+        - generic [ref=e33]: Tìm bài karaoke
+        - textbox "Tìm bài karaoke" [ref=e34]:
+          - /placeholder: Tìm bài, ca sĩ hoặc mã YouTube…
+      - generic [ref=e36]:
+        - generic [ref=e37]:
+          - button "Chỉ karaoke" [ref=e38] [cursor=pointer]:
+            - img [ref=e39]
+            - generic [ref=e42]: Chỉ karaoke
+          - button "Bỏ karaoke" [ref=e43] [cursor=pointer]:
+            - img [ref=e44]
+            - generic [ref=e47]: Bỏ karaoke
+        - generic [ref=e48]: / hoặc Ctrl/Cmd + K để focus
+      - generic [ref=e50]: Nhập tên bài để tìm kiếm.
+  - generic [ref=e52]:
+    - button "Điều khiển 1" [active] [ref=e53] [cursor=pointer]:
+      - generic [ref=e54]:
+        - img [ref=e55]
+        - text: Điều khiển
+      - generic [ref=e58]: "1"
+    - button "Hàng chờ 8" [ref=e59] [cursor=pointer]:
+      - generic [ref=e60]:
+        - img [ref=e61]
+        - text: Hàng chờ
+      - generic [ref=e65]: "8"
+    - generic [ref=e66]:
+      - generic [ref=e67]: Đang phát
+      - generic [ref=e68]: ANH EM MACAU KARAOKE REMIX - XAVI PHAM x SAKHAR bai 1
+  - button "Đóng khay điều khiển" [ref=e69]
+  - generic [ref=e70]:
+    - generic [ref=e72]:
+      - button "Điều khiển" [ref=e73] [cursor=pointer]:
+        - img [ref=e74]
+        - generic [ref=e77]: Điều khiển
+      - button "Lượt hát" [ref=e78] [cursor=pointer]:
+        - img [ref=e79]
+        - generic [ref=e83]: Lượt hát
+    - generic [ref=e84]:
+      - generic [ref=e85]:
+        - generic [ref=e86]:
+          - generic [ref=e87]: Trung tâm điều khiển
+          - generic [ref=e88]: Đang phát
+        - generic [ref=e89]:
+          - 'button "Lặp: Không lặp" [ref=e90] [cursor=pointer]':
+            - img [ref=e91]
+            - generic [ref=e96]: "Lặp: Không lặp"
+          - generic [ref=e97]: 7 bài chờ sau bài hiện tại
+      - generic [ref=e100]:
+        - generic [ref=e102]: Bài hiện tại
+        - generic [ref=e103]: ANH EM MACAU KARAOKE REMIX - XAVI PHAM x SAKHAR bai 1
+        - generic [ref=e104]:
+          - generic [ref=e105]:
+            - generic [ref=e106]: Kênh
+            - generic [ref=e107]: G5R Karaoke
+          - generic [ref=e108]:
+            - generic [ref=e109]: Tiếp theo
+            - generic [ref=e110]: ANH EM MACAU KARAOKE REMIX - XAVI PHAM x SAKHAR bai 2
+        - generic [ref=e111]:
+          - generic [ref=e112]:
+            - generic [ref=e113]: "8"
+            - generic [ref=e114]: Tổng bài
+          - generic [ref=e115]:
+            - generic [ref=e116]: "7"
+            - generic [ref=e117]: Sắp tới
+          - generic [ref=e118]:
+            - generic [ref=e119]: 80%
+            - generic [ref=e120]: Âm lượng
+        - generic [ref=e121]:
+          - button "Bài trước" [ref=e122] [cursor=pointer]:
+            - img [ref=e123]
+            - generic [ref=e126]: Bài trước
+          - button "Từ đầu" [ref=e127] [cursor=pointer]:
+            - img [ref=e128]
+            - generic [ref=e131]: Từ đầu
+          - button "Phát" [ref=e132] [cursor=pointer]:
+            - img [ref=e133]
+            - generic [ref=e135]: Phát
+          - button "Tạm dừng" [ref=e136] [cursor=pointer]:
+            - img [ref=e137]
+            - generic [ref=e138]: Tạm dừng
+          - button "Tiếp theo" [ref=e139] [cursor=pointer]:
+            - img [ref=e140]
+            - generic [ref=e143]: Tiếp theo
+        - generic [ref=e144]:
+          - generic [ref=e145]:
+            - generic [ref=e146]: Âm lượng trình chiếu
+            - generic [ref=e147]: 80%
+          - slider [ref=e148]: "80"

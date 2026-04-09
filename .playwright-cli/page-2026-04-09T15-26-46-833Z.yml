@@ -1,0 +1,119 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]: KaraokeYT
+      - generic [ref=e7]: Màn hình điều khiển
+    - generic [ref=e8]:
+      - generic [ref=e9]:
+        - generic [ref=e10]: Người dùng
+        - combobox [ref=e11]:
+          - option "Quản trị · Quản trị" [selected]
+          - option "Điều khiển · Điều khiển"
+          - option "Khách xem · Chỉ xem"
+      - button "Mở màn hình trình chiếu" [ref=e12] [cursor=pointer]:
+        - img [ref=e13]
+        - generic [ref=e15]: Mở màn hình trình chiếu
+      - button "Cài đặt" [ref=e16] [cursor=pointer]:
+        - img [ref=e17]
+        - generic [ref=e20]: Cài đặt
+  - generic [ref=e21]:
+    - generic [ref=e22]: "Trình chiếu: Chưa mở"
+    - generic [ref=e23]: "Autoplay: Bật"
+    - generic [ref=e24]: "Hàng chờ: 8 bài"
+  - main [ref=e25]:
+    - generic [ref=e26]:
+      - generic [ref=e27]:
+        - generic [ref=e28]:
+          - generic [ref=e29]: Tìm và xếp bài
+          - generic [ref=e30]: Tìm kiếm
+        - generic [ref=e31]: Sẵn sàng
+      - generic [ref=e32]:
+        - generic [ref=e33]: Tìm bài karaoke
+        - textbox "Tìm bài karaoke" [ref=e34]:
+          - /placeholder: Tìm bài, ca sĩ hoặc mã YouTube…
+      - generic [ref=e36]:
+        - generic [ref=e37]:
+          - button "Chỉ karaoke" [ref=e38] [cursor=pointer]:
+            - img [ref=e39]
+            - generic [ref=e42]: Chỉ karaoke
+          - button "Bỏ karaoke" [ref=e43] [cursor=pointer]:
+            - img [ref=e44]
+            - generic [ref=e47]: Bỏ karaoke
+        - generic [ref=e48]: / hoặc Ctrl/Cmd + K để focus
+      - generic [ref=e50]: Nhập tên bài để tìm kiếm.
+  - generic [ref=e52]:
+    - button "Điều khiển 1" [ref=e53] [cursor=pointer]:
+      - generic [ref=e54]:
+        - img [ref=e55]
+        - text: Điều khiển
+      - generic [ref=e58]: "1"
+    - button "Hàng chờ 8" [ref=e59] [cursor=pointer]:
+      - generic [ref=e60]:
+        - img [ref=e61]
+        - text: Hàng chờ
+      - generic [ref=e65]: "8"
+    - generic [ref=e66]:
+      - generic [ref=e67]: Đang phát
+      - generic [ref=e68]: ANH EM MACAU KARAOKE REMIX - XAVI PHAM x SAKHAR bai 1
+  - generic:
+    - generic:
+      - button:
+        - img
+        - generic: Điều khiển
+      - button:
+        - img
+        - generic: Lượt hát
+    - generic:
+      - generic:
+        - generic:
+          - generic: Trung tâm điều khiển
+          - generic: Đang phát
+        - generic:
+          - button:
+            - img
+            - generic: "Lặp: Không lặp"
+          - generic: 7 bài chờ sau bài hiện tại
+      - generic:
+        - generic:
+          - generic:
+            - generic:
+              - generic: Bài hiện tại
+            - generic: ANH EM MACAU KARAOKE REMIX - XAVI PHAM x SAKHAR bai 1
+            - generic:
+              - generic:
+                - generic: Kênh
+                - generic: G5R Karaoke
+              - generic:
+                - generic: Tiếp theo
+                - generic: ANH EM MACAU KARAOKE REMIX - XAVI PHAM x SAKHAR bai 2
+            - generic:
+              - generic:
+                - generic: "8"
+                - generic: Tổng bài
+              - generic:
+                - generic: "7"
+                - generic: Sắp tới
+              - generic:
+                - generic: 80%
+                - generic: Âm lượng
+            - generic:
+              - button:
+                - img
+                - generic: Bài trước
+              - button:
+                - img
+                - generic: Từ đầu
+              - button:
+                - img
+                - generic: Phát
+              - button:
+                - img
+                - generic: Tạm dừng
+              - button:
+                - img
+                - generic: Tiếp theo
+            - generic:
+              - generic:
+                - generic: Âm lượng trình chiếu
+                - generic: 80%
+              - slider: "80"
