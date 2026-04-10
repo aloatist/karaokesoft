@@ -1,15 +1,22 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { AppUser, UserRole } from '../types'
+import type { AppUser, AuthAccount, AuthProvider, AuthSessionMode, UserRole } from '../types'
 
 type AuthState = {
   users: AppUser[]
   currentUserId: string
+  accounts: AuthAccount[]
+  currentAccountId: string | null
+  sessionMode: AuthSessionMode
   actions: {
     chuyenNguoiDung: (userId: string) => void
     themNguoiDung: (name: string, role: UserRole) => void
     capNhatVaiTro: (userId: string, role: UserRole) => void
     xoaNguoiDung: (userId: string) => void
+    dangNhapTuyChon: (payload: { displayName: string; email?: string; provider: AuthProvider }) => void
+    chonTaiKhoan: (accountId: string) => void
+    xoaTaiKhoan: (accountId: string) => void
+    dangXuat: () => void
   }
 }
 
@@ -50,11 +57,41 @@ function chuanHoaUsers(rawUsers: unknown): AppUser[] {
   return users.length ? users : taoNguoiDungMacDinh()
 }
 
+function chuanHoaEmail(raw: unknown) {
+  return typeof raw === 'string' ? raw.trim().toLowerCase() : ''
+}
+
+function chuanHoaAccounts(rawAccounts: unknown): AuthAccount[] {
+  if (!Array.isArray(rawAccounts)) return []
+
+  return rawAccounts
+    .map((item, index) => {
+      if (!item || typeof item !== 'object') return null
+      const raw = item as Record<string, unknown>
+      const displayName = typeof raw.displayName === 'string' ? raw.displayName.trim() : ''
+      if (!displayName) return null
+
+      return {
+        id: typeof raw.id === 'string' && raw.id ? raw.id : `legacy-account-${index}`,
+        displayName,
+        email: chuanHoaEmail(raw.email),
+        provider:
+          raw.provider === 'google' || raw.provider === 'email' || raw.provider === 'local' ? raw.provider : 'local',
+        createdAt: typeof raw.createdAt === 'number' ? raw.createdAt : Date.now() + index,
+        lastLoginAt: typeof raw.lastLoginAt === 'number' ? raw.lastLoginAt : Date.now() + index,
+      } satisfies AuthAccount
+    })
+    .filter((item): item is AuthAccount => item !== null)
+}
+
 export const useAuthStore = create<AuthState>()(
   persist(
     (set, get) => ({
       users: taoNguoiDungMacDinh(),
       currentUserId: 'admin-default',
+      accounts: [],
+      currentAccountId: null,
+      sessionMode: 'guest',
       actions: {
         chuyenNguoiDung: (userId) =>
           set((state) => ({
@@ -103,24 +140,108 @@ export const useAuthStore = create<AuthState>()(
             }
           })
         },
+        dangNhapTuyChon: ({ displayName, email, provider }) => {
+          const nextDisplayName = displayName.trim()
+          if (!nextDisplayName) return
+
+          const nextEmail = chuanHoaEmail(email)
+          const currentState = get()
+          const existingAccount = currentState.accounts.find((account) => {
+            if (account.provider !== provider) return false
+            if (nextEmail) return account.email === nextEmail
+            return !account.email && account.displayName.toLowerCase() === nextDisplayName.toLowerCase()
+          })
+
+          if (existingAccount) {
+            set((state) => ({
+              accounts: state.accounts.map((account) =>
+                account.id === existingAccount.id
+                  ? {
+                      ...account,
+                      displayName: nextDisplayName,
+                      email: nextEmail,
+                      lastLoginAt: Date.now(),
+                    }
+                  : account,
+              ),
+              currentAccountId: existingAccount.id,
+              sessionMode: 'authenticated',
+            }))
+            return
+          }
+
+          const nextAccount: AuthAccount = {
+            id: taoId(),
+            displayName: nextDisplayName,
+            email: nextEmail,
+            provider,
+            createdAt: Date.now(),
+            lastLoginAt: Date.now(),
+          }
+
+          set((state) => ({
+            accounts: [nextAccount, ...state.accounts],
+            currentAccountId: nextAccount.id,
+            sessionMode: 'authenticated',
+          }))
+        },
+        chonTaiKhoan: (accountId) =>
+          set((state) => {
+            const target = state.accounts.find((account) => account.id === accountId)
+            if (!target) return state
+
+            return {
+              accounts: state.accounts.map((account) =>
+                account.id === accountId ? { ...account, lastLoginAt: Date.now() } : account,
+              ),
+              currentAccountId: accountId,
+              sessionMode: 'authenticated',
+            }
+          }),
+        xoaTaiKhoan: (accountId) =>
+          set((state) => {
+            const nextAccounts = state.accounts.filter((account) => account.id !== accountId)
+            const isCurrentAccount = state.currentAccountId === accountId
+
+            return {
+              accounts: nextAccounts,
+              currentAccountId: isCurrentAccount ? null : state.currentAccountId,
+              sessionMode: isCurrentAccount ? 'guest' : state.sessionMode,
+            }
+          }),
+        dangXuat: () =>
+          set(() => ({
+            currentAccountId: null,
+            sessionMode: 'guest',
+          })),
       },
     }),
     {
       name: 'karaokeyt-auth',
-      version: 1,
+      version: 2,
       partialize: (state) => ({
         users: state.users,
         currentUserId: state.currentUserId,
+        accounts: state.accounts,
+        currentAccountId: state.currentAccountId,
+        sessionMode: state.sessionMode,
       }),
       migrate: (persisted) => {
         const base = (persisted ?? {}) as Record<string, unknown>
         const users = chuanHoaUsers(base.users)
+        const accounts = chuanHoaAccounts(base.accounts)
         const currentUserId =
           typeof base.currentUserId === 'string' && users.some((user) => user.id === base.currentUserId)
             ? base.currentUserId
             : users[0]?.id ?? 'admin-default'
+        const currentAccountId =
+          typeof base.currentAccountId === 'string' && accounts.some((account) => account.id === base.currentAccountId)
+            ? base.currentAccountId
+            : null
+        const sessionMode: AuthSessionMode =
+          base.sessionMode === 'authenticated' && currentAccountId ? 'authenticated' : 'guest'
 
-        return { users, currentUserId }
+        return { users, currentUserId, accounts, currentAccountId, sessionMode }
       },
     },
   ),

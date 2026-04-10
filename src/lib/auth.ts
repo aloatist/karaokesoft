@@ -1,4 +1,4 @@
-import type { UserRole } from '../types'
+import type { AuthProvider, AuthSessionMode, UserRole } from '../types'
 
 export type UserPermission =
   | 'settings'
@@ -12,6 +12,17 @@ export const USER_ROLE_LABEL: Record<UserRole, string> = {
   admin: 'Quản trị',
   operator: 'Điều khiển',
   viewer: 'Chỉ xem',
+}
+
+export const AUTH_PROVIDER_LABEL: Record<AuthProvider, string> = {
+  local: 'Nội bộ',
+  google: 'Google',
+  email: 'Email',
+}
+
+export const AUTH_SESSION_LABEL: Record<AuthSessionMode, string> = {
+  guest: 'Khách',
+  authenticated: 'Đã đăng nhập',
 }
 
 const USER_ROLE_PERMISSIONS: Record<UserRole, UserPermission[]> = {
@@ -35,4 +46,12 @@ export function moTaVaiTro(role: UserRole) {
     default:
       return ''
   }
+}
+
+export function moTaCheDoPhien(mode: AuthSessionMode) {
+  if (mode === 'authenticated') {
+    return 'Hồ sơ này đã sẵn sàng để nối đồng bộ cloud khi backend đăng nhập được bật.'
+  }
+
+  return 'Dùng ngay không cần đăng nhập. Dữ liệu hiện được lưu cục bộ trên thiết bị này.'
 }

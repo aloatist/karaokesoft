@@ -8,9 +8,11 @@ import type { DesktopDisplayInfo, UserRole } from '../types'
 type Props = {
   open: boolean
   onClose: () => void
+  canManageUsers: boolean
+  displayRoomCode?: string
 }
 
-export function SettingsModal({ open, onClose }: Props) {
+export function SettingsModal({ open, onClose, canManageUsers, displayRoomCode }: Props) {
   const apiKey = useSettingsStore((s) => s.youtubeApiKey)
   const karaokeFilterEnabled = useSettingsStore((s) => s.karaokeFilterEnabled)
   const autoplayNext = useSettingsStore((s) => s.autoplayNext)
@@ -173,82 +175,93 @@ export function SettingsModal({ open, onClose }: Props) {
 
           <div className="field">
             <div className="label">Người dùng và phân quyền</div>
-            <div className="userAdminList">
-              {users.map((user) => (
-                <div key={user.id} className="userAdminRow">
-                  <div className="userAdminMeta">
-                    <div className="userAdminNameRow">
-                      <div className="userAdminName">{user.name}</div>
-                      {user.id === currentUserId ? <span className="miniBadge">Đang dùng</span> : null}
+            {canManageUsers ? (
+              <>
+                <div className="userAdminList">
+                  {users.map((user) => (
+                    <div key={user.id} className="userAdminRow">
+                      <div className="userAdminMeta">
+                        <div className="userAdminNameRow">
+                          <div className="userAdminName">{user.name}</div>
+                          {user.id === currentUserId ? <span className="miniBadge">Đang dùng</span> : null}
+                        </div>
+                        <div className="hint">{moTaVaiTro(user.role)}</div>
+                      </div>
+                      <div className="userAdminActions">
+                        <select
+                          className="input compactSelect"
+                          value={user.role}
+                          onChange={(e) =>
+                            capNhatVaiTro(
+                              user.id,
+                              e.target.value === 'admin' || e.target.value === 'operator' ? e.target.value : 'viewer',
+                            )
+                          }
+                        >
+                          <option value="admin">{USER_ROLE_LABEL.admin}</option>
+                          <option value="operator">{USER_ROLE_LABEL.operator}</option>
+                          <option value="viewer">{USER_ROLE_LABEL.viewer}</option>
+                        </select>
+                        {user.id !== currentUserId ? (
+                          <button className="ghost compactButton" onClick={() => chuyenNguoiDung(user.id)} type="button">
+                            Dùng user này
+                          </button>
+                        ) : null}
+                        <button
+                          className="ghost compactButton buttonToneDanger"
+                          disabled={users.length <= 1}
+                          onClick={() => xoaNguoiDung(user.id)}
+                          type="button"
+                        >
+                          Xoá
+                        </button>
+                      </div>
                     </div>
-                    <div className="hint">{moTaVaiTro(user.role)}</div>
-                  </div>
-                  <div className="userAdminActions">
-                    <select
-                      className="input compactSelect"
-                      value={user.role}
-                      onChange={(e) =>
-                        capNhatVaiTro(
-                          user.id,
-                          e.target.value === 'admin' || e.target.value === 'operator' ? e.target.value : 'viewer',
-                        )
-                      }
-                    >
-                      <option value="admin">{USER_ROLE_LABEL.admin}</option>
-                      <option value="operator">{USER_ROLE_LABEL.operator}</option>
-                      <option value="viewer">{USER_ROLE_LABEL.viewer}</option>
-                    </select>
-                    {user.id !== currentUserId ? (
-                      <button className="ghost compactButton" onClick={() => chuyenNguoiDung(user.id)} type="button">
-                        Dùng user này
-                      </button>
-                    ) : null}
-                    <button
-                      className="ghost compactButton buttonToneDanger"
-                      disabled={users.length <= 1}
-                      onClick={() => xoaNguoiDung(user.id)}
-                      type="button"
-                    >
-                      Xoá
-                    </button>
-                  </div>
+                  ))}
                 </div>
-              ))}
-            </div>
 
-            <div className="userCreateCard">
-              <input
-                className="input"
-                value={newUserName}
-                onChange={(e) => setNewUserName(e.target.value)}
-                placeholder="Tên user mới"
-              />
-              <select
-                className="input compactSelect"
-                value={newUserRole}
-                onChange={(e) =>
-                  setNewUserRole(
-                    e.target.value === 'admin' || e.target.value === 'viewer' ? e.target.value : 'operator',
-                  )
-                }
-              >
-                <option value="admin">{USER_ROLE_LABEL.admin}</option>
-                <option value="operator">{USER_ROLE_LABEL.operator}</option>
-                <option value="viewer">{USER_ROLE_LABEL.viewer}</option>
-              </select>
-              <button
-                className="primary"
-                disabled={!newUserName.trim()}
-                onClick={() => {
-                  themNguoiDung(newUserName, newUserRole)
-                  setNewUserName('')
-                  setNewUserRole('operator')
-                }}
-                type="button"
-              >
-                Thêm user
-              </button>
-            </div>
+                <div className="userCreateCard">
+                  <input
+                    className="input"
+                    value={newUserName}
+                    onChange={(e) => setNewUserName(e.target.value)}
+                    placeholder="Tên user mới"
+                  />
+                  <select
+                    className="input compactSelect"
+                    value={newUserRole}
+                    onChange={(e) =>
+                      setNewUserRole(
+                        e.target.value === 'admin' || e.target.value === 'viewer' ? e.target.value : 'operator',
+                      )
+                    }
+                  >
+                    <option value="admin">{USER_ROLE_LABEL.admin}</option>
+                    <option value="operator">{USER_ROLE_LABEL.operator}</option>
+                    <option value="viewer">{USER_ROLE_LABEL.viewer}</option>
+                  </select>
+                  <button
+                    className="primary"
+                    disabled={!newUserName.trim()}
+                    onClick={() => {
+                      themNguoiDung(newUserName, newUserRole)
+                      setNewUserName('')
+                      setNewUserRole('operator')
+                    }}
+                    type="button"
+                  >
+                    Thêm user
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="settingsInfoCard">
+                <div className="settingsInfoTitle">Chỉ quản trị mới được sửa danh sách user</div>
+                <div className="hint">
+                  Bạn vẫn xem được cài đặt hệ thống, nhưng việc thêm user, đổi vai trò hoặc xoá user đang bị khoá ở phiên này.
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -259,7 +272,7 @@ export function SettingsModal({ open, onClose }: Props) {
             onClick={() => {
               capNhat({ youtubeApiKey: localKey.trim() })
               if (laDesktop) {
-                void moManHinhTrinhChieu(displayMonitorIndex)
+                void moManHinhTrinhChieu(displayMonitorIndex, displayRoomCode)
               }
               onClose()
             }}

@@ -25,12 +25,23 @@ export type AppTheme = 'dark' | 'light'
 export type ReplayMode = 'normal' | 'repeat-one' | 'repeat-all'
 
 export type UserRole = 'admin' | 'operator' | 'viewer'
+export type AuthProvider = 'local' | 'google' | 'email'
+export type AuthSessionMode = 'guest' | 'authenticated'
 
 export type AppUser = {
   id: string
   name: string
   role: UserRole
   createdAt: number
+}
+
+export type AuthAccount = {
+  id: string
+  displayName: string
+  email: string
+  provider: AuthProvider
+  createdAt: number
+  lastLoginAt: number
 }
 
 export type AppSettings = {
@@ -51,6 +62,83 @@ export type SyncMessage =
   | { type: 'SETTINGS_UPDATE'; settings: Partial<AppSettings> }
 
 export type PlayerCommand = Extract<SyncMessage, { type: 'PLAYER_CMD' }>['cmd']
+
+export type RemoteRole = 'host' | 'remote' | 'display'
+export type RemoteRelayStatus = 'idle' | 'connecting' | 'connected' | 'error'
+
+export type RemotePresence = {
+  hosts: number
+  remotes: number
+  displays: number
+}
+
+export type RemoteAction =
+  | { type: 'TRANSPORT'; cmd: PlayerCommand | 'prev' }
+  | { type: 'SET_VOLUME'; value: number }
+  | { type: 'PLAY_QUEUE_ITEM'; queueId: string }
+  | { type: 'REMOVE_QUEUE_ITEM'; queueId: string }
+
+export type RemoteRoomState = {
+  roomCode: string
+  hostName: string
+  queue: SongItem[]
+  currentIndex: number
+  volume: number
+  playerMode: 'idle' | 'playing' | 'paused'
+  replayMode: ReplayMode
+  displayMode: 'idle' | 'desktop' | 'browser'
+  lastPlayerCommand: PlayerCommand | null
+  commandNonce: number
+  commandValue?: number
+  updatedAt: number
+}
+
+export type RelayClientMessage =
+  | {
+      type: 'JOIN_ROOM'
+      roomCode: string
+      role: RemoteRole
+      clientId: string
+      nickname?: string
+    }
+  | {
+      type: 'ROOM_STATE'
+      roomCode: string
+      state: RemoteRoomState
+    }
+  | {
+      type: 'REMOTE_ACTION'
+      roomCode: string
+      action: RemoteAction
+    }
+
+export type RelayServerMessage =
+  | {
+      type: 'ROOM_JOINED'
+      roomCode: string
+      role: RemoteRole
+      presence: RemotePresence
+    }
+  | {
+      type: 'ROOM_PRESENCE'
+      roomCode: string
+      presence: RemotePresence
+    }
+  | {
+      type: 'ROOM_STATE'
+      roomCode: string
+      state: RemoteRoomState
+    }
+  | {
+      type: 'REMOTE_ACTION'
+      roomCode: string
+      action: RemoteAction
+    }
+  | {
+      type: 'ROOM_ERROR'
+      roomCode?: string
+      message: string
+    }
 
 export type DesktopDisplayInfo = {
   index: number
@@ -73,7 +161,7 @@ export type OpenDisplayWindowResult = {
 export type DesktopBridgeApi = {
   isElectron: true
   getDisplays: () => Promise<DesktopDisplayInfo[]>
-  openDisplayWindow: (monitorIndex?: number) => Promise<OpenDisplayWindowResult>
+  openDisplayWindow: (monitorIndex?: number, roomCode?: string) => Promise<OpenDisplayWindowResult>
   sendSyncMessage: (msg: SyncMessage) => void
   onSyncMessage: (listener: (msg: SyncMessage) => void) => () => void
 }

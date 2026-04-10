@@ -1,0 +1,119 @@
+- generic [ref=e3]:
+  - generic [ref=e4]:
+    - generic [ref=e5]: Mobile Remote
+    - heading "Điều khiển KaraokeYT" [level=1] [ref=e6]
+    - generic [ref=e7]: Điện thoại này gửi lệnh tới máy host đang phát karaoke lên TV hoặc màn hình trình chiếu.
+  - generic [ref=e8]:
+    - generic [ref=e9]:
+      - generic [ref=e10]: Mã phòng
+      - generic [ref=e11]:
+        - 'textbox "VD: KTV123" [ref=e12]': MWZ8ZP
+        - button "Kết nối" [ref=e13] [cursor=pointer]:
+          - img [ref=e14]
+          - generic [ref=e17]: Kết nối
+    - generic [ref=e18]:
+      - generic [ref=e19]: "Relay: Sẵn sàng"
+      - generic [ref=e20]: "Host: 1"
+      - generic [ref=e21]: "Remote: 1"
+    - button "Rời phòng" [ref=e22] [cursor=pointer]:
+      - img [ref=e23]
+      - generic [ref=e26]: Rời phòng
+  - generic [ref=e27]:
+    - generic [ref=e28]:
+      - generic [ref=e29]:
+        - generic [ref=e30]: Đang phát
+        - generic [ref=e31]: Bai remote thu 2
+      - generic [ref=e32]: Đang phát
+    - generic [ref=e33]:
+      - generic [ref=e34]:
+        - generic [ref=e35]: Kênh
+        - generic [ref=e36]: Kenh test
+      - generic [ref=e37]:
+        - generic [ref=e38]: Lặp
+        - generic [ref=e39]: Không lặp
+      - generic [ref=e40]:
+        - generic [ref=e41]: Âm lượng
+        - generic [ref=e42]: 80%
+    - generic [ref=e43]:
+      - button "Bài trước" [ref=e44] [cursor=pointer]:
+        - img [ref=e45]
+        - generic [ref=e48]: Bài trước
+      - button "Từ đầu" [ref=e49] [cursor=pointer]:
+        - img [ref=e50]
+        - generic [ref=e53]: Từ đầu
+      - button "Phát" [ref=e54] [cursor=pointer]:
+        - img [ref=e55]
+        - generic [ref=e57]: Phát
+      - button "Tạm dừng" [ref=e58] [cursor=pointer]:
+        - img [ref=e59]
+        - generic [ref=e60]: Tạm dừng
+      - button "Tiếp theo" [active] [ref=e61] [cursor=pointer]:
+        - img [ref=e62]
+        - generic [ref=e65]: Tiếp theo
+    - generic [ref=e66]:
+      - generic [ref=e67]:
+        - generic [ref=e68]: Âm lượng trình chiếu
+        - generic [ref=e69]: 80%
+      - slider [ref=e70]: "80"
+  - generic [ref=e71]:
+    - generic [ref=e72]:
+      - generic [ref=e73]:
+        - generic [ref=e74]: Lượt hát
+        - generic [ref=e75]: Hàng chờ
+      - generic [ref=e76]: 5 bài
+    - generic [ref=e77]:
+      - generic [ref=e78]:
+        - generic [ref=e79]:
+          - generic [ref=e80]: Bai remote thu 1
+          - generic [ref=e81]: "Kênh: Kenh test"
+        - generic [ref=e82]:
+          - button "Phát" [ref=e148] [cursor=pointer]:
+            - img [ref=e84]
+            - generic [ref=e86]: Phát
+          - button "Xoá" [ref=e87] [cursor=pointer]:
+            - img [ref=e88]
+            - generic [ref=e91]: Xoá
+      - generic [ref=e92]:
+        - generic [ref=e93]:
+          - generic [ref=e94]: Bai remote thu 2
+          - generic [ref=e95]: "Kênh: Kenh test"
+        - generic [ref=e96]:
+          - button "Đang phát" [ref=e149] [cursor=pointer]:
+            - img [ref=e98]
+            - generic [ref=e100]: Đang phát
+          - button "Xoá" [ref=e101] [cursor=pointer]:
+            - img [ref=e102]
+            - generic [ref=e105]: Xoá
+      - generic [ref=e106]:
+        - generic [ref=e107]:
+          - generic [ref=e108]: Bai remote thu 3
+          - generic [ref=e109]: "Kênh: Kenh test"
+        - generic [ref=e110]:
+          - button "Phát" [ref=e111] [cursor=pointer]:
+            - img [ref=e112]
+            - generic [ref=e114]: Phát
+          - button "Xoá" [ref=e115] [cursor=pointer]:
+            - img [ref=e116]
+            - generic [ref=e119]: Xoá
+      - generic [ref=e120]:
+        - generic [ref=e121]:
+          - generic [ref=e122]: Bai remote thu 4
+          - generic [ref=e123]: "Kênh: Kenh test"
+        - generic [ref=e124]:
+          - button "Phát" [ref=e125] [cursor=pointer]:
+            - img [ref=e126]
+            - generic [ref=e128]: Phát
+          - button "Xoá" [ref=e129] [cursor=pointer]:
+            - img [ref=e130]
+            - generic [ref=e133]: Xoá
+      - generic [ref=e134]:
+        - generic [ref=e135]:
+          - generic [ref=e136]: Bai remote thu 5
+          - generic [ref=e137]: "Kênh: Kenh test"
+        - generic [ref=e138]:
+          - button "Phát" [ref=e139] [cursor=pointer]:
+            - img [ref=e140]
+            - generic [ref=e142]: Phát
+          - button "Xoá" [ref=e143] [cursor=pointer]:
+            - img [ref=e144]
+            - generic [ref=e147]: Xoá

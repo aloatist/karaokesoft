@@ -15,10 +15,10 @@ export async function layDanhSachManHinh(): Promise<DesktopDisplayInfo[]> {
   return bridge.getDisplays()
 }
 
-export async function moManHinhTrinhChieu(monitorIndex?: number): Promise<OpenDisplayWindowResult | null> {
+export async function moManHinhTrinhChieu(monitorIndex?: number, roomCode?: string): Promise<OpenDisplayWindowResult | null> {
   const bridge = layBridge()
   if (!bridge) return null
-  return bridge.openDisplayWindow(monitorIndex)
+  return bridge.openDisplayWindow(monitorIndex, roomCode)
 }
 
 export function guiDongBoDesktop(msg: SyncMessage) {

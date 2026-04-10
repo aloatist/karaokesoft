@@ -1,19 +1,31 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { AccountModal } from '../components/AccountModal'
 import { AppIcon } from '../components/AppIcon'
 import { OpenDisplayButton } from '../components/OpenDisplayButton'
 import { QueueList } from '../components/QueueList'
+import { RemotePairingModal } from '../components/RemotePairingModal'
 import { SearchBar } from '../components/SearchBar'
 import { SearchModeToggle } from '../components/SearchModeToggle'
 import { SearchResults } from '../components/SearchResults'
 import { SettingsModal } from '../components/SettingsModal'
 import { UserSwitcher } from '../components/UserSwitcher'
 import { phatLenhPlayer, useBroadcastReceiver, useBroadcastSender } from '../hooks/useBroadcastSync'
-import { coQuyen, USER_ROLE_LABEL } from '../lib/auth'
+import { AUTH_PROVIDER_LABEL, AUTH_SESSION_LABEL, coQuyen, USER_ROLE_LABEL } from '../lib/auth'
 import { useYouTubeSearch } from '../hooks/useYouTubeSearch'
+import {
+  docMaPhongRemoteDaLuu,
+  layRelayUrlMacDinh,
+  luuMaPhongRemote,
+  taoDuongDanDieuKhien,
+  taoDuongDanTrinhChieu,
+  taoDuongDanRemote,
+  taoKetNoiRelay,
+  taoMaPhongRemote,
+} from '../services/remoteRelay'
 import { useAuthStore } from '../store/authStore'
 import { useQueueStore } from '../store/queueStore'
 import { useSettingsStore } from '../store/settingsStore'
-import type { ReplayMode, SearchSong, SyncMessage } from '../types'
+import type { PlayerCommand, RemoteAction, RemotePresence, RemoteRelayStatus, ReplayMode, SearchSong, SyncMessage } from '../types'
 
 const BREAKPOINT_3_PANE = 1280
 const MOBILE_BREAKPOINT = 720
@@ -21,6 +33,7 @@ const MIN_SEARCH_PERCENT = 22
 const MIN_COMMAND_PERCENT = 28
 const MIN_QUEUE_PERCENT = 24
 const CONTROL_LAYOUT_STORAGE_KEY = 'karaokeyt-control-layout-v2'
+const EMPTY_REMOTE_PRESENCE: RemotePresence = { hosts: 0, remotes: 0, displays: 0 }
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n))
@@ -51,6 +64,18 @@ function docThongSoKhung() {
   }
 }
 
+function docThongSoMaPhongRemote() {
+  if (typeof window === 'undefined') {
+    return taoMaPhongRemote()
+  }
+  const params = new URLSearchParams(window.location.search)
+  const roomFromUrl = params.get('room')
+  if (roomFromUrl) {
+    return roomFromUrl
+  }
+  return docMaPhongRemoteDaLuu()
+}
+
 export function ControlScreen() {
   useBroadcastSender()
 
@@ -63,9 +88,14 @@ export function ControlScreen() {
   const { capNhat } = useSettingsStore((s) => s.actions)
   const users = useAuthStore((s) => s.users)
   const currentUserId = useAuthStore((s) => s.currentUserId)
-  const { chuyenNguoiDung } = useAuthStore((s) => s.actions)
+  const accounts = useAuthStore((s) => s.accounts)
+  const currentAccountId = useAuthStore((s) => s.currentAccountId)
+  const sessionMode = useAuthStore((s) => s.sessionMode)
+  const { chuyenNguoiDung, dangNhapTuyChon, chonTaiKhoan, xoaTaiKhoan, dangXuat } = useAuthStore((s) => s.actions)
 
+  const [openAccountModal, setOpenAccountModal] = useState(false)
   const [openSettings, setOpenSettings] = useState(false)
+  const [openRemoteModal, setOpenRemoteModal] = useState(false)
   const [query, setQuery] = useState('')
   const [volume, setVolume] = useState(80)
   const [toast, setToast] = useState<string | null>(null)
@@ -76,7 +106,15 @@ export function ControlScreen() {
   const [playerMode, setPlayerMode] = useState<'idle' | 'playing' | 'paused'>(() =>
     useQueueStore.getState().queue.length ? 'playing' : 'idle',
   )
+  const [relayPlayerCommand, setRelayPlayerCommand] = useState<{ cmd: PlayerCommand | null; value?: number; nonce: number }>({
+    cmd: null,
+    nonce: 0,
+  })
   const [displayMode, setDisplayMode] = useState<'idle' | 'desktop' | 'browser'>('idle')
+  const [remoteRoomCode, setRemoteRoomCode] = useState(() => docThongSoMaPhongRemote())
+  const [remoteRelayStatus, setRemoteRelayStatus] = useState<RemoteRelayStatus>('connecting')
+  const [remoteRelayMessage, setRemoteRelayMessage] = useState<string | null>(null)
+  const [remotePresence, setRemotePresence] = useState<RemotePresence>(EMPTY_REMOTE_PRESENCE)
   const [paneSizes, setPaneSizes] = useState(() => docThongSoKhung())
   const [isThreePane, setIsThreePane] = useState(() => window.innerWidth >= BREAKPOINT_3_PANE)
   const [isMobileLayout, setIsMobileLayout] = useState(() => window.innerWidth <= MOBILE_BREAKPOINT)
@@ -85,6 +123,7 @@ export function ControlScreen() {
   const searchInputRef = useRef<HTMLInputElement | null>(null)
   const commandPanelRef = useRef<HTMLDivElement | null>(null)
   const queuePanelRef = useRef<HTMLDivElement | null>(null)
+  const remoteConnectionRef = useRef<ReturnType<typeof taoKetNoiRelay> | null>(null)
   const activeButtonTimerRef = useRef<number | null>(null)
   const { status, results, errorMessage } = useYouTubeSearch(query)
 
@@ -94,6 +133,10 @@ export function ControlScreen() {
     () => users.find((user) => user.id === currentUserId) ?? users[0],
     [currentUserId, users],
   )
+  const taiKhoanHienTai = useMemo(
+    () => accounts.find((account) => account.id === currentAccountId) ?? null,
+    [accounts, currentAccountId],
+  )
   const vaiTroHienTai = nguoiDungHienTai?.role ?? 'viewer'
   const canOpenSettings = coQuyen(vaiTroHienTai, 'settings')
   const canManageUsers = coQuyen(vaiTroHienTai, 'manage-users')
@@ -101,11 +144,17 @@ export function ControlScreen() {
   const canQueueSongs = coQuyen(vaiTroHienTai, 'queue')
   const canPlayback = coQuyen(vaiTroHienTai, 'playback')
   const canOpenDisplay = coQuyen(vaiTroHienTai, 'display')
+  const canUseRemote = canQueueSongs || canPlayback
   const tongBai = queue.length
   const soBaiSapToi = baiDangPhat ? Math.max(queue.length - currentIndex - 1, 0) : queue.length
   const nhanKetQua =
     status === 'success' ? `${results.length} kết quả` : status === 'loading' ? 'Đang tìm…' : 'Sẵn sàng'
   const hienThiPlayerMode = baiDangPhat ? (playerMode === 'idle' ? 'playing' : playerMode) : 'idle'
+  const nhanTaiKhoan = taiKhoanHienTai?.displayName ?? 'Khách dùng nhanh'
+  const nhanDongBo = sessionMode === 'authenticated' ? 'Sẵn sàng đồng bộ' : 'Dữ liệu cục bộ'
+  const nhanTaiKhoanDayDu = taiKhoanHienTai
+    ? `${AUTH_PROVIDER_LABEL[taiKhoanHienTai.provider]}${taiKhoanHienTai.email ? ` · ${taiKhoanHienTai.email}` : ''}`
+    : 'Không đăng nhập'
 
   const nhanCheDoLapLai = useMemo(() => {
     const labels: Record<ReplayMode, string> = {
@@ -116,8 +165,22 @@ export function ControlScreen() {
     return labels[replayMode]
   }, [replayMode])
 
+  const remoteRelayUrl = useMemo(() => layRelayUrlMacDinh(), [])
+  const controlJoinUrl = useMemo(() => taoDuongDanDieuKhien(remoteRoomCode), [remoteRoomCode])
+  const displayJoinUrl = useMemo(() => taoDuongDanTrinhChieu(remoteRoomCode), [remoteRoomCode])
+  const remoteJoinUrl = useMemo(() => taoDuongDanRemote(remoteRoomCode), [remoteRoomCode])
+
   const thongBao = useCallback((message: string) => {
     setToast(message)
+  }, [])
+
+  const guiLenhTrinhChieu = useCallback((cmd: PlayerCommand, value?: number) => {
+    phatLenhPlayer(cmd, value)
+    setRelayPlayerCommand((current) => ({
+      cmd,
+      value,
+      nonce: current.nonce + 1,
+    }))
   }, [])
 
   const duaDenKhung = useCallback((panel: 'command' | 'queue') => {
@@ -156,7 +219,7 @@ export function ControlScreen() {
 
     if (msg.type === 'SONG_ENDED') {
       if (replayMode === 'repeat-one' && baiDangPhat) {
-        phatLenhPlayer('play')
+        guiLenhTrinhChieu('play')
         setPlayerMode('playing')
         thongBao('Đang phát lại bài hiện tại')
         return
@@ -184,7 +247,7 @@ export function ControlScreen() {
         setPlayerMode('paused')
       }
     }
-  }, [autoplayNext, baiDangPhat, currentIndex, nextSong, queue.length, removeSong, replayMode, setCurrentIndex, thongBao])
+  }, [autoplayNext, baiDangPhat, currentIndex, guiLenhTrinhChieu, nextSong, queue.length, removeSong, replayMode, setCurrentIndex, thongBao])
 
   useBroadcastReceiver(onMsg)
 
@@ -239,6 +302,13 @@ export function ControlScreen() {
   }, [paneSizes])
 
   useEffect(() => {
+    const url = new URL(window.location.href)
+    url.searchParams.delete('screen')
+    url.searchParams.set('room', remoteRoomCode)
+    window.history.replaceState({}, '', url.toString())
+  }, [remoteRoomCode])
+
+  useEffect(() => {
     if (!activeResizer || !isThreePane) return
 
     function onPointerMove(event: PointerEvent) {
@@ -285,6 +355,40 @@ export function ControlScreen() {
     }, 650)
   }, [])
 
+  const moModalTaiKhoan = useCallback(() => {
+    nhanNut('open-account')
+    setOpenAccountModal(true)
+  }, [nhanNut])
+
+  const dangNhapTaiKhoan = useCallback(
+    (payload: { displayName: string; email?: string; provider: 'local' | 'google' | 'email' }) => {
+      dangNhapTuyChon(payload)
+      thongBao(`Đã kích hoạt hồ sơ ${payload.displayName}`)
+    },
+    [dangNhapTuyChon, thongBao],
+  )
+
+  const dungTaiKhoanDaLuu = useCallback(
+    (accountId: string) => {
+      chonTaiKhoan(accountId)
+      thongBao('Đã chuyển sang tài khoản đã lưu')
+    },
+    [chonTaiKhoan, thongBao],
+  )
+
+  const xoaTaiKhoanDaLuu = useCallback(
+    (accountId: string) => {
+      xoaTaiKhoan(accountId)
+      thongBao('Đã xoá tài khoản lưu trên máy')
+    },
+    [thongBao, xoaTaiKhoan],
+  )
+
+  const dangXuatTaiKhoan = useCallback(() => {
+    dangXuat()
+    thongBao('Đã chuyển về chế độ khách')
+  }, [dangXuat, thongBao])
+
   const chuyenCheDoLapLai = useCallback(() => {
     if (!canPlayback) return
     nhanNut('transport-repeat')
@@ -314,43 +418,43 @@ export function ControlScreen() {
     if (!baiDangPhat || !canPlayback) return
     nhanNut('transport-prev')
     prevSong()
-    phatLenhPlayer('play')
+    guiLenhTrinhChieu('play')
     setPlayerMode('playing')
     thongBao('Đã quay lại bài trước')
-  }, [baiDangPhat, canPlayback, nhanNut, prevSong, thongBao])
+  }, [baiDangPhat, canPlayback, guiLenhTrinhChieu, nhanNut, prevSong, thongBao])
 
   const batDauPhat = useCallback(() => {
     if (!canPlayback) return
     nhanNut('transport-play')
-    phatLenhPlayer('play')
+    guiLenhTrinhChieu('play')
     setPlayerMode('playing')
     thongBao('Đã gửi lệnh phát')
-  }, [canPlayback, nhanNut, thongBao])
+  }, [canPlayback, guiLenhTrinhChieu, nhanNut, thongBao])
 
   const phatLaiTuDau = useCallback(() => {
     if (!baiDangPhat || !canPlayback) return
     nhanNut('transport-restart')
-    phatLenhPlayer('restart')
+    guiLenhTrinhChieu('restart')
     setPlayerMode('playing')
     thongBao('Đã phát lại từ đầu')
-  }, [baiDangPhat, canPlayback, nhanNut, thongBao])
+  }, [baiDangPhat, canPlayback, guiLenhTrinhChieu, nhanNut, thongBao])
 
   const tamDungPhat = useCallback(() => {
     if (!canPlayback) return
     nhanNut('transport-pause')
-    phatLenhPlayer('pause')
+    guiLenhTrinhChieu('pause')
     setPlayerMode('paused')
     thongBao('Đã gửi lệnh tạm dừng')
-  }, [canPlayback, nhanNut, thongBao])
+  }, [canPlayback, guiLenhTrinhChieu, nhanNut, thongBao])
 
   const sangBaiTiepTheo = useCallback(() => {
     if (!baiDangPhat || !canPlayback) return
     nhanNut('transport-next')
-    phatLenhPlayer('skip')
+    guiLenhTrinhChieu('skip')
     nextSong()
     setPlayerMode('playing')
     thongBao('Đã chuyển sang bài tiếp theo')
-  }, [baiDangPhat, canPlayback, nhanNut, nextSong, thongBao])
+  }, [baiDangPhat, canPlayback, guiLenhTrinhChieu, nhanNut, nextSong, thongBao])
 
   useEffect(() => {
     function dangNhapLieu(target: EventTarget | null) {
@@ -416,24 +520,82 @@ export function ControlScreen() {
   const phatNgay = useCallback((song: SearchSong) => {
     if (!canQueueSongs || !canPlayback) return
     addSongVaPhatNgay(song)
-    phatLenhPlayer('play')
+    guiLenhTrinhChieu('play')
     setPlayerMode('playing')
     setRecentAction({ videoId: song.videoId, message: 'Đã chuyển lên đang phát' })
     setHighlightPanel('command')
     duaDenKhung('command')
     thongBao('Đã chuyển sang bài vừa chọn')
-  }, [addSongVaPhatNgay, canPlayback, canQueueSongs, duaDenKhung, thongBao])
+  }, [addSongVaPhatNgay, canPlayback, canQueueSongs, duaDenKhung, guiLenhTrinhChieu, thongBao])
 
   const phatTuHangCho = useCallback((queueId: string) => {
     if (!canPlayback) return
     const targetIndex = queue.findIndex((song) => song.queueId === queueId)
     if (targetIndex < 0) return
     setCurrentIndex(targetIndex)
-    phatLenhPlayer('play')
+    guiLenhTrinhChieu('play')
     setPlayerMode('playing')
     nhanNut(`queue-play:${queueId}`)
     thongBao('Đã chuyển bài từ hàng chờ lên phát')
-  }, [canPlayback, nhanNut, queue, setCurrentIndex, thongBao])
+  }, [canPlayback, guiLenhTrinhChieu, nhanNut, queue, setCurrentIndex, thongBao])
+
+  const xuLyLenhRemote = useCallback((action: RemoteAction) => {
+    if (action.type === 'TRANSPORT') {
+      if (action.cmd === 'play') {
+        batDauPhat()
+        return
+      }
+      if (action.cmd === 'pause') {
+        tamDungPhat()
+        return
+      }
+      if (action.cmd === 'skip') {
+        sangBaiTiepTheo()
+        return
+      }
+      if (action.cmd === 'restart') {
+        phatLaiTuDau()
+        return
+      }
+      if (action.cmd === 'prev') {
+        quaBaiTruoc()
+      }
+      return
+    }
+
+    if (action.type === 'SET_VOLUME') {
+      if (!canPlayback) return
+      const nextVolume = clamp(Math.round(action.value), 0, 100)
+      setVolume(nextVolume)
+      guiLenhTrinhChieu('volume', nextVolume)
+      thongBao(`Remote đặt âm lượng ${nextVolume}%`)
+      return
+    }
+
+    if (action.type === 'PLAY_QUEUE_ITEM') {
+      if (!canPlayback) return
+      phatTuHangCho(action.queueId)
+      return
+    }
+
+    if (action.type === 'REMOVE_QUEUE_ITEM') {
+      if (!canQueueSongs) return
+      removeSong(action.queueId)
+      thongBao('Remote đã xoá một bài khỏi hàng chờ')
+    }
+  }, [
+    batDauPhat,
+    canPlayback,
+    canQueueSongs,
+    phatLaiTuDau,
+    phatTuHangCho,
+    quaBaiTruoc,
+    removeSong,
+    sangBaiTiepTheo,
+    tamDungPhat,
+    thongBao,
+    guiLenhTrinhChieu,
+  ])
 
   const xoaTatCa = useCallback(() => {
     if (!queue.length || !canQueueSongs) return
@@ -447,6 +609,75 @@ export function ControlScreen() {
     setDisplayMode(mode)
     thongBao(mode === 'desktop' ? 'Đã mở màn hình trình chiếu trên desktop' : 'Đã mở màn hình trình chiếu bằng trình duyệt')
   }, [thongBao])
+
+  const dungMaTV = useCallback((roomCode: string) => {
+    setRemotePresence(EMPTY_REMOTE_PRESENCE)
+    setRemoteRoomCode(roomCode)
+    thongBao(`Đã liên kết theo mã TV: ${roomCode}`)
+  }, [thongBao])
+
+  const taoPhongRemoteMoi = useCallback(() => {
+    const nextRoomCode = taoMaPhongRemote()
+    setRemotePresence(EMPTY_REMOTE_PRESENCE)
+    setRemoteRoomCode(nextRoomCode)
+    thongBao(`Đã tạo mã TV mới: ${nextRoomCode}`)
+  }, [thongBao])
+
+  useEffect(() => {
+    luuMaPhongRemote(remoteRoomCode)
+  }, [remoteRoomCode])
+
+  useEffect(() => {
+    const connection = taoKetNoiRelay({
+      roomCode: remoteRoomCode,
+      role: 'host',
+      relayUrl: remoteRelayUrl,
+      nickname: nguoiDungHienTai?.name ?? 'Host',
+      onStatusChange: (status, message) => {
+        setRemoteRelayStatus(status)
+        setRemoteRelayMessage(message ?? null)
+      },
+      onPresenceChange: setRemotePresence,
+      onRemoteAction: xuLyLenhRemote,
+    })
+
+    remoteConnectionRef.current = connection
+    return () => {
+      connection.close()
+      remoteConnectionRef.current = null
+    }
+  }, [nguoiDungHienTai?.name, remoteRelayUrl, remoteRoomCode, xuLyLenhRemote])
+
+  useEffect(() => {
+    if (!remoteConnectionRef.current || remoteRelayStatus !== 'connected') return
+    remoteConnectionRef.current.sendState({
+      roomCode: remoteRoomCode,
+      hostName: nguoiDungHienTai?.name ?? 'Host',
+      queue,
+      currentIndex,
+      volume,
+      playerMode: hienThiPlayerMode,
+      replayMode,
+      displayMode,
+      lastPlayerCommand: relayPlayerCommand.cmd,
+      commandNonce: relayPlayerCommand.nonce,
+      commandValue: relayPlayerCommand.value,
+      updatedAt: Date.now(),
+    })
+  }, [
+    currentIndex,
+    displayMode,
+    hienThiPlayerMode,
+    nguoiDungHienTai?.name,
+    queue,
+    relayPlayerCommand.cmd,
+    relayPlayerCommand.nonce,
+    relayPlayerCommand.value,
+    remoteRelayStatus,
+    remoteRoomCode,
+    replayMode,
+    volume,
+  ])
 
   const layoutStyle = useMemo(
     () =>
@@ -618,7 +849,7 @@ export function ControlScreen() {
                   onChange={(e) => {
                     const nextVolume = Number(e.target.value)
                     setVolume(nextVolume)
-                    phatLenhPlayer('volume', nextVolume)
+                    guiLenhTrinhChieu('volume', nextVolume)
                   }}
                 />
               </div>
@@ -687,13 +918,36 @@ export function ControlScreen() {
           <div className="appSub">Màn hình điều khiển</div>
         </div>
         <div className="headerActions">
-          <UserSwitcher users={users} currentUserId={currentUserId} onSwitch={chuyenNguoiDung} />
+          <UserSwitcher
+            users={users}
+            currentUserId={currentUserId}
+            onSwitch={chuyenNguoiDung}
+            sessionMode={sessionMode}
+            currentAccount={taiKhoanHienTai}
+            onOpenAccount={moModalTaiKhoan}
+            onLogout={dangXuatTaiKhoan}
+          />
           <OpenDisplayButton
             className={`primary buttonToneAccent ${activeButtonKey === 'open-display' ? 'buttonStateActive' : ''}`}
             disabled={!canOpenDisplay}
+            roomCode={remoteRoomCode}
             onBeforeOpen={() => nhanNut('open-display')}
             onOpened={moDisplayThanhCong}
           />
+          <button
+            className={`primary buttonToneMuted buttonWithIcon ${activeButtonKey === 'open-remote' ? 'buttonStateActive' : ''}`}
+            data-pressed={activeButtonKey === 'open-remote'}
+            disabled={!canUseRemote}
+            onClick={() => {
+              if (!canUseRemote) return
+              nhanNut('open-remote')
+              setOpenRemoteModal(true)
+            }}
+            type="button"
+          >
+            <AppIcon name="control" className="buttonIcon" />
+            <span className="buttonLabel">Mã TV</span>
+          </button>
           <button
             className={`primary buttonToneMuted buttonWithIcon ${activeButtonKey === 'open-settings' ? 'buttonStateActive' : ''}`}
             data-pressed={activeButtonKey === 'open-settings'}
@@ -712,6 +966,13 @@ export function ControlScreen() {
       </header>
 
       <div className="statusStrip">
+        <div className={`statusChip ${sessionMode === 'authenticated' ? 'statusChipSuccess' : ''}`}>
+          Tài khoản: {AUTH_SESSION_LABEL[sessionMode]} · {nhanTaiKhoan}
+        </div>
+        <div className="statusChip statusChipMeta">Hồ sơ: {nhanTaiKhoanDayDu}</div>
+        <div className="statusChip statusChipMeta">Đồng bộ: {nhanDongBo}</div>
+        <div className="statusChip">Mã TV: {remoteRoomCode}</div>
+        <div className="statusChip">TV/laptop: {remotePresence.displays}</div>
         <div className="statusChip statusChipAccent">
           Trình chiếu: {displayMode === 'desktop' ? 'Desktop' : displayMode === 'browser' ? 'Trình duyệt' : 'Chưa mở'}
         </div>
@@ -825,7 +1086,39 @@ export function ControlScreen() {
       )}
 
       {toast ? <div className="toastMessage">{toast}</div> : null}
-      <SettingsModal open={openSettings && canManageUsers} onClose={() => setOpenSettings(false)} />
+      <AccountModal
+        key={`${openAccountModal ? 'open' : 'closed'}:${currentAccountId ?? 'guest'}`}
+        open={openAccountModal}
+        onClose={() => setOpenAccountModal(false)}
+        sessionMode={sessionMode}
+        currentAccount={taiKhoanHienTai}
+        accounts={accounts}
+        onLogin={dangNhapTaiKhoan}
+        onUseAccount={dungTaiKhoanDaLuu}
+        onRemoveAccount={xoaTaiKhoanDaLuu}
+        onLogout={dangXuatTaiKhoan}
+      />
+      <RemotePairingModal
+        key={`${openRemoteModal ? 'open' : 'closed'}:${remoteRoomCode}`}
+        open={openRemoteModal && canUseRemote}
+        onClose={() => setOpenRemoteModal(false)}
+        roomCode={remoteRoomCode}
+        controlUrl={controlJoinUrl}
+        displayUrl={displayJoinUrl}
+        remoteUrl={remoteJoinUrl}
+        relayUrl={remoteRelayUrl}
+        status={remoteRelayStatus}
+        statusMessage={remoteRelayMessage ?? undefined}
+        presence={remotePresence}
+        onRegenerate={taoPhongRemoteMoi}
+        onUseRoomCode={dungMaTV}
+      />
+      <SettingsModal
+        open={openSettings && canOpenSettings}
+        onClose={() => setOpenSettings(false)}
+        canManageUsers={canManageUsers}
+        displayRoomCode={remoteRoomCode}
+      />
     </div>
   )
 }

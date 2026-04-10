@@ -120,7 +120,7 @@ export function YouTubePlayer({
     if (commandType === 'pause') pause()
     if (commandType === 'restart') restart()
     if (commandType === 'volume') setVolume(typeof commandValue === 'number' ? commandValue : volume)
-  }, [commandNonce, commandType, commandValue, pause, play, restart, setVolume, volume])
+  }, [commandNonce, commandType, commandValue, pause, play, ready, restart, setVolume, volume])
 
   const coLoiPlayer = typeof lastError === 'number'
   const dangThuMoKhoa = videoDaThuMoKhoa === currentVideoKey && playerState !== 'playing'

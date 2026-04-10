@@ -126,10 +126,15 @@ function chonManHinh(preferredIndex) {
   }
 }
 
-async function taiRenderer(targetWindow, targetScreen) {
+async function taiRenderer(targetWindow, targetScreen, roomCode) {
   const baseUrl = await batMayChuRenderer()
   const url = new URL(baseUrl)
   url.searchParams.set('screen', targetScreen)
+  if (roomCode) {
+    url.searchParams.set('room', String(roomCode))
+  } else {
+    url.searchParams.delete('room')
+  }
   await targetWindow.loadURL(url.toString())
 }
 
@@ -192,8 +197,11 @@ async function taoCuaSoDieuKhien() {
   return controlWindow
 }
 
-async function taoCuaSoTrinhChieu(preferredIndex) {
+async function taoCuaSoTrinhChieu(preferredIndex, roomCode) {
   if (displayWindow && !displayWindow.isDestroyed()) {
+    if (roomCode) {
+      await taiRenderer(displayWindow, 'display', roomCode)
+    }
     const display = apDungKhungCuaSoTrinhChieu(displayWindow, preferredIndex)
     displayWindow.show()
     displayWindow.focus()
@@ -225,7 +233,7 @@ async function taoCuaSoTrinhChieu(preferredIndex) {
     displayWindow = null
   })
 
-  await taiRenderer(displayWindow, 'display')
+  await taiRenderer(displayWindow, 'display', roomCode)
   const appliedDisplay = apDungKhungCuaSoTrinhChieu(displayWindow, preferredIndex)
   displayWindow.show()
 
@@ -235,8 +243,8 @@ async function taoCuaSoTrinhChieu(preferredIndex) {
 function dangKyIpc() {
   ipcMain.handle('karaoke:get-displays', () => layDanhSachManHinh())
 
-  ipcMain.handle('karaoke:open-display-window', async (_event, preferredIndex) => {
-    return taoCuaSoTrinhChieu(preferredIndex)
+  ipcMain.handle('karaoke:open-display-window', async (_event, preferredIndex, roomCode) => {
+    return taoCuaSoTrinhChieu(preferredIndex, roomCode)
   })
 
   ipcMain.on('karaoke:sync', (event, msg) => {
