@@ -1,0 +1,46 @@
+name: Build Desktop Apps
+
+on:
+  workflow_dispatch:
+
+jobs:
+  package:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS
+            os: macos-latest
+            command: npm run build:mac
+          - name: Windows
+            os: windows-latest
+            command: npm run build:win
+          - name: Linux
+            os: ubuntu-latest
+            command: npm run build:linux
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build package
+        run: ${{ matrix.command }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: karaokeyt-${{ runner.os }}
+          path: release/*
+          if-no-files-found: error

@@ -32,6 +32,18 @@ type VideoDetailsResponse = {
   items?: VideoDetailsItem[]
 }
 
+type SearchOptions = {
+  karaokeFilterEnabled?: boolean
+  language?: string
+  maxResults?: number
+}
+
+type ProxySearchResponse = {
+  ok?: boolean
+  message?: string
+  items?: SearchSong[]
+}
+
 function getThumbnailUrl(item: SearchItem) {
   return item.snippet.thumbnails?.medium?.url ?? item.snippet.thumbnails?.default?.url ?? ''
 }
@@ -59,11 +71,7 @@ async function fetchVideoDetails(videoIds: string[], apiKey: string) {
 export async function searchSongs(
   query: string,
   apiKey: string,
-  opts?: {
-    karaokeFilterEnabled?: boolean
-    language?: string
-    maxResults?: number
-  },
+  opts?: SearchOptions,
 ): Promise<SearchSong[]> {
   const karaokeFilterEnabled = opts?.karaokeFilterEnabled ?? true
   const language = opts?.language ?? 'vi'
@@ -111,4 +119,28 @@ export async function searchSongs(
       }
     })
     .filter((x): x is SearchSong => x !== null)
+}
+
+export async function searchSongsViaProxy(
+  query: string,
+  proxyUrl: string,
+  opts?: SearchOptions,
+): Promise<SearchSong[]> {
+  const karaokeFilterEnabled = opts?.karaokeFilterEnabled ?? true
+  const language = opts?.language ?? 'vi'
+  const maxResults = String(opts?.maxResults ?? 12)
+  const url = new URL(proxyUrl, window.location.href)
+
+  url.searchParams.set('q', query)
+  url.searchParams.set('karaoke', karaokeFilterEnabled ? '1' : '0')
+  url.searchParams.set('language', language)
+  url.searchParams.set('maxResults', maxResults)
+
+  const res = await fetch(url)
+  const json = (await res.json().catch(() => ({}))) as ProxySearchResponse
+
+  if (res.status === 403 || json.message === 'API_QUOTA_EXCEEDED') throw new Error('API_QUOTA_EXCEEDED')
+  if (!res.ok || json.ok === false) throw new Error(json.message || `Lỗi YouTube proxy: ${res.status}`)
+
+  return Array.isArray(json.items) ? json.items : []
 }

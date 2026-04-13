@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { AccountModal } from '../components/AccountModal'
 import { AppIcon } from '../components/AppIcon'
+import { LegalModal } from '../components/LegalModal'
 import { OpenDisplayButton } from '../components/OpenDisplayButton'
 import { QueueList } from '../components/QueueList'
 import { RemotePairingModal } from '../components/RemotePairingModal'
@@ -9,18 +10,22 @@ import { SearchModeToggle } from '../components/SearchModeToggle'
 import { SearchResults } from '../components/SearchResults'
 import { SettingsModal } from '../components/SettingsModal'
 import { UserSwitcher } from '../components/UserSwitcher'
-import { phatLenhPlayer, useBroadcastReceiver, useBroadcastSender } from '../hooks/useBroadcastSync'
-import { AUTH_PROVIDER_LABEL, AUTH_SESSION_LABEL, coQuyen, USER_ROLE_LABEL } from '../lib/auth'
+import { phatCaiDatTrinhChieu, phatLenhPlayer, useBroadcastReceiver, useBroadcastSender } from '../hooks/useBroadcastSync'
+import { AUTH_SESSION_LABEL, coQuyen, USER_ROLE_LABEL } from '../lib/auth'
 import { useYouTubeSearch } from '../hooks/useYouTubeSearch'
 import {
+  chuanHoaTokenPhongRemote,
   docMaPhongRemoteDaLuu,
+  docTokenPhongRemoteDaLuu,
   layRelayUrlMacDinh,
   luuMaPhongRemote,
+  luuTokenPhongRemote,
   taoDuongDanDieuKhien,
   taoDuongDanTrinhChieu,
   taoDuongDanRemote,
   taoKetNoiRelay,
   taoMaPhongRemote,
+  taoTokenPhongRemote,
 } from '../services/remoteRelay'
 import { useAuthStore } from '../store/authStore'
 import { useQueueStore } from '../store/queueStore'
@@ -76,6 +81,18 @@ function docThongSoMaPhongRemote() {
   return docMaPhongRemoteDaLuu()
 }
 
+function docThongSoTokenPhongRemote() {
+  if (typeof window === 'undefined') {
+    return taoTokenPhongRemote()
+  }
+  const params = new URLSearchParams(window.location.search)
+  const tokenFromUrl = params.get('token')
+  if (tokenFromUrl) {
+    return chuanHoaTokenPhongRemote(tokenFromUrl)
+  }
+  return docTokenPhongRemoteDaLuu()
+}
+
 export function ControlScreen() {
   useBroadcastSender()
 
@@ -85,17 +102,19 @@ export function ControlScreen() {
     useQueueStore((s) => s.actions)
   const autoplayNext = useSettingsStore((s) => s.autoplayNext)
   const replayMode = useSettingsStore((s) => s.replayMode)
+  const displayAd = useSettingsStore((s) => s.displayAd)
   const { capNhat } = useSettingsStore((s) => s.actions)
   const users = useAuthStore((s) => s.users)
   const currentUserId = useAuthStore((s) => s.currentUserId)
-  const accounts = useAuthStore((s) => s.accounts)
-  const currentAccountId = useAuthStore((s) => s.currentAccountId)
   const sessionMode = useAuthStore((s) => s.sessionMode)
-  const { chuyenNguoiDung, dangNhapTuyChon, chonTaiKhoan, xoaTaiKhoan, dangXuat } = useAuthStore((s) => s.actions)
+  const { dangNhapUser, khoiTaoQuanTriChinh, dangXuat } = useAuthStore((s) => s.actions)
 
   const [openAccountModal, setOpenAccountModal] = useState(false)
   const [openSettings, setOpenSettings] = useState(false)
+  const [openLegal, setOpenLegal] = useState(false)
   const [openRemoteModal, setOpenRemoteModal] = useState(false)
+  const [openMobileMenu, setOpenMobileMenu] = useState(false)
+  const [settingsSyncNonce, setSettingsSyncNonce] = useState(0)
   const [query, setQuery] = useState('')
   const [volume, setVolume] = useState(80)
   const [toast, setToast] = useState<string | null>(null)
@@ -112,6 +131,7 @@ export function ControlScreen() {
   })
   const [displayMode, setDisplayMode] = useState<'idle' | 'desktop' | 'browser'>('idle')
   const [remoteRoomCode, setRemoteRoomCode] = useState(() => docThongSoMaPhongRemote())
+  const [remoteRoomToken, setRemoteRoomToken] = useState(() => docThongSoTokenPhongRemote())
   const [remoteRelayStatus, setRemoteRelayStatus] = useState<RemoteRelayStatus>('connecting')
   const [remoteRelayMessage, setRemoteRelayMessage] = useState<string | null>(null)
   const [remotePresence, setRemotePresence] = useState<RemotePresence>(EMPTY_REMOTE_PRESENCE)
@@ -133,13 +153,12 @@ export function ControlScreen() {
     () => users.find((user) => user.id === currentUserId) ?? users[0],
     [currentUserId, users],
   )
-  const taiKhoanHienTai = useMemo(
-    () => accounts.find((account) => account.id === currentAccountId) ?? null,
-    [accounts, currentAccountId],
-  )
-  const vaiTroHienTai = nguoiDungHienTai?.role ?? 'viewer'
+  const userDangDangNhap = sessionMode === 'authenticated' ? (nguoiDungHienTai ?? null) : null
+  const canThietLapQuanTri = !users.some((user) => user.role === 'admin' && user.isOwner && user.pin)
+  const vaiTroHienTai = userDangDangNhap?.role ?? 'viewer'
   const canOpenSettings = coQuyen(vaiTroHienTai, 'settings')
   const canManageUsers = coQuyen(vaiTroHienTai, 'manage-users')
+  const canManageDisplayAd = coQuyen(vaiTroHienTai, 'manage-ads')
   const canSearch = coQuyen(vaiTroHienTai, 'search')
   const canQueueSongs = coQuyen(vaiTroHienTai, 'queue')
   const canPlayback = coQuyen(vaiTroHienTai, 'playback')
@@ -150,11 +169,12 @@ export function ControlScreen() {
   const nhanKetQua =
     status === 'success' ? `${results.length} kết quả` : status === 'loading' ? 'Đang tìm…' : 'Sẵn sàng'
   const hienThiPlayerMode = baiDangPhat ? (playerMode === 'idle' ? 'playing' : playerMode) : 'idle'
-  const nhanTaiKhoan = taiKhoanHienTai?.displayName ?? 'Khách dùng nhanh'
-  const nhanDongBo = sessionMode === 'authenticated' ? 'Sẵn sàng đồng bộ' : 'Dữ liệu cục bộ'
-  const nhanTaiKhoanDayDu = taiKhoanHienTai
-    ? `${AUTH_PROVIDER_LABEL[taiKhoanHienTai.provider]}${taiKhoanHienTai.email ? ` · ${taiKhoanHienTai.email}` : ''}`
-    : 'Không đăng nhập'
+  const nhanTaiKhoan = userDangDangNhap?.name ?? 'Khách dùng nhanh'
+  const nhanDongBo = sessionMode === 'authenticated' ? 'Cookie/local' : 'Dữ liệu cục bộ'
+  const nhanTaiKhoanDayDu = userDangDangNhap
+    ? `${userDangDangNhap.username} · ${USER_ROLE_LABEL[userDangDangNhap.role]}${userDangDangNhap.isOwner ? ' · Quản trị chính' : ''}`
+    : 'Chưa đăng nhập'
+  const hienThiModalTaiKhoan = openAccountModal || canThietLapQuanTri
 
   const nhanCheDoLapLai = useMemo(() => {
     const labels: Record<ReplayMode, string> = {
@@ -166,9 +186,9 @@ export function ControlScreen() {
   }, [replayMode])
 
   const remoteRelayUrl = useMemo(() => layRelayUrlMacDinh(), [])
-  const controlJoinUrl = useMemo(() => taoDuongDanDieuKhien(remoteRoomCode), [remoteRoomCode])
-  const displayJoinUrl = useMemo(() => taoDuongDanTrinhChieu(remoteRoomCode), [remoteRoomCode])
-  const remoteJoinUrl = useMemo(() => taoDuongDanRemote(remoteRoomCode), [remoteRoomCode])
+  const controlJoinUrl = useMemo(() => taoDuongDanDieuKhien(remoteRoomCode, remoteRoomToken), [remoteRoomCode, remoteRoomToken])
+  const displayJoinUrl = useMemo(() => taoDuongDanTrinhChieu(remoteRoomCode, remoteRoomToken), [remoteRoomCode, remoteRoomToken])
+  const remoteJoinUrl = useMemo(() => taoDuongDanRemote(remoteRoomCode, remoteRoomToken), [remoteRoomCode, remoteRoomToken])
 
   const thongBao = useCallback((message: string) => {
     setToast(message)
@@ -196,6 +216,27 @@ export function ControlScreen() {
   }, [isMobileLayout, isThreePane])
 
   const onMsg = useCallback((msg: SyncMessage) => {
+    if (msg.type === 'SKIP_REQUEST') {
+      if (!baiDangPhat) return
+
+      if (!canPlayback) {
+        thongBao('User hiện tại không có quyền bỏ qua bài')
+        return
+      }
+
+      if (currentIndex >= queue.length - 1) {
+        setPlayerMode('paused')
+        guiLenhTrinhChieu('pause')
+        thongBao('Không còn bài kế tiếp để bỏ qua')
+        return
+      }
+
+      nextSong()
+      setPlayerMode('playing')
+      thongBao(msg.reason === 'ad-long' ? 'Đã bỏ qua bài vì quảng cáo quá lâu' : 'Đã bỏ qua bài hiện tại')
+      return
+    }
+
     if (msg.type === 'PLAYER_ERROR') {
       if (!baiDangPhat) return
       if (msg.videoId && baiDangPhat.videoId !== msg.videoId) return
@@ -247,9 +288,13 @@ export function ControlScreen() {
         setPlayerMode('paused')
       }
     }
-  }, [autoplayNext, baiDangPhat, currentIndex, guiLenhTrinhChieu, nextSong, queue.length, removeSong, replayMode, setCurrentIndex, thongBao])
+  }, [autoplayNext, baiDangPhat, canPlayback, currentIndex, guiLenhTrinhChieu, nextSong, queue.length, removeSong, replayMode, setCurrentIndex, thongBao])
 
   useBroadcastReceiver(onMsg)
+
+  useEffect(() => {
+    phatCaiDatTrinhChieu({ displayAd })
+  }, [displayAd, settingsSyncNonce])
 
   useEffect(() => {
     if (!toast) return
@@ -285,6 +330,7 @@ export function ControlScreen() {
       setIsMobileLayout(nextMobileLayout)
       if (!nextMobileLayout) {
         setMobilePanel(null)
+        setOpenMobileMenu(false)
       }
       if (!nextThreePane) {
         setActiveResizer(null)
@@ -305,8 +351,9 @@ export function ControlScreen() {
     const url = new URL(window.location.href)
     url.searchParams.delete('screen')
     url.searchParams.set('room', remoteRoomCode)
+    url.searchParams.set('token', remoteRoomToken)
     window.history.replaceState({}, '', url.toString())
-  }, [remoteRoomCode])
+  }, [remoteRoomCode, remoteRoomToken])
 
   useEffect(() => {
     if (!activeResizer || !isThreePane) return
@@ -361,27 +408,21 @@ export function ControlScreen() {
   }, [nhanNut])
 
   const dangNhapTaiKhoan = useCallback(
-    (payload: { displayName: string; email?: string; provider: 'local' | 'google' | 'email' }) => {
-      dangNhapTuyChon(payload)
-      thongBao(`Đã kích hoạt hồ sơ ${payload.displayName}`)
+    (payload: { username: string; pin: string; remember: boolean }) => {
+      const result = dangNhapUser(payload)
+      thongBao(result.message)
+      return result
     },
-    [dangNhapTuyChon, thongBao],
+    [dangNhapUser, thongBao],
   )
 
-  const dungTaiKhoanDaLuu = useCallback(
-    (accountId: string) => {
-      chonTaiKhoan(accountId)
-      thongBao('Đã chuyển sang tài khoản đã lưu')
+  const thietLapQuanTriChinh = useCallback(
+    (payload: { name: string; username: string; pin: string; remember: boolean }) => {
+      const result = khoiTaoQuanTriChinh(payload)
+      thongBao(result.message)
+      return result
     },
-    [chonTaiKhoan, thongBao],
-  )
-
-  const xoaTaiKhoanDaLuu = useCallback(
-    (accountId: string) => {
-      xoaTaiKhoan(accountId)
-      thongBao('Đã xoá tài khoản lưu trên máy')
-    },
-    [thongBao, xoaTaiKhoan],
+    [khoiTaoQuanTriChinh, thongBao],
   )
 
   const dangXuatTaiKhoan = useCallback(() => {
@@ -613,6 +654,7 @@ export function ControlScreen() {
   const dungMaTV = useCallback((roomCode: string) => {
     setRemotePresence(EMPTY_REMOTE_PRESENCE)
     setRemoteRoomCode(roomCode)
+    setRemoteRoomToken(taoTokenPhongRemote())
     thongBao(`Đã liên kết theo mã TV: ${roomCode}`)
   }, [thongBao])
 
@@ -620,16 +662,19 @@ export function ControlScreen() {
     const nextRoomCode = taoMaPhongRemote()
     setRemotePresence(EMPTY_REMOTE_PRESENCE)
     setRemoteRoomCode(nextRoomCode)
+    setRemoteRoomToken(taoTokenPhongRemote())
     thongBao(`Đã tạo mã TV mới: ${nextRoomCode}`)
   }, [thongBao])
 
   useEffect(() => {
     luuMaPhongRemote(remoteRoomCode)
-  }, [remoteRoomCode])
+    luuTokenPhongRemote(remoteRoomToken)
+  }, [remoteRoomCode, remoteRoomToken])
 
   useEffect(() => {
     const connection = taoKetNoiRelay({
       roomCode: remoteRoomCode,
+      roomToken: remoteRoomToken,
       role: 'host',
       relayUrl: remoteRelayUrl,
       nickname: nguoiDungHienTai?.name ?? 'Host',
@@ -646,10 +691,10 @@ export function ControlScreen() {
       connection.close()
       remoteConnectionRef.current = null
     }
-  }, [nguoiDungHienTai?.name, remoteRelayUrl, remoteRoomCode, xuLyLenhRemote])
+  }, [nguoiDungHienTai?.name, remoteRelayUrl, remoteRoomCode, remoteRoomToken, xuLyLenhRemote])
 
-  useEffect(() => {
-    if (!remoteConnectionRef.current || remoteRelayStatus !== 'connected') return
+  const guiTrangThaiRemote = useCallback((nextDisplayAd = displayAd) => {
+    if (!remoteConnectionRef.current || remoteRelayStatus !== 'connected') return false
     remoteConnectionRef.current.sendState({
       roomCode: remoteRoomCode,
       hostName: nguoiDungHienTai?.name ?? 'Host',
@@ -658,14 +703,17 @@ export function ControlScreen() {
       volume,
       playerMode: hienThiPlayerMode,
       replayMode,
+      displayAd: nextDisplayAd,
       displayMode,
       lastPlayerCommand: relayPlayerCommand.cmd,
       commandNonce: relayPlayerCommand.nonce,
       commandValue: relayPlayerCommand.value,
       updatedAt: Date.now(),
     })
+    return true
   }, [
     currentIndex,
+    displayAd,
     displayMode,
     hienThiPlayerMode,
     nguoiDungHienTai?.name,
@@ -678,6 +726,18 @@ export function ControlScreen() {
     replayMode,
     volume,
   ])
+
+  useEffect(() => {
+    guiTrangThaiRemote(displayAd)
+  }, [displayAd, guiTrangThaiRemote, settingsSyncNonce])
+
+  const dongBoCaiDatTrinhChieu = useCallback(() => {
+    const nextDisplayAd = useSettingsStore.getState().displayAd
+    phatCaiDatTrinhChieu({ displayAd: nextDisplayAd })
+    guiTrangThaiRemote(nextDisplayAd)
+    setSettingsSyncNonce((current) => current + 1)
+    thongBao('Đã đồng bộ quảng cáo lên màn hình trình chiếu')
+  }, [guiTrangThaiRemote, thongBao])
 
   const layoutStyle = useMemo(
     () =>
@@ -918,50 +978,183 @@ export function ControlScreen() {
           <div className="appSub">Màn hình điều khiển</div>
         </div>
         <div className="headerActions">
-          <UserSwitcher
-            users={users}
-            currentUserId={currentUserId}
-            onSwitch={chuyenNguoiDung}
-            sessionMode={sessionMode}
-            currentAccount={taiKhoanHienTai}
-            onOpenAccount={moModalTaiKhoan}
-            onLogout={dangXuatTaiKhoan}
-          />
-          <OpenDisplayButton
-            className={`primary buttonToneAccent ${activeButtonKey === 'open-display' ? 'buttonStateActive' : ''}`}
-            disabled={!canOpenDisplay}
-            roomCode={remoteRoomCode}
-            onBeforeOpen={() => nhanNut('open-display')}
-            onOpened={moDisplayThanhCong}
-          />
-          <button
-            className={`primary buttonToneMuted buttonWithIcon ${activeButtonKey === 'open-remote' ? 'buttonStateActive' : ''}`}
-            data-pressed={activeButtonKey === 'open-remote'}
-            disabled={!canUseRemote}
-            onClick={() => {
-              if (!canUseRemote) return
-              nhanNut('open-remote')
-              setOpenRemoteModal(true)
-            }}
-            type="button"
-          >
-            <AppIcon name="control" className="buttonIcon" />
-            <span className="buttonLabel">Mã TV</span>
-          </button>
-          <button
-            className={`primary buttonToneMuted buttonWithIcon ${activeButtonKey === 'open-settings' ? 'buttonStateActive' : ''}`}
-            data-pressed={activeButtonKey === 'open-settings'}
-            disabled={!canOpenSettings}
-            onClick={() => {
-              if (!canOpenSettings) return
-              nhanNut('open-settings')
-              setOpenSettings(true)
-            }}
-            type="button"
-          >
-            <AppIcon name="settings" className="buttonIcon" />
-            <span className="buttonLabel">Cài đặt</span>
-          </button>
+          {isMobileLayout ? (
+            <div className="mobileHeaderMenuWrap">
+              <button
+                className={`primary buttonToneAccent buttonWithIcon mobileHeaderMenuButton ${openMobileMenu ? 'buttonStateActive' : ''}`}
+                data-pressed={openMobileMenu}
+                aria-expanded={openMobileMenu}
+                onClick={() => setOpenMobileMenu((current) => !current)}
+                type="button"
+              >
+                <AppIcon name="menu" className="buttonIcon" />
+                <span className="buttonLabel">Menu</span>
+              </button>
+              {openMobileMenu ? (
+                <button
+                  className="mobileHeaderMenuScrim"
+                  aria-label="Đóng menu mobile"
+                  onClick={() => setOpenMobileMenu(false)}
+                  type="button"
+                />
+              ) : null}
+              {openMobileMenu ? (
+                <div className="mobileHeaderMenu" role="menu">
+                  <div className="mobileMenuAccount">
+                    <div className="mobileMenuEyebrow">Phiên sử dụng</div>
+                    <div className="mobileMenuTitle">{nhanTaiKhoan}</div>
+                    <div className="mobileMenuMeta">
+                      {AUTH_SESSION_LABEL[sessionMode]} · {USER_ROLE_LABEL[vaiTroHienTai]}
+                      {userDangDangNhap?.isOwner ? ' · Quản trị chính' : ''}
+                    </div>
+                  </div>
+
+                  <div className="mobileMenuGrid">
+                    <button
+                      className="ghost compactButton buttonToneSuccess buttonWithIcon"
+                      onClick={() => {
+                        setOpenMobileMenu(false)
+                        moModalTaiKhoan()
+                      }}
+                      role="menuitem"
+                      type="button"
+                    >
+                      <AppIcon name={userDangDangNhap ? 'user' : 'login'} className="buttonIcon" />
+                      <span className="buttonLabel">{userDangDangNhap ? 'Tài khoản' : 'Đăng nhập'}</span>
+                    </button>
+                    <OpenDisplayButton
+                      className={`ghost compactButton buttonToneAccent ${activeButtonKey === 'open-display' ? 'buttonStateActive' : ''}`}
+                      disabled={!canOpenDisplay}
+                      roomCode={remoteRoomCode}
+                      roomToken={remoteRoomToken}
+                      onBeforeOpen={() => {
+                        setOpenMobileMenu(false)
+                        nhanNut('open-display')
+                      }}
+                      onOpened={moDisplayThanhCong}
+                    />
+                    <button
+                      className={`ghost compactButton buttonToneMuted buttonWithIcon ${activeButtonKey === 'open-remote' ? 'buttonStateActive' : ''}`}
+                      data-pressed={activeButtonKey === 'open-remote'}
+                      disabled={!canUseRemote}
+                      onClick={() => {
+                        if (!canUseRemote) return
+                        setOpenMobileMenu(false)
+                        nhanNut('open-remote')
+                        setOpenRemoteModal(true)
+                      }}
+                      role="menuitem"
+                      type="button"
+                    >
+                      <AppIcon name="control" className="buttonIcon" />
+                      <span className="buttonLabel">Mã TV</span>
+                    </button>
+                    <button
+                      className={`ghost compactButton buttonToneMuted buttonWithIcon ${activeButtonKey === 'open-settings' ? 'buttonStateActive' : ''}`}
+                      data-pressed={activeButtonKey === 'open-settings'}
+                      disabled={!canOpenSettings}
+                      onClick={() => {
+                        if (!canOpenSettings) return
+                        setOpenMobileMenu(false)
+                        nhanNut('open-settings')
+                        setOpenSettings(true)
+                      }}
+                      role="menuitem"
+                      type="button"
+                    >
+                      <AppIcon name="settings" className="buttonIcon" />
+                      <span className="buttonLabel">Cài đặt</span>
+                    </button>
+                    <button
+                      className={`ghost compactButton buttonToneMuted buttonWithIcon ${activeButtonKey === 'open-legal' ? 'buttonStateActive' : ''}`}
+                      data-pressed={activeButtonKey === 'open-legal'}
+                      onClick={() => {
+                        setOpenMobileMenu(false)
+                        nhanNut('open-legal')
+                        setOpenLegal(true)
+                      }}
+                      role="menuitem"
+                      type="button"
+                    >
+                      <AppIcon name="shield" className="buttonIcon" />
+                      <span className="buttonLabel">Pháp lý</span>
+                    </button>
+                    {userDangDangNhap ? (
+                      <button
+                        className="ghost compactButton buttonToneDanger buttonWithIcon"
+                        onClick={() => {
+                          setOpenMobileMenu(false)
+                          dangXuatTaiKhoan()
+                        }}
+                        role="menuitem"
+                        type="button"
+                      >
+                        <AppIcon name="logout" className="buttonIcon" />
+                        <span className="buttonLabel">Đăng xuất</span>
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          ) : (
+            <>
+              <UserSwitcher
+                currentUser={userDangDangNhap}
+                sessionMode={sessionMode}
+                onOpenAccount={moModalTaiKhoan}
+                onLogout={dangXuatTaiKhoan}
+              />
+              <OpenDisplayButton
+                className={`primary buttonToneAccent ${activeButtonKey === 'open-display' ? 'buttonStateActive' : ''}`}
+                disabled={!canOpenDisplay}
+                roomCode={remoteRoomCode}
+                roomToken={remoteRoomToken}
+                onBeforeOpen={() => nhanNut('open-display')}
+                onOpened={moDisplayThanhCong}
+              />
+              <button
+                className={`primary buttonToneMuted buttonWithIcon ${activeButtonKey === 'open-remote' ? 'buttonStateActive' : ''}`}
+                data-pressed={activeButtonKey === 'open-remote'}
+                disabled={!canUseRemote}
+                onClick={() => {
+                  if (!canUseRemote) return
+                  nhanNut('open-remote')
+                  setOpenRemoteModal(true)
+                }}
+                type="button"
+              >
+                <AppIcon name="control" className="buttonIcon" />
+                <span className="buttonLabel">Mã TV</span>
+              </button>
+              <button
+                className={`primary buttonToneMuted buttonWithIcon ${activeButtonKey === 'open-settings' ? 'buttonStateActive' : ''}`}
+                data-pressed={activeButtonKey === 'open-settings'}
+                disabled={!canOpenSettings}
+                onClick={() => {
+                  if (!canOpenSettings) return
+                  nhanNut('open-settings')
+                  setOpenSettings(true)
+                }}
+                type="button"
+              >
+                <AppIcon name="settings" className="buttonIcon" />
+                <span className="buttonLabel">Cài đặt</span>
+              </button>
+              <button
+                className={`primary buttonToneMuted buttonWithIcon ${activeButtonKey === 'open-legal' ? 'buttonStateActive' : ''}`}
+                data-pressed={activeButtonKey === 'open-legal'}
+                onClick={() => {
+                  nhanNut('open-legal')
+                  setOpenLegal(true)
+                }}
+                type="button"
+              >
+                <AppIcon name="shield" className="buttonIcon" />
+                <span className="buttonLabel">Pháp lý</span>
+              </button>
+            </>
+          )}
         </div>
       </header>
 
@@ -978,7 +1171,7 @@ export function ControlScreen() {
         </div>
         <div className="statusChip">Autoplay: {autoplayNext ? 'Bật' : 'Tắt'}</div>
         <div className="statusChip">Hàng chờ: {tongBai} bài</div>
-        <div className="statusChip statusChipMeta">Vai trò: {nguoiDungHienTai?.name} · {USER_ROLE_LABEL[vaiTroHienTai]}</div>
+        <div className="statusChip statusChipMeta">Vai trò: {userDangDangNhap?.name ?? 'Khách'} · {USER_ROLE_LABEL[vaiTroHienTai]}</div>
         <div className="statusChip statusChipHint">Phím tắt: Ctrl/Cmd + K, Alt + ←, Alt + →</div>
         {!canPlayback ? <div className="statusChip statusChipWarning">Chế độ xem: thao tác phát và hàng chờ đang bị khoá</div> : null}
       </div>
@@ -1087,15 +1280,14 @@ export function ControlScreen() {
 
       {toast ? <div className="toastMessage">{toast}</div> : null}
       <AccountModal
-        key={`${openAccountModal ? 'open' : 'closed'}:${currentAccountId ?? 'guest'}`}
-        open={openAccountModal}
+        key={`${hienThiModalTaiKhoan ? 'open' : 'closed'}:${currentUserId}:${sessionMode}:${canThietLapQuanTri ? 'setup' : 'login'}`}
+        open={hienThiModalTaiKhoan}
         onClose={() => setOpenAccountModal(false)}
+        setupRequired={canThietLapQuanTri}
         sessionMode={sessionMode}
-        currentAccount={taiKhoanHienTai}
-        accounts={accounts}
+        currentUser={userDangDangNhap}
         onLogin={dangNhapTaiKhoan}
-        onUseAccount={dungTaiKhoanDaLuu}
-        onRemoveAccount={xoaTaiKhoanDaLuu}
+        onSetupOwner={thietLapQuanTriChinh}
         onLogout={dangXuatTaiKhoan}
       />
       <RemotePairingModal
@@ -1117,8 +1309,11 @@ export function ControlScreen() {
         open={openSettings && canOpenSettings}
         onClose={() => setOpenSettings(false)}
         canManageUsers={canManageUsers}
+        canManageDisplayAd={canManageDisplayAd}
+        onSaved={dongBoCaiDatTrinhChieu}
         displayRoomCode={remoteRoomCode}
       />
+      <LegalModal open={openLegal} onClose={() => setOpenLegal(false)} />
     </div>
   )
 }

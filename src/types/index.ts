@@ -24,6 +24,12 @@ export type PlayerState = {
 export type AppTheme = 'dark' | 'light'
 export type ReplayMode = 'normal' | 'repeat-one' | 'repeat-all'
 
+export type DisplayAdSettings = {
+  enabled: boolean
+  title: string
+  text: string
+}
+
 export type UserRole = 'admin' | 'operator' | 'viewer'
 export type AuthProvider = 'local' | 'google' | 'email'
 export type AuthSessionMode = 'guest' | 'authenticated'
@@ -31,8 +37,12 @@ export type AuthSessionMode = 'guest' | 'authenticated'
 export type AppUser = {
   id: string
   name: string
+  username: string
+  pin: string
   role: UserRole
+  isOwner: boolean
   createdAt: number
+  lastLoginAt?: number
 }
 
 export type AuthAccount = {
@@ -45,13 +55,13 @@ export type AuthAccount = {
 }
 
 export type AppSettings = {
-  youtubeApiKey: string
   displayMonitorIndex: number
   autoplayNext: boolean
   replayMode: ReplayMode
   theme: AppTheme
   searchLanguage: string
   karaokeFilterEnabled: boolean
+  displayAd: DisplayAdSettings
 }
 
 export type SyncMessage =
@@ -59,6 +69,7 @@ export type SyncMessage =
   | { type: 'PLAYER_CMD'; cmd: 'play' | 'pause' | 'skip' | 'volume' | 'restart'; value?: number }
   | { type: 'PLAYER_ERROR'; code: number; videoId?: string }
   | { type: 'SONG_ENDED' }
+  | { type: 'SKIP_REQUEST'; reason: 'ad-long' | 'user' }
   | { type: 'SETTINGS_UPDATE'; settings: Partial<AppSettings> }
 
 export type PlayerCommand = Extract<SyncMessage, { type: 'PLAYER_CMD' }>['cmd']
@@ -86,6 +97,7 @@ export type RemoteRoomState = {
   volume: number
   playerMode: 'idle' | 'playing' | 'paused'
   replayMode: ReplayMode
+  displayAd: DisplayAdSettings
   displayMode: 'idle' | 'desktop' | 'browser'
   lastPlayerCommand: PlayerCommand | null
   commandNonce: number
@@ -100,6 +112,7 @@ export type RelayClientMessage =
       role: RemoteRole
       clientId: string
       nickname?: string
+      roomToken?: string
     }
   | {
       type: 'ROOM_STATE'
@@ -161,7 +174,7 @@ export type OpenDisplayWindowResult = {
 export type DesktopBridgeApi = {
   isElectron: true
   getDisplays: () => Promise<DesktopDisplayInfo[]>
-  openDisplayWindow: (monitorIndex?: number, roomCode?: string) => Promise<OpenDisplayWindowResult>
+  openDisplayWindow: (monitorIndex?: number, roomCode?: string, roomToken?: string) => Promise<OpenDisplayWindowResult>
   sendSyncMessage: (msg: SyncMessage) => void
   onSyncMessage: (listener: (msg: SyncMessage) => void) => () => void
 }

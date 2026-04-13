@@ -105,7 +105,7 @@ export function useYouTubePlayer(opts: {
   const playerVars = useMemo(() => {
     const playerConfig: Record<string, number | string> = {
       autoplay: 1,
-      controls: 0,
+      controls: 1,
       rel: 0,
       modestbranding: 1,
       iv_load_policy: 3,

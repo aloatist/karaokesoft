@@ -64,6 +64,84 @@ body {
   align-items: center;
 }
 
+.mobileHeaderMenuWrap {
+  position: relative;
+  z-index: 72;
+}
+
+.mobileHeaderMenuButton {
+  position: relative;
+  z-index: 3;
+  min-height: 44px;
+  font-weight: 850;
+}
+
+.mobileHeaderMenuScrim {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  border: 0;
+  padding: 0;
+  background: transparent;
+}
+
+.mobileHeaderMenu {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  z-index: 2;
+  width: min(360px, calc(100vw - 28px));
+  padding: 12px;
+  border-radius: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background:
+    radial-gradient(circle at top right, rgba(255, 122, 40, 0.14), transparent 38%),
+    rgba(12, 12, 18, 0.96);
+  box-shadow: rgba(0, 0, 0, 0.48) 0 24px 60px;
+  backdrop-filter: blur(18px);
+}
+
+.mobileMenuAccount {
+  padding: 12px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  margin-bottom: 10px;
+}
+
+.mobileMenuEyebrow {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.mobileMenuTitle {
+  margin-top: 5px;
+  font-size: 20px;
+  font-weight: 850;
+  letter-spacing: -0.03em;
+}
+
+.mobileMenuMeta {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.mobileMenuGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.mobileMenuGrid .buttonWithIcon {
+  min-height: 42px;
+  width: 100%;
+}
+
 .userSwitcher {
   min-width: 220px;
   padding: 12px 14px;
@@ -111,7 +189,7 @@ body {
 
 .userSwitcherControls {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
   align-items: center;
   margin-top: 10px;
@@ -387,7 +465,8 @@ button:active {
 
 button:disabled,
 input:disabled,
-select:disabled {
+select:disabled,
+textarea:disabled {
   opacity: 0.52;
   cursor: not-allowed;
   filter: saturate(0.7);
@@ -1395,6 +1474,45 @@ button[data-pressed='true'] {
   max-width: min(560px, calc(100vw - 36px));
 }
 
+.ytAdAssist {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  z-index: 6;
+  width: min(420px, calc(100vw - 36px));
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background:
+    radial-gradient(circle at top right, rgba(255, 122, 40, 0.18), transparent 42%),
+    rgba(7, 7, 10, 0.76);
+  border: 1px solid rgba(255, 147, 78, 0.26);
+  border-radius: 18px;
+  padding: 14px;
+  backdrop-filter: blur(14px);
+  box-shadow: rgba(0, 0, 0, 0.34) 0 20px 44px;
+}
+
+.ytAdAssistTitle {
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.ytAdAssistSub {
+  margin-top: 4px;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.ytAdAssistActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
 .ytDebug {
   position: absolute;
   left: 18px;
@@ -1413,6 +1531,7 @@ button[data-pressed='true'] {
   position: absolute;
   left: 18px;
   top: 18px;
+  pointer-events: none;
   background:
     linear-gradient(180deg, rgba(12, 12, 16, 0.74), rgba(12, 12, 16, 0.56));
   border: 1px solid rgba(255, 255, 255, 0.12);
@@ -1469,20 +1588,64 @@ button[data-pressed='true'] {
   font-size: 15px;
 }
 
+.displayAdBanner {
+  position: absolute;
+  top: calc(18px + env(safe-area-inset-top, 0px));
+  right: 18px;
+  bottom: auto;
+  z-index: 18;
+  pointer-events: none;
+  width: min(320px, calc(100vw - 36px));
+  padding: 10px 12px 11px;
+  border-radius: 15px;
+  background:
+    radial-gradient(circle at top right, rgba(255, 147, 78, 0.22), transparent 42%),
+    linear-gradient(180deg, rgba(12, 12, 16, 0.62), rgba(12, 12, 16, 0.46));
+  border: 1px solid rgba(255, 147, 78, 0.28);
+  box-shadow:
+    rgba(0, 0, 0, 0.24) 0 12px 28px,
+    rgba(255, 122, 40, 0.14) 0 0 0 1px inset;
+  backdrop-filter: blur(10px);
+}
+
+.displayAdBannerTitle {
+  color: #ffd4b9;
+  font-size: 11px;
+  font-weight: 860;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.displayAdBannerText {
+  margin-top: 4px;
+  font-size: clamp(15px, 1.25vw, 21px);
+  font-weight: 850;
+  line-height: 1.2;
+  letter-spacing: -0.03em;
+  white-space: pre-wrap;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  word-break: break-word;
+}
+
 .ticker {
   position: absolute;
-  left: 18px;
-  right: 18px;
-  bottom: 18px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
   background:
-    linear-gradient(180deg, rgba(8, 8, 10, 0.78), rgba(8, 8, 10, 0.58));
+    linear-gradient(180deg, rgba(8, 8, 10, 0.62), rgba(8, 8, 10, 0.52));
   border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 18px;
-  padding: 14px 16px;
-  backdrop-filter: blur(12px);
+  border-width: 1px 0 0;
+  border-radius: 18px 18px 0 0;
+  padding: 8px 14px calc(8px + env(safe-area-inset-bottom, 0px));
+  backdrop-filter: blur(10px);
   display: grid;
-  grid-template-columns: 220px 1fr;
-  gap: 16px;
+  grid-template-columns: 160px 1fr;
+  gap: 12px;
   align-items: center;
 }
 
@@ -1493,18 +1656,18 @@ button[data-pressed='true'] {
 
 .tickerLabel {
   opacity: 0.76;
-  font-size: 12px;
+  font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.14em;
 }
 
 .tickerState {
-  font-size: 13px;
+  font-size: 11px;
   color: rgba(255, 255, 255, 0.74);
 }
 
 .tickerValue {
-  font-size: 20px;
+  font-size: 16px;
   font-weight: 760;
   white-space: nowrap;
   overflow: hidden;
@@ -1662,6 +1825,18 @@ button[data-pressed='true'] {
   gap: 14px;
 }
 
+.accountAuthTabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.accountRegisterGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
 .accountCard {
   padding: 16px;
   border-radius: 18px;
@@ -1748,8 +1923,118 @@ button[data-pressed='true'] {
   margin-bottom: 6px;
 }
 
+.settingsBannerCard {
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 147, 78, 0.15);
+  background:
+    radial-gradient(circle at top right, rgba(255, 122, 40, 0.12), transparent 34%),
+    rgba(255, 255, 255, 0.03);
+}
+
+.settingsBannerHead {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: start;
+}
+
+.settingsBannerSwitch {
+  min-height: 36px;
+  padding: 8px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.settingsBannerLock {
+  border-color: rgba(255, 147, 78, 0.22);
+  background: rgba(255, 122, 40, 0.05);
+}
+
+.settingsBannerGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  gap: 12px;
+}
+
+.settingsBannerTextarea {
+  resize: vertical;
+  min-height: 92px;
+  line-height: 1.5;
+}
+
+.settingsBannerPreview {
+  padding: 13px 14px;
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at top right, rgba(255, 147, 78, 0.2), transparent 42%),
+    rgba(5, 5, 8, 0.4);
+  border: 1px solid rgba(255, 147, 78, 0.18);
+}
+
+.settingsBannerPreviewTitle {
+  color: #ffd4b9;
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.settingsBannerPreviewText {
+  margin-top: 6px;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 750;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
 .remoteModal {
-  width: min(760px, calc(100vw - 36px));
+  width: min(920px, calc(100vw - 36px));
+}
+
+.legalModal {
+  width: min(900px, calc(100vw - 36px));
+}
+
+.legalBody {
+  gap: 14px;
+}
+
+.legalSection {
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.legalSectionWarning {
+  border-color: rgba(255, 147, 78, 0.28);
+  background:
+    radial-gradient(circle at top right, rgba(255, 122, 40, 0.14), transparent 36%),
+    rgba(255, 255, 255, 0.03);
+}
+
+.legalEyebrow {
+  color: #ffb37a;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.legalSection h2 {
+  margin: 8px 0 8px;
+  font-size: 22px;
+  line-height: 1.2;
+  letter-spacing: -0.03em;
+}
+
+.legalSection p {
+  margin: 8px 0 0;
+  color: var(--muted);
+  line-height: 1.62;
 }
 
 .remoteModalFooter {
@@ -1762,6 +2047,15 @@ button[data-pressed='true'] {
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.remotePairCardTitle {
+  font-size: 16px;
+  font-weight: 820;
+  letter-spacing: -0.02em;
 }
 
 .remotePairLayout {
@@ -1769,6 +2063,34 @@ button[data-pressed='true'] {
   grid-template-columns: minmax(0, 1.2fr) minmax(260px, 320px);
   gap: 14px;
   align-items: stretch;
+}
+
+.remotePairGrid,
+.remotePairLinks {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.remotePairLinks {
+  grid-template-columns: 1fr;
+}
+
+.remotePairSummary {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.72fr) minmax(0, 1.28fr);
+  gap: 14px;
+  align-items: stretch;
+  padding: 14px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 122, 40, 0.14);
+  background:
+    radial-gradient(circle at top left, rgba(255, 122, 40, 0.16), transparent 44%),
+    rgba(255, 255, 255, 0.03);
+}
+
+.remotePairRoomBlock {
+  min-width: 0;
 }
 
 .remotePairRoomLabel {
@@ -1780,9 +2102,43 @@ button[data-pressed='true'] {
 
 .remotePairRoomCode {
   margin-top: 8px;
-  font-size: clamp(28px, 5vw, 42px);
+  font-size: clamp(32px, 6vw, 54px);
   font-weight: 850;
   letter-spacing: 0.14em;
+}
+
+.remotePairSignalGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.remotePairSignal {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 720;
+}
+
+.remotePairTabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  padding: 5px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.remotePairTabs .compactButton {
+  min-height: 42px;
 }
 
 .remotePairSteps {
@@ -1797,6 +2153,25 @@ button[data-pressed='true'] {
   gap: 10px;
   align-items: flex-start;
   line-height: 1.5;
+}
+
+.remotePairActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.remoteDiagnosticsCard {
+  min-height: 150px;
+}
+
+.remoteDiagnosticsList {
+  display: grid;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.48;
 }
 
 .qrPanel,
@@ -2006,6 +2381,179 @@ button[data-pressed='true'] {
   gap: 8px;
 }
 
+.remotePageMinimal {
+  padding: max(18px, env(safe-area-inset-top, 0px)) 14px calc(24px + env(safe-area-inset-bottom, 0px));
+  display: flex;
+  justify-content: center;
+}
+
+.remotePhoneShell {
+  width: min(100%, 520px);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.remotePhoneTop {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.remotePhoneTitle {
+  margin: 6px 0 0;
+  font-size: clamp(30px, 10vw, 44px);
+  line-height: 0.98;
+  letter-spacing: -0.05em;
+}
+
+.remoteConnectionPill {
+  flex: 0 0 auto;
+  padding: 8px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.remoteConnectCardMinimal,
+.remoteNowPlayingMinimal,
+.remoteQueueCardMinimal,
+.remoteDetailsCard {
+  padding: 14px;
+  border-radius: 22px;
+}
+
+.remoteConnectCardMinimal {
+  display: grid;
+  gap: 12px;
+}
+
+.remoteConnectTitle {
+  font-size: 20px;
+  font-weight: 820;
+  letter-spacing: -0.03em;
+}
+
+.remoteConnectHint,
+.remoteHintCard {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.remoteHintCard {
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(255, 191, 71, 0.08);
+  border: 1px solid rgba(255, 191, 71, 0.14);
+  color: #ffe0a6;
+}
+
+.remoteConnectedRow,
+.remoteQuickActions,
+.remoteSecondaryControls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  align-items: center;
+}
+
+.remoteConnectedRow {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.remoteConnectedCode {
+  margin-top: 4px;
+  font-size: 26px;
+  font-weight: 900;
+  letter-spacing: 0.16em;
+}
+
+.remoteJoinRowMinimal {
+  grid-template-columns: minmax(0, 1fr) minmax(120px, auto);
+}
+
+.remoteRoomInputMinimal {
+  min-height: 52px;
+  text-align: center;
+  font-size: 26px;
+  font-weight: 900;
+  letter-spacing: 0.22em;
+}
+
+.remoteConnectButton {
+  min-height: 52px;
+  font-weight: 850;
+}
+
+.remoteNowHeaderMinimal {
+  align-items: flex-start;
+}
+
+.remoteNowTitleMinimal {
+  font-size: clamp(22px, 7vw, 34px);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.remotePrimaryControls {
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: minmax(0, 1.12fr) minmax(0, 0.88fr);
+  gap: 10px;
+}
+
+.remotePrimaryButton {
+  min-height: 64px;
+  border-radius: 20px;
+  font-size: 16px;
+  font-weight: 900;
+}
+
+.remotePrimaryButton .buttonIcon {
+  width: 20px;
+  height: 20px;
+}
+
+.remoteSecondaryControls {
+  margin-top: 10px;
+}
+
+.remoteSecondaryControls .compactButton,
+.remoteQuickActions .compactButton {
+  min-height: 42px;
+}
+
+.remoteVolumeCardMinimal {
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 16px;
+}
+
+.remoteDetailsCard {
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.remoteMetaGridMinimal {
+  margin-top: 0;
+}
+
+.remoteQueueListMinimal {
+  max-height: 48vh;
+  overflow: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding-right: 2px;
+}
+
 .userAdminList {
   display: flex;
   flex-direction: column;
@@ -2039,12 +2587,24 @@ button[data-pressed='true'] {
   font-weight: 800;
 }
 
+.userAdminEditGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(120px, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
 .userAdminActions,
 .userCreateCard {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
   align-items: center;
+}
+
+.userCreateCard {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(130px, 1fr));
 }
 
 .compactSelect {
@@ -2156,12 +2716,63 @@ button[data-pressed='true'] {
     width: calc(100vw - 20px);
   }
 
+  .accountRegisterGrid,
+  .userAdminEditGrid,
+  .userCreateCard {
+    grid-template-columns: 1fr;
+  }
+
+  .settingsBannerHead,
+  .settingsBannerGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .settingsBannerSwitch {
+    width: fit-content;
+  }
+
   .remotePairLayout {
     grid-template-columns: 1fr;
   }
 
+  .remotePairSummary,
+  .remotePairGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .remotePairSignalGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .remotePairTabs {
+    grid-template-columns: 1fr;
+  }
+
+  .remotePairRoomCode {
+    font-size: clamp(30px, 10vw, 42px);
+  }
+
   .remotePage {
     padding: 18px 14px 34px;
+  }
+
+  .remotePageMinimal {
+    padding:
+      calc(env(safe-area-inset-top, 0px) + 14px)
+      12px
+      calc(env(safe-area-inset-bottom, 0px) + 18px);
+  }
+
+  .remotePhoneShell {
+    gap: 10px;
+  }
+
+  .remotePhoneTop {
+    align-items: stretch;
+  }
+
+  .remoteConnectionPill {
+    align-self: flex-start;
   }
 
   .remoteConnectCard,
@@ -2175,8 +2786,25 @@ button[data-pressed='true'] {
     grid-template-columns: 1fr;
   }
 
+  .remoteJoinRowMinimal {
+    grid-template-columns: 1fr;
+  }
+
   .remoteJoinRow .primary {
     width: 100%;
+  }
+
+  .remotePrimaryControls {
+    grid-template-columns: 1fr;
+  }
+
+  .remotePrimaryButton {
+    min-height: 58px;
+  }
+
+  .remoteSecondaryControls,
+  .remoteQuickActions {
+    grid-template-columns: 1fr;
   }
 
   .remoteNowHeader {
@@ -2190,6 +2818,10 @@ button[data-pressed='true'] {
 
   .remoteMetaGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .remoteMetaGridMinimal {
+    grid-template-columns: 1fr;
   }
 
   .remoteControls {
@@ -2209,6 +2841,9 @@ button[data-pressed='true'] {
   }
 
   .header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
     gap: 10px;
     margin-bottom: 10px;
   }
@@ -2218,14 +2853,19 @@ button[data-pressed='true'] {
   }
 
   .headerActions {
-    width: 100%;
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    width: auto;
+    display: flex;
+    justify-content: flex-end;
+    grid-template-columns: none;
     gap: 8px;
   }
 
-  .headerActions > .userSwitcher {
-    grid-column: 1 / -1;
+  .mobileHeaderMenu {
+    width: min(340px, calc(100vw - 28px));
+  }
+
+  .mobileMenuGrid {
+    grid-template-columns: 1fr;
   }
 
   .panel {
@@ -2536,9 +3176,22 @@ button[data-pressed='true'] {
     max-width: none;
   }
 
+  .displayAdBanner {
+    top: calc(18px + env(safe-area-inset-top, 0px));
+    left: auto;
+    right: 18px;
+    bottom: auto;
+    width: min(300px, calc(100vw - 36px));
+  }
+
+  .displayAdBannerText {
+    font-size: 18px;
+    -webkit-line-clamp: 2;
+  }
+
   .ticker {
     grid-template-columns: 1fr;
-    gap: 8px;
+    gap: 4px;
   }
 
   .ytLoading,

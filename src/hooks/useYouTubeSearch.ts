@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { SearchSong } from '../types'
 import { useSettingsStore } from '../store/settingsStore'
-import { searchSongs } from '../services/youtubeDataApi'
+import { searchSongs, searchSongsViaProxy } from '../services/youtubeDataApi'
 
 type State = {
   status: 'idle' | 'loading' | 'error' | 'success'
@@ -17,9 +17,12 @@ function normalizeKey(q: string, karaokeFilter: boolean, lang: string) {
 }
 
 export function useYouTubeSearch(query: string) {
-  const apiKey = useSettingsStore((s) => s.youtubeApiKey)
   const karaokeFilterEnabled = useSettingsStore((s) => s.karaokeFilterEnabled)
   const searchLanguage = useSettingsStore((s) => s.searchLanguage)
+  const apiKey = import.meta.env.DEV && import.meta.env.VITE_YT_API_KEY ? String(import.meta.env.VITE_YT_API_KEY) : ''
+  const proxyUrl = import.meta.env.VITE_YOUTUBE_SEARCH_PROXY_URL
+    ? String(import.meta.env.VITE_YOUTUBE_SEARCH_PROXY_URL)
+    : ''
 
   const [state, setState] = useState<State>({ status: 'idle', results: [] })
 
@@ -32,16 +35,16 @@ export function useYouTubeSearch(query: string) {
       return { status: 'idle', results: [] }
     }
 
-    if (!apiKey.trim()) {
+    if (!proxyUrl.trim() && !apiKey.trim()) {
       return {
         status: 'error',
         results: [],
-        errorMessage: 'Bạn chưa nhập YouTube API Key. Vui lòng vào Cài đặt để thêm.',
+        errorMessage: 'Chưa cấu hình YouTube Search Proxy hoặc API key trong môi trường chạy ứng dụng.',
       }
     }
 
     return null
-  }, [apiKey, canSearch])
+  }, [apiKey, canSearch, proxyUrl])
 
   useEffect(() => {
     if (fallbackState) {
@@ -57,7 +60,7 @@ export function useYouTubeSearch(query: string) {
     }, 0)
 
     const handle = window.setTimeout(async () => {
-      const key = normalizeKey(query, karaokeFilterEnabled, searchLanguage)
+      const key = `${proxyUrl ? 'proxy' : 'direct'}|${normalizeKey(query, karaokeFilterEnabled, searchLanguage)}`
       const cached = cache.get(key)
       if (cached && Date.now() - cached.ts < CACHE_TTL_MS) {
         if (cancelled) return
@@ -66,11 +69,17 @@ export function useYouTubeSearch(query: string) {
       }
 
       try {
-        const data = await searchSongs(query, apiKey, {
-          karaokeFilterEnabled,
-          language: searchLanguage,
-          maxResults: 12,
-        })
+        const data = proxyUrl
+          ? await searchSongsViaProxy(query, proxyUrl, {
+              karaokeFilterEnabled,
+              language: searchLanguage,
+              maxResults: 12,
+            })
+          : await searchSongs(query, apiKey, {
+              karaokeFilterEnabled,
+              language: searchLanguage,
+              maxResults: 12,
+            })
         if (cancelled) return
         cache.set(key, { ts: Date.now(), data })
         setState({ status: 'success', results: data })
@@ -93,7 +102,7 @@ export function useYouTubeSearch(query: string) {
       window.clearTimeout(loadingHandle)
       window.clearTimeout(handle)
     }
-  }, [apiKey, fallbackState, karaokeFilterEnabled, query, searchLanguage])
+  }, [apiKey, fallbackState, karaokeFilterEnabled, proxyUrl, query, searchLanguage])
 
   return { ...(fallbackState ?? state), canSearch }
 }

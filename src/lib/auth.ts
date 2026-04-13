@@ -1,8 +1,9 @@
-import type { AuthProvider, AuthSessionMode, UserRole } from '../types'
+import type { AppUser, AuthProvider, AuthSessionMode, UserRole } from '../types'
 
 export type UserPermission =
   | 'settings'
   | 'manage-users'
+  | 'manage-ads'
   | 'search'
   | 'queue'
   | 'playback'
@@ -26,7 +27,7 @@ export const AUTH_SESSION_LABEL: Record<AuthSessionMode, string> = {
 }
 
 const USER_ROLE_PERMISSIONS: Record<UserRole, UserPermission[]> = {
-  admin: ['settings', 'manage-users', 'search', 'queue', 'playback', 'display'],
+  admin: ['settings', 'manage-users', 'manage-ads', 'search', 'queue', 'playback', 'display'],
   operator: ['search', 'queue', 'playback', 'display'],
   viewer: [],
 }
@@ -35,10 +36,14 @@ export function coQuyen(role: UserRole, permission: UserPermission) {
   return USER_ROLE_PERMISSIONS[role].includes(permission)
 }
 
+export function laTaiKhoanQuanTriChinh(user: AppUser | null | undefined) {
+  return user?.role === 'admin' && user.isOwner === true
+}
+
 export function moTaVaiTro(role: UserRole) {
   switch (role) {
     case 'admin':
-      return 'Toàn quyền cài đặt, quản lý user và vận hành phát.'
+      return 'Toàn quyền cài đặt hệ thống, quản lý user, quảng cáo và vận hành phát.'
     case 'operator':
       return 'Được tìm bài, xếp hàng chờ và điều khiển phát.'
     case 'viewer':

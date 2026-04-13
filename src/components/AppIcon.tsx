@@ -3,6 +3,7 @@ import type { SVGProps } from 'react'
 type IconName =
   | 'screen'
   | 'settings'
+  | 'shield'
   | 'user'
   | 'login'
   | 'logout'
@@ -21,6 +22,7 @@ type IconName =
   | 'clear'
   | 'add'
   | 'spark'
+  | 'menu'
 
 type Props = SVGProps<SVGSVGElement> & {
   name: IconName
@@ -41,6 +43,13 @@ function Path({ name }: { name: IconName }) {
         <>
           <circle cx="12" cy="12" r="3.2" />
           <path d="M19.4 15a1 1 0 0 0 .2 1.1l.1.1a2 2 0 0 1 0 2.8 2 2 0 0 1-2.8 0l-.1-.1a1 1 0 0 0-1.1-.2 1 1 0 0 0-.6.9V20a2 2 0 0 1-4 0v-.2a1 1 0 0 0-.7-.9 1 1 0 0 0-1.1.2l-.1.1a2 2 0 0 1-2.8 0 2 2 0 0 1 0-2.8l.1-.1a1 1 0 0 0 .2-1.1 1 1 0 0 0-.9-.6H4a2 2 0 0 1 0-4h.2a1 1 0 0 0 .9-.7 1 1 0 0 0-.2-1.1l-.1-.1a2 2 0 0 1 0-2.8 2 2 0 0 1 2.8 0l.1.1a1 1 0 0 0 1.1.2h.1a1 1 0 0 0 .6-.9V4a2 2 0 0 1 4 0v.2a1 1 0 0 0 .6.9 1 1 0 0 0 1.1-.2l.1-.1a2 2 0 0 1 2.8 0 2 2 0 0 1 0 2.8l-.1.1a1 1 0 0 0-.2 1.1v.1a1 1 0 0 0 .9.6H20a2 2 0 0 1 0 4h-.2a1 1 0 0 0-.9.6Z" />
+        </>
+      )
+    case 'shield':
+      return (
+        <>
+          <path d="M12 3 19 6v5.2c0 4.1-2.8 7.9-7 9.8-4.2-1.9-7-5.7-7-9.8V6l7-3Z" />
+          <path d="m9.4 12 1.8 1.8 3.6-4" />
         </>
       )
     case 'user':
@@ -174,6 +183,14 @@ function Path({ name }: { name: IconName }) {
         <>
           <path d="m12 3 1.8 4.2L18 9l-4.2 1.8L12 15l-1.8-4.2L6 9l4.2-1.8L12 3Z" />
           <path d="m18.5 16 .9 2.1 2.1.9-2.1.9-.9 2.1-.9-2.1-2.1-.9 2.1-.9.9-2.1Z" />
+        </>
+      )
+    case 'menu':
+      return (
+        <>
+          <path d="M4 7h16" />
+          <path d="M4 12h16" />
+          <path d="M4 17h16" />
         </>
       )
     default:

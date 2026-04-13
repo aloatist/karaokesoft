@@ -3,17 +3,19 @@ import { NextSongTicker } from '../components/NextSongTicker'
 import { QrCodePanel } from '../components/QrCodePanel'
 import { SongOverlay } from '../components/SongOverlay'
 import { YouTubePlayer } from '../components/YouTubePlayer'
-import { phatBaoHetBai, phatBaoLoiPlayer, useBroadcastReceiver } from '../hooks/useBroadcastSync'
+import { phatBaoHetBai, phatBaoLoiPlayer, phatYeuCauBoQuaBai, useBroadcastReceiver } from '../hooks/useBroadcastSync'
 import { chuanHoaMucHangCho } from '../lib/queue'
 import {
   chuanHoaMaPhongRemote,
+  chuanHoaTokenPhongRemote,
   docMaTVDaLuu,
   layRelayUrlMacDinh,
   luuMaTV,
   taoDuongDanDieuKhien,
   taoKetNoiRelay,
 } from '../services/remoteRelay'
-import type { RemotePresence, RemoteRelayStatus, RemoteRoomState, SongItem, SyncMessage } from '../types'
+import { DEFAULT_DISPLAY_AD, chuanHoaDisplayAd, useSettingsStore } from '../store/settingsStore'
+import type { DisplayAdSettings, RemotePresence, RemoteRelayStatus, RemoteRoomState, SongItem, SyncMessage } from '../types'
 
 type ViewState = {
   queue: SongItem[]
@@ -45,30 +47,53 @@ function docMaTVBanDau() {
   return docMaTVDaLuu()
 }
 
+function docTokenTVBanDau() {
+  const params = new URLSearchParams(window.location.search)
+  return chuanHoaTokenPhongRemote(params.get('token') ?? '')
+}
+
 export function DisplayScreen() {
+  const localDisplayAd = useSettingsStore((s) => s.displayAd)
   const [state, setState] = useState<ViewState>(() => docQueueTuLocalStorage() ?? { queue: [], currentIndex: 0 })
   const [volume, setVolume] = useState(80)
   const [cmd, setCmd] = useState<{ type: 'play' | 'pause' | 'volume' | 'restart'; value?: number; nonce: number }>()
   const [tvCode] = useState(() => docMaTVBanDau())
+  const [tvToken] = useState(() => docTokenTVBanDau())
   const [relayStatus, setRelayStatus] = useState<RemoteRelayStatus>(tvCode ? 'connecting' : 'idle')
   const [presence, setPresence] = useState<RemotePresence>(EMPTY_REMOTE_PRESENCE)
   const [relayState, setRelayState] = useState<RemoteRoomState | null>(null)
+  const [syncedDisplayAd, setSyncedDisplayAd] = useState<DisplayAdSettings | null>(null)
   const nonceRef = useRef(1)
+  const displayAdUpdatedAtRef = useRef(0)
   const relayCommandNonceRef = useRef<number | null>(null)
   const relayUrl = useMemo(() => layRelayUrlMacDinh(), [])
-  const controlUrl = useMemo(() => taoDuongDanDieuKhien(tvCode), [tvCode])
+  const controlUrl = useMemo(() => taoDuongDanDieuKhien(tvCode, tvToken), [tvCode, tvToken])
 
   useEffect(() => {
     luuMaTV(tvCode)
     const url = new URL(window.location.href)
     url.searchParams.set('screen', 'display')
     url.searchParams.set('room', tvCode)
+    if (tvToken) {
+      url.searchParams.set('token', tvToken)
+    } else {
+      url.searchParams.delete('token')
+    }
     window.history.replaceState({}, '', url.toString())
-  }, [tvCode])
+  }, [tvCode, tvToken])
+
+  const apDungDisplayAd = useCallback((nextDisplayAd: unknown, updatedAt = Date.now()) => {
+    if (updatedAt < displayAdUpdatedAtRef.current) return
+    displayAdUpdatedAtRef.current = updatedAt
+    setSyncedDisplayAd(chuanHoaDisplayAd(nextDisplayAd ?? DEFAULT_DISPLAY_AD))
+  }, [])
 
   const onMsg = useCallback((msg: SyncMessage) => {
     if (msg.type === 'QUEUE_UPDATE') {
       setState({ queue: msg.queue, currentIndex: msg.currentIndex })
+    }
+    if (msg.type === 'SETTINGS_UPDATE' && msg.settings.displayAd) {
+      apDungDisplayAd(msg.settings.displayAd)
     }
     if (msg.type === 'PLAYER_CMD') {
       if (msg.cmd === 'play') setCmd({ type: 'play', nonce: nonceRef.current++ })
@@ -83,7 +108,7 @@ export function DisplayScreen() {
         setCmd({ type: 'volume', value: v, nonce: nonceRef.current++ })
       }
     }
-  }, [])
+  }, [apDungDisplayAd])
 
   useBroadcastReceiver(onMsg)
 
@@ -92,6 +117,7 @@ export function DisplayScreen() {
 
     const connection = taoKetNoiRelay({
       roomCode: tvCode,
+      roomToken: tvToken,
       role: 'display',
       relayUrl,
       nickname: 'Display',
@@ -105,6 +131,7 @@ export function DisplayScreen() {
           queue: nextState.queue,
           currentIndex: nextState.currentIndex,
         })
+        apDungDisplayAd(nextState.displayAd ?? DEFAULT_DISPLAY_AD, nextState.updatedAt || Date.now())
         setVolume(nextState.volume)
 
         if (
@@ -143,10 +170,14 @@ export function DisplayScreen() {
     return () => {
       connection.close()
     }
-  }, [relayUrl, tvCode])
+  }, [apDungDisplayAd, relayUrl, tvCode, tvToken])
 
   const baiDangPhat = state.queue[state.currentIndex]
   const baiTiepTheo = useMemo(() => state.queue[state.currentIndex + 1], [state.queue, state.currentIndex])
+  const displayAd = syncedDisplayAd ?? localDisplayAd
+  const displayAdText = displayAd.text
+  const displayAdTitle = displayAd.title.trim()
+  const hienThiDisplayAd = displayAd.enabled && displayAdText.trim()
 
   return (
     <div className="displayRoot">
@@ -160,9 +191,18 @@ export function DisplayScreen() {
             command={cmd}
             onEnded={() => phatBaoHetBai()}
             onError={(code, failedVideoId) => phatBaoLoiPlayer(code, failedVideoId)}
+            onSkipSong={() => phatYeuCauBoQuaBai('ad-long')}
+            hideAdAssist={Boolean(hienThiDisplayAd)}
           />
         ) : null}
       </div>
+
+      {hienThiDisplayAd ? (
+        <div className="displayAdBanner" aria-label="Quảng cáo sản phẩm">
+          {displayAdTitle ? <div className="displayAdBannerTitle">{displayAdTitle}</div> : null}
+          <div className="displayAdBannerText">{displayAdText}</div>
+        </div>
+      ) : null}
 
       {baiDangPhat ? (
         <>

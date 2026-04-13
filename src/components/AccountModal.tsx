@@ -1,40 +1,61 @@
 import { useMemo, useState } from 'react'
 import { AppIcon } from './AppIcon'
-import { AUTH_PROVIDER_LABEL, AUTH_SESSION_LABEL, moTaCheDoPhien } from '../lib/auth'
-import type { AuthAccount, AuthProvider, AuthSessionMode } from '../types'
+import { AUTH_SESSION_LABEL, USER_ROLE_LABEL, moTaCheDoPhien } from '../lib/auth'
+import type { AppUser, AuthSessionMode } from '../types'
+
+type AuthResult = { ok: boolean; message: string }
+
+type AuthPayload = {
+  username: string
+  pin: string
+  remember: boolean
+}
+
+type SetupPayload = AuthPayload & {
+  name: string
+}
 
 type Props = {
   open: boolean
   onClose: () => void
+  setupRequired: boolean
   sessionMode: AuthSessionMode
-  currentAccount: AuthAccount | null
-  accounts: AuthAccount[]
-  onLogin: (payload: { displayName: string; email?: string; provider: AuthProvider }) => void
-  onUseAccount: (accountId: string) => void
-  onRemoveAccount: (accountId: string) => void
+  currentUser: AppUser | null
+  onLogin: (payload: AuthPayload) => AuthResult
+  onSetupOwner: (payload: SetupPayload) => AuthResult
   onLogout: () => void
 }
 
 export function AccountModal({
   open,
   onClose,
+  setupRequired,
   sessionMode,
-  currentAccount,
-  accounts,
+  currentUser,
   onLogin,
-  onUseAccount,
-  onRemoveAccount,
+  onSetupOwner,
   onLogout,
 }: Props) {
-  const [displayName, setDisplayName] = useState(() => currentAccount?.displayName ?? '')
-  const [email, setEmail] = useState(() => currentAccount?.email ?? '')
-  const [provider, setProvider] = useState<AuthProvider>(() => currentAccount?.provider ?? 'google')
+  const [username, setUsername] = useState(() => currentUser?.username ?? '')
+  const [pin, setPin] = useState('')
+  const [remember, setRemember] = useState(true)
+  const [setupName, setSetupName] = useState(() => currentUser?.name ?? 'Quản trị')
+  const [setupUsername, setSetupUsername] = useState(() => currentUser?.username ?? 'admin')
+  const [setupPin, setSetupPin] = useState('')
+  const [setupPinConfirm, setSetupPinConfirm] = useState('')
+  const [message, setMessage] = useState<string | null>(null)
 
-  const canSubmit = useMemo(() => {
-    if (!displayName.trim()) return false
-    if (provider === 'local') return true
-    return email.trim().length > 0
-  }, [displayName, email, provider])
+  const canLogin = useMemo(() => Boolean(username.trim() && pin.trim()), [pin, username])
+  const canSetup = useMemo(
+    () =>
+      Boolean(
+        setupName.trim() &&
+          setupUsername.trim() &&
+          setupPin.trim().length >= 6 &&
+          setupPin === setupPinConfirm,
+      ),
+    [setupName, setupPin, setupPinConfirm, setupUsername],
+  )
 
   if (!open) return null
 
@@ -42,157 +63,200 @@ export function AccountModal({
     <div className="modalBackdrop" role="dialog" aria-modal="true" aria-label="Tài khoản và đăng nhập">
       <div className="modal accountModal">
         <div className="modalHeader">
-          <div className="modalTitle">Tài khoản</div>
-          <button className="ghost" onClick={onClose} type="button">
-            Đóng
-          </button>
+          <div className="modalTitle">{setupRequired ? 'Thiết lập quản trị hệ thống' : 'Tài khoản và đăng nhập'}</div>
+          {!setupRequired ? (
+            <button className="ghost" onClick={onClose} type="button">
+              Đóng
+            </button>
+          ) : null}
         </div>
 
         <div className="modalBody">
           <div className="accountHero">
             <div className="accountHeroTitle">
-              {currentAccount ? currentAccount.displayName : 'Chế độ khách đang hoạt động'}
+              {setupRequired
+                ? 'Cần tạo tài khoản quản trị chính'
+                : sessionMode === 'authenticated' && currentUser
+                  ? currentUser.name
+                  : 'Chưa đăng nhập'}
             </div>
             <div className="accountHeroBadges">
               <span className={`miniBadge ${sessionMode === 'authenticated' ? 'miniBadgeSuccess' : ''}`}>
-                {AUTH_SESSION_LABEL[sessionMode]}
+                {setupRequired ? 'Chưa cấu hình' : AUTH_SESSION_LABEL[sessionMode]}
               </span>
-              <span className="miniBadge miniBadgeCloud">
-                <AppIcon name="cloud" className="buttonIcon" />
-                {sessionMode === 'authenticated' ? 'Cloud-ready' : 'Local-only'}
-              </span>
+              {currentUser && sessionMode === 'authenticated' ? (
+                <span className="miniBadge miniBadgeCloud">{USER_ROLE_LABEL[currentUser.role]}</span>
+              ) : null}
             </div>
             <div className="accountHeroSub">
-              {currentAccount
-                ? `${AUTH_PROVIDER_LABEL[currentAccount.provider]}${currentAccount.email ? ` · ${currentAccount.email}` : ' · Hồ sơ nội bộ'}`
-                : moTaCheDoPhien(sessionMode)}
+              {setupRequired
+                ? 'Giống mô hình WordPress: quản trị chính tạo user, đặt mật khẩu/PIN và cấp vai trò. Không còn đăng ký tự do từ màn hình đăng nhập.'
+                : sessionMode === 'authenticated' && currentUser
+                  ? `Username: ${currentUser.username}${currentUser.isOwner ? ' · Quản trị chính' : ''}`
+                  : moTaCheDoPhien(sessionMode)}
             </div>
           </div>
 
-          <div className="accountGrid">
+          {setupRequired ? (
             <section className="accountCard">
-              <div className="label">Đăng nhập tùy chọn</div>
+              <div className="label">Tài khoản quản trị chính</div>
               <div className="hint">
-                Bản hiện tại dùng hồ sơ cục bộ để chuẩn bị cho đồng bộ cloud. Luồng guest vẫn hoạt động đầy đủ.
+                Tài khoản này có toàn quyền hệ thống, quản lý user và chỉnh quảng cáo tùy chọn trên màn hình trình chiếu.
               </div>
 
-              <div className="field">
-                <label className="label" htmlFor="auth-display-name">
-                  Tên hiển thị
-                </label>
-                <input
-                  id="auth-display-name"
-                  className="input"
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                  placeholder="Ví dụ: Chủ phòng 1"
-                />
+              <div className="accountRegisterGrid">
+                <div className="field">
+                  <label className="label" htmlFor="setup-name">
+                    Tên hiển thị
+                  </label>
+                  <input
+                    id="setup-name"
+                    className="input"
+                    value={setupName}
+                    onChange={(e) => setSetupName(e.target.value)}
+                    placeholder="VD: Chủ hệ thống"
+                  />
+                </div>
+                <div className="field">
+                  <label className="label" htmlFor="setup-username">
+                    Tên đăng nhập
+                  </label>
+                  <input
+                    id="setup-username"
+                    className="input"
+                    value={setupUsername}
+                    onChange={(e) => setSetupUsername(e.target.value)}
+                    placeholder="admin"
+                    autoCapitalize="none"
+                    autoComplete="username"
+                  />
+                </div>
+                <div className="field">
+                  <label className="label" htmlFor="setup-pin">
+                    Mật khẩu/PIN
+                  </label>
+                  <input
+                    id="setup-pin"
+                    className="input"
+                    value={setupPin}
+                    onChange={(e) => setSetupPin(e.target.value)}
+                    placeholder="Tối thiểu 6 ký tự"
+                    type="password"
+                    autoComplete="new-password"
+                  />
+                </div>
+                <div className="field">
+                  <label className="label" htmlFor="setup-pin-confirm">
+                    Nhập lại mật khẩu/PIN
+                  </label>
+                  <input
+                    id="setup-pin-confirm"
+                    className="input"
+                    value={setupPinConfirm}
+                    onChange={(e) => setSetupPinConfirm(e.target.value)}
+                    placeholder="Nhập lại để xác nhận"
+                    type="password"
+                    autoComplete="new-password"
+                  />
+                </div>
               </div>
 
-              <div className="field">
-                <label className="label" htmlFor="auth-provider">
-                  Kiểu tài khoản
-                </label>
-                <select
-                  id="auth-provider"
-                  className="input"
-                  value={provider}
-                  onChange={(e) =>
-                    setProvider(
-                      e.target.value === 'email' || e.target.value === 'local' ? e.target.value : 'google',
-                    )
-                  }
-                >
-                  <option value="google">Google</option>
-                  <option value="email">Email</option>
-                  <option value="local">Nội bộ</option>
-                </select>
-              </div>
-
-              <div className="field">
-                <label className="label" htmlFor="auth-email">
-                  Email {provider === 'local' ? '(không bắt buộc)' : ''}
-                </label>
-                <input
-                  id="auth-email"
-                  className="input"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder={provider === 'local' ? 'Có thể bỏ trống' : 'tenban@example.com'}
-                />
-              </div>
+              <label className="check">
+                <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
+                <span>Ghi nhớ đăng nhập bằng cookie trong 30 ngày</span>
+              </label>
 
               <div className="accountCardActions">
                 <button
                   className="primary primaryStrong buttonWithIcon"
-                  disabled={!canSubmit}
+                  disabled={!canSetup}
                   onClick={() => {
-                    if (!canSubmit) return
-                    onLogin({ displayName, email, provider })
-                    onClose()
+                    const result = onSetupOwner({
+                      name: setupName,
+                      username: setupUsername,
+                      pin: setupPin,
+                      remember,
+                    })
+                    setMessage(result.message)
+                    if (result.ok) onClose()
+                  }}
+                  type="button"
+                >
+                  <AppIcon name="shield" className="buttonIcon" />
+                  <span className="buttonLabel">Tạo quản trị chính</span>
+                </button>
+              </div>
+            </section>
+          ) : (
+            <section className="accountCard">
+              <div className="label">Đăng nhập hệ thống</div>
+              <div className="hint">
+                Nhập đúng tên đăng nhập và mật khẩu/PIN đã được quản trị cấp. Danh sách user không hiển thị ở đây để tránh ai cũng chọn được tài khoản.
+              </div>
+
+              <div className="accountRegisterGrid">
+                <div className="field">
+                  <label className="label" htmlFor="auth-username">
+                    Tên đăng nhập
+                  </label>
+                  <input
+                    id="auth-username"
+                    className="input"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    placeholder="VD: admin"
+                    autoCapitalize="none"
+                    autoComplete="username"
+                  />
+                </div>
+
+                <div className="field">
+                  <label className="label" htmlFor="auth-pin">
+                    Mật khẩu/PIN
+                  </label>
+                  <input
+                    id="auth-pin"
+                    className="input"
+                    value={pin}
+                    onChange={(e) => setPin(e.target.value)}
+                    placeholder="Nhập mật khẩu/PIN"
+                    type="password"
+                    autoComplete="current-password"
+                  />
+                </div>
+              </div>
+
+              <label className="check">
+                <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
+                <span>Ghi nhớ đăng nhập bằng cookie trong 30 ngày</span>
+              </label>
+
+              <div className="accountCardActions">
+                <button
+                  className="primary primaryStrong buttonWithIcon"
+                  disabled={!canLogin}
+                  onClick={() => {
+                    const result = onLogin({ username, pin, remember })
+                    setMessage(result.message)
+                    if (result.ok) onClose()
                   }}
                   type="button"
                 >
                   <AppIcon name="login" className="buttonIcon" />
-                  <span className="buttonLabel">{sessionMode === 'authenticated' ? 'Cập nhật phiên' : 'Đăng nhập'}</span>
+                  <span className="buttonLabel">Đăng nhập</span>
                 </button>
 
                 {sessionMode === 'authenticated' ? (
                   <button className="ghost buttonToneDanger buttonWithIcon" onClick={onLogout} type="button">
                     <AppIcon name="logout" className="buttonIcon" />
-                    <span className="buttonLabel">Thoát về khách</span>
+                    <span className="buttonLabel">Đăng xuất</span>
                   </button>
                 ) : null}
               </div>
             </section>
+          )}
 
-            <section className="accountCard">
-              <div className="label">Tài khoản đã lưu trên máy</div>
-              <div className="hint">Dùng lại nhanh trên web, desktop và mobile trong cùng thiết bị hoặc trình duyệt.</div>
-
-              <div className="accountStoredList">
-                {accounts.length ? (
-                  accounts.map((account) => {
-                    const isCurrent = currentAccount?.id === account.id && sessionMode === 'authenticated'
-
-                    return (
-                      <div key={account.id} className={`accountStoredRow ${isCurrent ? 'accountStoredRowActive' : ''}`}>
-                        <div className="accountStoredMeta">
-                          <div className="accountStoredNameRow">
-                            <div className="accountStoredName">{account.displayName}</div>
-                            {isCurrent ? <span className="miniBadge miniBadgeSuccess">Đang dùng</span> : null}
-                          </div>
-                          <div className="accountStoredSub">
-                            {AUTH_PROVIDER_LABEL[account.provider]}
-                            {account.email ? ` · ${account.email}` : ' · Hồ sơ nội bộ'}
-                          </div>
-                        </div>
-                        <div className="accountStoredActions">
-                          {!isCurrent ? (
-                            <button
-                              className="ghost compactButton buttonToneSuccess"
-                              onClick={() => {
-                                onUseAccount(account.id)
-                                onClose()
-                              }}
-                              type="button"
-                            >
-                              Dùng lại
-                            </button>
-                          ) : null}
-                          <button className="ghost compactButton buttonToneDanger" onClick={() => onRemoveAccount(account.id)} type="button">
-                            Xoá
-                          </button>
-                        </div>
-                      </div>
-                    )
-                  })
-                ) : (
-                  <div className="accountEmptyState">Chưa có tài khoản nào được lưu. App vẫn hoạt động bình thường ở chế độ khách.</div>
-                )}
-              </div>
-            </section>
-          </div>
+          {message ? <div className="settingsInfoCard">{message}</div> : null}
         </div>
       </div>
     </div>

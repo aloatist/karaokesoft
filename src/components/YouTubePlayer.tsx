@@ -48,6 +48,8 @@ export function YouTubePlayer({
   onEnded,
   onError,
   onReady,
+  onSkipSong,
+  hideAdAssist = false,
   command,
 }: {
   videoId?: string
@@ -55,6 +57,8 @@ export function YouTubePlayer({
   onEnded: () => void
   onError?: (code: number, videoId?: string) => void
   onReady?: () => void
+  onSkipSong?: () => void
+  hideAdAssist?: boolean
   command?: { type: 'play' | 'pause' | 'volume' | 'restart'; value?: number; nonce: number }
 }) {
   const {
@@ -77,6 +81,7 @@ export function YouTubePlayer({
 
   const pendingStartRef = useRef(false)
   const [videoDaThuMoKhoa, setVideoDaThuMoKhoa] = useState<string | null>(null)
+  const [troGiupQuangCaoDaAn, setTroGiupQuangCaoDaAn] = useState<string | null>(null)
   const currentVideoKey = useMemo(() => videoId ?? '__empty__', [videoId])
   const currentVideoKeyRef = useRef(currentVideoKey)
   const requiresGestureRef = useRef(requiresGesture)
@@ -84,6 +89,9 @@ export function YouTubePlayer({
   const commandType = command?.type
   const commandValue = command?.value
   const commandNonce = command?.nonce
+  const coLoiPlayer = typeof lastError === 'number'
+  const daAnTroGiupQuangCao = troGiupQuangCaoDaAn === currentVideoKey
+  const hienTroGiupQuangCao = Boolean(videoId) && !coLoiPlayer && !daAnTroGiupQuangCao
 
   useEffect(() => {
     if (ready) onReady?.()
@@ -107,6 +115,12 @@ export function YouTubePlayer({
   }, [currentVideoKey, requiresGesture])
 
   useEffect(() => {
+    if (!hienTroGiupQuangCao) return
+    const timer = window.setTimeout(() => setTroGiupQuangCaoDaAn(currentVideoKey), 18000)
+    return () => window.clearTimeout(timer)
+  }, [currentVideoKey, hienTroGiupQuangCao])
+
+  useEffect(() => {
     if (!ready) return
     if (!requiresGesture) return
     if (!pendingStartRef.current) return
@@ -122,7 +136,6 @@ export function YouTubePlayer({
     if (commandType === 'volume') setVolume(typeof commandValue === 'number' ? commandValue : volume)
   }, [commandNonce, commandType, commandValue, pause, play, ready, restart, setVolume, volume])
 
-  const coLoiPlayer = typeof lastError === 'number'
   const dangThuMoKhoa = videoDaThuMoKhoa === currentVideoKey && playerState !== 'playing'
   const hienGate = !coLoiPlayer && requiresGesture && videoDaThuMoKhoa !== currentVideoKey
   const hienDangTai =
@@ -170,6 +183,31 @@ export function YouTubePlayer({
         </div>
       ) : null}
 
+      {!hideAdAssist && !coLoiPlayer && videoId && hienTroGiupQuangCao ? (
+        <div className="ytAdAssist">
+          <div>
+            <div className="ytAdAssistTitle">Nếu có quảng cáo YouTube</div>
+            <div className="ytAdAssistSub">
+              App không tự bỏ qua quảng cáo. Khi YouTube hiện nút bỏ qua, bấm trực tiếp trong khung video.
+            </div>
+          </div>
+          <div className="ytAdAssistActions">
+            <button
+              className="ghost compactButton"
+              type="button"
+              onClick={() => setTroGiupQuangCaoDaAn(currentVideoKey)}
+            >
+              Đã hiểu
+            </button>
+            {onSkipSong ? (
+              <button className="ghost compactButton buttonToneDanger" type="button" onClick={onSkipSong}>
+                Bỏ qua bài
+              </button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
       {hienGate ? (
         <div className="ytGate">
           <div className="ytGateTitle">Bật âm thanh</div>
@@ -201,15 +239,6 @@ export function YouTubePlayer({
         </div>
       ) : null}
 
-      {import.meta.env.DEV ? (
-        <div className="ytDebug">
-          <div>Video: {videoId ?? '—'}</div>
-          <div>Trạng thái: {playerState}</div>
-          <div>Ready: {ready ? 'có' : 'không'}</div>
-          <div>Yêu cầu thao tác: {requiresGesture ? 'có' : 'không'}</div>
-          <div>Lỗi: {typeof lastError === 'number' ? String(lastError) : '—'}</div>
-        </div>
-      ) : null}
     </div>
   )
 }

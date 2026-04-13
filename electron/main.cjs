@@ -126,7 +126,7 @@ function chonManHinh(preferredIndex) {
   }
 }
 
-async function taiRenderer(targetWindow, targetScreen, roomCode) {
+async function taiRenderer(targetWindow, targetScreen, roomCode, roomToken) {
   const baseUrl = await batMayChuRenderer()
   const url = new URL(baseUrl)
   url.searchParams.set('screen', targetScreen)
@@ -134,6 +134,11 @@ async function taiRenderer(targetWindow, targetScreen, roomCode) {
     url.searchParams.set('room', String(roomCode))
   } else {
     url.searchParams.delete('room')
+  }
+  if (roomToken) {
+    url.searchParams.set('token', String(roomToken))
+  } else {
+    url.searchParams.delete('token')
   }
   await targetWindow.loadURL(url.toString())
 }
@@ -197,10 +202,10 @@ async function taoCuaSoDieuKhien() {
   return controlWindow
 }
 
-async function taoCuaSoTrinhChieu(preferredIndex, roomCode) {
+async function taoCuaSoTrinhChieu(preferredIndex, roomCode, roomToken) {
   if (displayWindow && !displayWindow.isDestroyed()) {
     if (roomCode) {
-      await taiRenderer(displayWindow, 'display', roomCode)
+      await taiRenderer(displayWindow, 'display', roomCode, roomToken)
     }
     const display = apDungKhungCuaSoTrinhChieu(displayWindow, preferredIndex)
     displayWindow.show()
@@ -233,7 +238,7 @@ async function taoCuaSoTrinhChieu(preferredIndex, roomCode) {
     displayWindow = null
   })
 
-  await taiRenderer(displayWindow, 'display', roomCode)
+  await taiRenderer(displayWindow, 'display', roomCode, roomToken)
   const appliedDisplay = apDungKhungCuaSoTrinhChieu(displayWindow, preferredIndex)
   displayWindow.show()
 
@@ -243,8 +248,8 @@ async function taoCuaSoTrinhChieu(preferredIndex, roomCode) {
 function dangKyIpc() {
   ipcMain.handle('karaoke:get-displays', () => layDanhSachManHinh())
 
-  ipcMain.handle('karaoke:open-display-window', async (_event, preferredIndex, roomCode) => {
-    return taoCuaSoTrinhChieu(preferredIndex, roomCode)
+  ipcMain.handle('karaoke:open-display-window', async (_event, preferredIndex, roomCode, roomToken) => {
+    return taoCuaSoTrinhChieu(preferredIndex, roomCode, roomToken)
   })
 
   ipcMain.on('karaoke:sync', (event, msg) => {

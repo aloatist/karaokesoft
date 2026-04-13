@@ -10,6 +10,11 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+release
+.env.android-signing
+android/keystores
+*.jks
+*.keystore
 *.local
 
 # Editor directories and files

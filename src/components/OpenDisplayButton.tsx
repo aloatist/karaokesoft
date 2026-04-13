@@ -8,9 +8,10 @@ type Props = {
   onBeforeOpen?: () => void
   disabled?: boolean
   roomCode?: string
+  roomToken?: string
 }
 
-export function OpenDisplayButton({ className, onOpened, onBeforeOpen, disabled = false, roomCode }: Props) {
+export function OpenDisplayButton({ className, onOpened, onBeforeOpen, disabled = false, roomCode, roomToken }: Props) {
   const displayMonitorIndex = useSettingsStore((s) => s.displayMonitorIndex)
 
   return (
@@ -20,7 +21,7 @@ export function OpenDisplayButton({ className, onOpened, onBeforeOpen, disabled 
       onClick={async () => {
         if (disabled) return
         onBeforeOpen?.()
-        const desktopResult = await moManHinhTrinhChieu(displayMonitorIndex, roomCode)
+        const desktopResult = await moManHinhTrinhChieu(displayMonitorIndex, roomCode, roomToken)
         if (desktopResult) {
           onOpened?.('desktop')
           return
@@ -30,6 +31,9 @@ export function OpenDisplayButton({ className, onOpened, onBeforeOpen, disabled 
         url.searchParams.set('screen', 'display')
         if (roomCode) {
           url.searchParams.set('room', roomCode)
+        }
+        if (roomToken) {
+          url.searchParams.set('token', roomToken)
         }
         window.open(url.toString(), 'KaraokeYT Công Trình aloatist-display', 'toolbar=no,menubar=no')
         onOpened?.('browser')
