@@ -6,10 +6,11 @@ type Props = {
   onChange: (v: string) => void
   onClear: () => void
   disabled?: boolean
+  onFocus?: () => void
 }
 
 export const SearchBar = forwardRef<HTMLInputElement, Props>(function SearchBar(
-  { value, onChange, onClear, disabled = false },
+  { value, onChange, onClear, disabled = false, onFocus },
   ref,
 ) {
   const id = useId()
@@ -26,6 +27,7 @@ export const SearchBar = forwardRef<HTMLInputElement, Props>(function SearchBar(
         disabled={disabled}
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        onFocus={onFocus}
         placeholder="Tìm bài, ca sĩ hoặc mã YouTube…"
         autoComplete="off"
         spellCheck={false}

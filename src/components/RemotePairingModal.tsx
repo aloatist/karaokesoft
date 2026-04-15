@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { AppIcon } from './AppIcon'
 import { QrCodePanel } from './QrCodePanel'
 import { chuanHoaMaPhongRemote } from '../services/remoteRelay'
@@ -8,18 +8,20 @@ type Props = {
   open: boolean
   onClose: () => void
   roomCode: string
-  controlUrl: string
   displayUrl: string
   remoteUrl: string
   relayUrl: string
+  networkHint?: string
   status: RemoteRelayStatus
   statusMessage?: string
   presence: RemotePresence
   onRegenerate: () => void
   onUseRoomCode: (roomCode: string) => void
+  onUseLanHost?: (host: string) => void
 }
 
 type RemotePairTab = 'phone' | 'display' | 'diagnostics'
+const MOBILE_PAIRING_BREAKPOINT = 720
 
 function statusLabel(status: RemoteRelayStatus) {
   switch (status) {
@@ -45,19 +47,22 @@ export function RemotePairingModal({
   open,
   onClose,
   roomCode,
-  controlUrl,
   displayUrl,
   remoteUrl,
   relayUrl,
+  networkHint,
   status,
   statusMessage,
   presence,
   onRegenerate,
   onUseRoomCode,
+  onUseLanHost,
 }: Props) {
   const [linkCode, setLinkCode] = useState(roomCode)
   const [activeTab, setActiveTab] = useState<RemotePairTab>('phone')
+  const [isPhoneViewport, setIsPhoneViewport] = useState(() => window.innerWidth <= MOBILE_PAIRING_BREAKPOINT)
   const [copyMessage, setCopyMessage] = useState<string | null>(null)
+  const [manualLanHost, setManualLanHost] = useState('')
 
   const chipTone = useMemo(() => {
     if (status === 'connected') return 'statusChipSuccess'
@@ -65,11 +70,25 @@ export function RemotePairingModal({
     return ''
   }, [status])
 
+  useEffect(() => {
+    const media = window.matchMedia(`(max-width: ${MOBILE_PAIRING_BREAKPOINT}px)`)
+    const onChange = (event: MediaQueryListEvent) => {
+      setIsPhoneViewport(event.matches)
+    }
+    media.addEventListener('change', onChange)
+    return () => media.removeEventListener('change', onChange)
+  }, [])
+
   if (!open) return null
 
+  const visibleTab = isPhoneViewport ? 'phone' : activeTab
   const mobileCount = presence.remotes
-  const phoneReady = status === 'connected' && presence.hosts > 0
+  const relayReady = status === 'connected'
+  const hostReady = relayReady && presence.hosts > 0
   const displayReady = status === 'connected' && presence.displays > 0
+  const mobileReady = relayReady && mobileCount > 0
+  const readyToUse = displayReady && mobileReady
+  const currentStep = !displayReady ? 1 : !mobileReady ? 2 : 3
 
   async function copyLink(value: string, label: string) {
     try {
@@ -114,7 +133,7 @@ export function RemotePairingModal({
                 <AppIcon name="cloud" className="buttonIcon" />
                 <span>{statusLabel(status)}</span>
               </div>
-              <div className={`remotePairSignal ${phoneReady ? 'statusChipSuccess' : ''}`}>
+              <div className={`remotePairSignal ${hostReady ? 'statusChipSuccess' : ''}`}>
                 <AppIcon name="control" className="buttonIcon" />
                 <span>Điều khiển: {presence.hosts}</span>
               </div>
@@ -129,10 +148,65 @@ export function RemotePairingModal({
             </div>
           </div>
 
+          {networkHint ? (
+            <div className="remotePairNotice">
+              <AppIcon name="cloud" className="buttonIcon" />
+              <span>{networkHint}</span>
+            </div>
+          ) : null}
+
+          <div className="remotePairFlow" aria-label="Quy trình kết nối 3 bước">
+            <div className={`remotePairFlowStep remotePairFlowStepDesktop ${displayReady ? 'remotePairFlowStepReady' : ''} ${currentStep === 1 ? 'remotePairFlowStepActive' : ''}`}>
+              <span className="remotePairFlowIcon">
+                <AppIcon name="screen" className="buttonIcon" />
+              </span>
+              <div>
+                <div className="remotePairFlowTitle">1. Mở TV/laptop</div>
+                <div className="hint">{displayReady ? 'Đã thấy màn hình trình chiếu trong phòng này.' : 'Bấm mở trình chiếu hoặc mở link display trên TV/laptop.'}</div>
+              </div>
+              <span className={`miniBadge ${displayReady ? 'miniBadgeSuccess' : ''}`}>{displayReady ? 'Xong' : 'Cần làm'}</span>
+            </div>
+            <div className={`remotePairFlowStep ${mobileReady ? 'remotePairFlowStepReady' : ''} ${currentStep === 2 ? 'remotePairFlowStepActive' : ''}`}>
+              <span className="remotePairFlowIcon">
+                <AppIcon name="control" className="buttonIcon" />
+              </span>
+              <div>
+                <div className="remotePairFlowTitle">2. Ghép điện thoại</div>
+                <div className="hint">{mobileReady ? 'Đã thấy điện thoại điều khiển.' : 'Quét QR hoặc mở remote tối giản bằng link bên dưới.'}</div>
+              </div>
+              <span className={`miniBadge ${mobileReady ? 'miniBadgeSuccess' : ''}`}>{mobileReady ? 'Xong' : 'Cần làm'}</span>
+            </div>
+            <div className={`remotePairFlowStep ${readyToUse ? 'remotePairFlowStepReady' : ''} ${currentStep === 3 ? 'remotePairFlowStepActive' : ''}`}>
+              <span className="remotePairFlowIcon">
+                <AppIcon name="play" className="buttonIcon" />
+              </span>
+              <div>
+                <div className="remotePairFlowTitle">3. Tìm bài và phát</div>
+                <div className="hint">{readyToUse ? 'Đủ thiết bị. Có thể tìm bài và điều khiển phát.' : statusHint(status, statusMessage)}</div>
+              </div>
+              <span className={`miniBadge ${readyToUse ? 'miniBadgeSuccess' : ''}`}>{readyToUse ? 'Sẵn sàng' : 'Chưa đủ'}</span>
+            </div>
+          </div>
+
+          <div className="remotePairPrimaryActions">
+            <button className="primary buttonWithIcon remotePairDesktopOnly" onClick={openDisplayWindow} type="button">
+              <AppIcon name="screen" className="buttonIcon" />
+              <span className="buttonLabel">Mở TV/laptop</span>
+            </button>
+            <button className="ghost buttonWithIcon buttonToneAccent" onClick={openRemoteWindow} type="button">
+              <AppIcon name="control" className="buttonIcon" />
+              <span className="buttonLabel">Mở remote điện thoại</span>
+            </button>
+            <button className="ghost buttonWithIcon buttonToneMuted remotePairCopyOnly" onClick={() => void copyLink(remoteUrl, 'link remote')} type="button">
+              <AppIcon name="spark" className="buttonIcon" />
+              <span className="buttonLabel">Copy link</span>
+            </button>
+          </div>
+
           <div className="remotePairTabs" role="tablist" aria-label="Cách liên kết">
             <button
-              className={`ghost compactButton buttonWithIcon ${activeTab === 'phone' ? 'buttonToneAccent buttonStateActive' : 'buttonToneMuted'}`}
-              data-pressed={activeTab === 'phone'}
+              className={`ghost compactButton buttonWithIcon ${visibleTab === 'phone' ? 'buttonToneAccent buttonStateActive' : 'buttonToneMuted'}`}
+              data-pressed={visibleTab === 'phone'}
               onClick={() => setActiveTab('phone')}
               type="button"
             >
@@ -140,8 +214,8 @@ export function RemotePairingModal({
               <span className="buttonLabel">Điện thoại</span>
             </button>
             <button
-              className={`ghost compactButton buttonWithIcon ${activeTab === 'display' ? 'buttonToneAccent buttonStateActive' : 'buttonToneMuted'}`}
-              data-pressed={activeTab === 'display'}
+              className={`ghost compactButton buttonWithIcon remotePairDesktopOnly ${visibleTab === 'display' ? 'buttonToneAccent buttonStateActive' : 'buttonToneMuted'}`}
+              data-pressed={visibleTab === 'display'}
               onClick={() => setActiveTab('display')}
               type="button"
             >
@@ -149,8 +223,8 @@ export function RemotePairingModal({
               <span className="buttonLabel">TV/laptop</span>
             </button>
             <button
-              className={`ghost compactButton buttonWithIcon ${activeTab === 'diagnostics' ? 'buttonToneAccent buttonStateActive' : 'buttonToneMuted'}`}
-              data-pressed={activeTab === 'diagnostics'}
+              className={`ghost compactButton buttonWithIcon remotePairDiagnosticsOnly ${visibleTab === 'diagnostics' ? 'buttonToneAccent buttonStateActive' : 'buttonToneMuted'}`}
+              data-pressed={visibleTab === 'diagnostics'}
               onClick={() => setActiveTab('diagnostics')}
               type="button"
             >
@@ -159,7 +233,7 @@ export function RemotePairingModal({
             </button>
           </div>
 
-          {activeTab === 'phone' ? (
+          {visibleTab === 'phone' ? (
             <div className="remotePairLayout">
               <div className="remotePairCard">
                 <div className="remotePairCardTitle">Cách nhanh nhất: quét QR</div>
@@ -205,13 +279,37 @@ export function RemotePairingModal({
                     <span>Nếu trạng thái Điều khiển hoặc Mobile tăng lên, điện thoại đã vào đúng phòng.</span>
                   </div>
                 </div>
+
+                {onUseLanHost ? (
+                  <div className="field remoteManualLanField">
+                    <div className="label">Nếu QR chưa nối: nhập IP LAN laptop</div>
+                    <div className="remoteJoinRow">
+                      <input
+                        className="input"
+                        value={manualLanHost}
+                        onChange={(e) => setManualLanHost(e.target.value)}
+                        inputMode="decimal"
+                        placeholder="VD: 192.168.1.50"
+                      />
+                      <button
+                        className="ghost buttonWithIcon buttonToneAccent"
+                        onClick={() => onUseLanHost(manualLanHost)}
+                        type="button"
+                      >
+                        <AppIcon name="screen" className="buttonIcon" />
+                        <span className="buttonLabel">Dùng IP</span>
+                      </button>
+                    </div>
+                    <div className="hint">Dùng khi app không tự lấy được IP LAN. Sau khi áp dụng, quét lại QR mới.</div>
+                  </div>
+                ) : null}
               </div>
 
-              <QrCodePanel value={controlUrl} />
+              <QrCodePanel value={remoteUrl} />
             </div>
           ) : null}
 
-          {activeTab === 'display' ? (
+          {visibleTab === 'display' ? (
             <div className="remotePairGrid">
               <div className="remotePairCard">
                 <div className="remotePairCardTitle">Mở TV hoặc laptop trình chiếu</div>
@@ -244,7 +342,7 @@ export function RemotePairingModal({
             </div>
           ) : null}
 
-          {activeTab === 'diagnostics' ? (
+          {visibleTab === 'diagnostics' ? (
             <div className="remotePairGrid">
               <div className="remotePairCard remoteDiagnosticsCard">
                 <div className="remotePairCardTitle">Trạng thái kết nối</div>
@@ -269,8 +367,8 @@ export function RemotePairingModal({
 
           <div className="remotePairLinks">
             <div className="field">
-              <div className="label">Link điều khiển trên điện thoại</div>
-              <input className="input" value={controlUrl} readOnly onFocus={(e) => e.currentTarget.select()} />
+              <div className="label">Link remote tối giản trên điện thoại</div>
+              <input className="input" value={remoteUrl} readOnly onFocus={(e) => e.currentTarget.select()} />
             </div>
             <div className="field">
               <div className="label">Link trình chiếu TV/laptop</div>
@@ -304,11 +402,11 @@ export function RemotePairingModal({
           </button>
           <button
             className="ghost buttonWithIcon"
-            onClick={() => void copyLink(controlUrl, 'link điều khiển')}
+            onClick={() => void copyLink(remoteUrl, 'link remote điện thoại')}
             type="button"
           >
             <AppIcon name="spark" className="buttonIcon" />
-            <span className="buttonLabel">Copy link điều khiển</span>
+            <span className="buttonLabel">Copy link remote</span>
           </button>
           <button className="primary buttonWithIcon" onClick={onRegenerate} type="button">
             <AppIcon name="restart" className="buttonIcon" />

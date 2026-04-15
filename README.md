@@ -21,10 +21,24 @@ Remote relay cho điện thoại:
 npm run remote:relay
 ```
 
+Auth + RBAC service (Phase B):
+
+```bash
+npm run auth:server
+```
+
 Chạy nhanh cả web + relay:
 
 ```bash
 npm run dev:remote
+```
+
+Lệnh này mở Vite ở LAN (`--host 0.0.0.0`) và relay ở `0.0.0.0:8787`, để điện thoại cùng Wi-Fi có thể quét QR và kết nối vào laptop.
+
+Chạy full local (web + relay + auth):
+
+```bash
+npm run dev:full
 ```
 
 Desktop Electron:
@@ -32,6 +46,8 @@ Desktop Electron:
 ```bash
 npm run dev:desktop
 ```
+
+Desktop Electron tự mở relay local `0.0.0.0:8787` nếu chưa có relay chạy sẵn. Renderer local cũng mở trên LAN để link QR có thể dùng IP laptop.
 
 ## Mobile Remote MVP
 
@@ -48,14 +64,58 @@ Lưu ý:
 - Bản hiện tại **không bắt buộc đăng nhập**
 - Remote đang dùng `WebSocket relay`
 - Local dev mặc định relay ở `ws://127.0.0.1:8787`
+- Remote mobile có thể nhập và lưu `Relay URL` thủ công nếu không đi qua QR
+- Khi Control chạy bằng `127.0.0.1/localhost`, app sẽ hỏi relay lấy IP LAN của laptop và tự sinh QR/link dạng `http://<IP-laptop>:8787/?screen=remote...` để điện thoại chỉ cần đi qua một cổng relay ổn định.
+- Nếu Control báo chưa thấy relay, chạy `npm run dev:remote` thay cho `npm run dev`, hoặc chạy thêm `npm run remote:relay`. Trong modal liên kết có thể nhập IP LAN laptop thủ công rồi quét lại QR.
+- Nếu lỡ mở màn hình trình chiếu trên điện thoại, bấm `Chuyển sang điều khiển điện thoại` để đổi từ `display` sang `remote`.
+- Giao diện điện thoại chỉ hiện thao tác remote cần thiết; nút mở TV/laptop được ẩn trên màn nhỏ để tránh bấm nhầm.
+- Remote điện thoại có nút `Quét QR bằng camera`; khi đọc được QR, app tự lấy `room/token/relay` và kết nối. Android debug đã khai báo quyền `CAMERA`.
+- APK Android local dùng `http://localhost` + `android.allowMixedContent=true` + `usesCleartextTraffic=true` để WebView cho phép kết nối relay LAN dạng `ws://IP-laptop:8787`. Production nên chuyển sang `https/wss`.
 - Khi deploy production, cần trỏ `VITE_REMOTE_RELAY_URL` về relay server thật hoặc reverse proxy
+- Phase B auth API mặc định ở `http://127.0.0.1:8788`
+- Dữ liệu auth local lưu ở `server/data/auth-db.json` (đã git ignore)
+- Relay có heartbeat cleanup kết nối treo (mặc định 15s, chỉnh bằng `RELAY_HEARTBEAT_INTERVAL_MS`)
+- Display tự poll cấu hình quảng cáo từ auth server mỗi 20 giây (fallback về state remote/local nếu auth server không sẵn sàng)
+
+## API Phase B (Auth/RBAC)
+
+- `POST /api/auth/bootstrap-owner` tạo quản trị chính lần đầu.
+- `POST /api/auth/login` đăng nhập bằng `username + password/pin`.
+- `POST /api/auth/refresh` làm mới phiên.
+- `POST /api/auth/logout` đăng xuất.
+- `GET /api/auth/csrf` cấp CSRF token cho các request ghi dữ liệu.
+- `GET /api/auth/me` lấy thông tin phiên hiện tại.
+- `GET/POST/PATCH/DELETE /api/users` quản trị user theo role/capability.
+- `GET/PUT /api/config/display-ad` cấu hình quảng cáo trình chiếu (admin).
+- `GET /api/audit?limit=...` lấy nhật ký thao tác quản trị.
+- Mục `Cài đặt -> Người dùng và phân quyền` đã có khung `Nhật ký quản trị` để theo dõi thay đổi gần nhất.
 
 ## Build kiểm tra
 
 ```bash
+npm run check:preflight
+```
+
+Hoặc chạy từng bước:
+
+```bash
 npm run lint
 npm run build
+npm run check:release
+npm run check:secrets
 ```
+
+- `build:web` tu dong sinh `public/version.json` de app kiem tra ban moi (web/PWA).
+- `check:preflight` gom `lint + build:web + check:secrets + check:release`, nen chay truoc khi build desktop/APK/AAB.
+- `check:runtime` dung sau khi deploy local/staging de test nhanh relay/auth endpoint:
+
+```bash
+npm run check:runtime
+```
+
+CI:
+
+- Repo da co workflow `.github/workflows/ci.yml` tu chay `lint + build:web + check:release + check:secrets` khi push/PR.
 
 ## Dong goi thanh app
 
@@ -95,7 +155,7 @@ Android APK debug:
 npm run build:apk
 ```
 
-- File APK dung de cai thu nam o `release/KaraokeYT-0.1.0-debug.apk`
+- File APK dung de cai thu nam o `release/KaraokeYT-<version>-debug.apk`
 - Ban debug dung de test noi bo, chua phai ban ky release de dua len Google Play
 - Neu may chua co Android SDK, script macOS se uu tien JDK Homebrew o `/opt/homebrew/opt/openjdk@21`
 

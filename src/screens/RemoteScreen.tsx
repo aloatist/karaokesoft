@@ -1,14 +1,57 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { IScannerControls } from '@zxing/browser'
 import { AppIcon } from '../components/AppIcon'
 import {
   chuanHoaMaPhongRemote,
+  chuanHoaRelayUrl,
   chuanHoaTokenPhongRemote,
+  docRelayUrlDaLuu,
+  laHostLocalhost,
   layRelayUrlMacDinh,
+  luuRelayUrl,
+  taoDuongDanTrinhChieu,
   taoKetNoiRelay,
 } from '../services/remoteRelay'
 import type { RemoteAction, RemotePresence, RemoteRelayStatus, RemoteRoomState } from '../types'
 
 const emptyPresence: RemotePresence = { hosts: 0, remotes: 0, displays: 0 }
+
+function layIpTuRelayUrl(relayUrl: string) {
+  try {
+    const normalized = chuanHoaRelayUrl(relayUrl)
+    if (!normalized) return ''
+    const hostname = new URL(normalized).hostname
+    return laHostLocalhost(hostname) ? '' : hostname
+  } catch {
+    return ''
+  }
+}
+
+function taoRelayUrlTuIpLaptop(input: string) {
+  const trimmed = input.trim()
+  if (!trimmed) return ''
+  try {
+    const withProtocol = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`
+    const url = new URL(withProtocol)
+    return chuanHoaRelayUrl(`ws://${url.hostname}:8787`)
+  } catch {
+    return ''
+  }
+}
+
+function taoHealthUrlTuRelay(relayUrl: string) {
+  const normalized = chuanHoaRelayUrl(relayUrl)
+  if (!normalized) return ''
+  try {
+    const url = new URL(normalized)
+    url.protocol = url.protocol === 'wss:' ? 'https:' : 'http:'
+    url.pathname = '/health'
+    url.search = ''
+    return url.toString()
+  } catch {
+    return ''
+  }
+}
 
 export function RemoteScreen() {
   const initialRoom = useMemo(() => {
@@ -19,18 +62,31 @@ export function RemoteScreen() {
     const params = new URLSearchParams(window.location.search)
     return chuanHoaTokenPhongRemote(params.get('token') ?? '')
   }, [])
+  const initialRelayUrl = useMemo(() => {
+    const fromQuery = chuanHoaRelayUrl(new URLSearchParams(window.location.search).get('relay') ?? '')
+    if (fromQuery) return fromQuery
+    const fromStorage = docRelayUrlDaLuu()
+    if (fromStorage) return fromStorage
+    return layRelayUrlMacDinh()
+  }, [])
 
   const [roomCodeInput, setRoomCodeInput] = useState(initialRoom)
   const [joinedRoom, setJoinedRoom] = useState(initialRoom)
   const [joinedRoomToken, setJoinedRoomToken] = useState(initialRoomToken)
+  const [relayUrlInput, setRelayUrlInput] = useState(initialRelayUrl)
+  const [laptopIpInput, setLaptopIpInput] = useState(() => layIpTuRelayUrl(initialRelayUrl))
+  const [relayUrl, setRelayUrl] = useState(initialRelayUrl)
   const [relayStatus, setRelayStatus] = useState<RemoteRelayStatus>(initialRoom ? 'connecting' : 'idle')
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const [presence, setPresence] = useState<RemotePresence>(emptyPresence)
   const [roomState, setRoomState] = useState<RemoteRoomState | null>(null)
   const [showQueue, setShowQueue] = useState(false)
   const [showDetails, setShowDetails] = useState(false)
+  const [scannerOpen, setScannerOpen] = useState(false)
+  const [scannerStatus, setScannerStatus] = useState('Đưa camera vào QR trên laptop/TV.')
   const connectionRef = useRef<ReturnType<typeof taoKetNoiRelay> | null>(null)
-  const relayUrl = useMemo(() => layRelayUrlMacDinh(), [])
+  const scannerControlsRef = useRef<IScannerControls | null>(null)
+  const scannerVideoRef = useRef<HTMLVideoElement | null>(null)
   const canSendRemote = relayStatus === 'connected' && presence.hosts > 0
 
   useEffect(() => {
@@ -57,8 +113,19 @@ export function RemoteScreen() {
   }, [joinedRoom, joinedRoomToken, relayUrl])
 
   const currentSong = roomState?.queue[roomState.currentIndex]
+  const displayJoinUrl = useMemo(
+    () => (joinedRoom ? taoDuongDanTrinhChieu(joinedRoom, joinedRoomToken, relayUrl) : ''),
+    [joinedRoom, joinedRoomToken, relayUrl],
+  )
+  const relayDangTroVeMayDienThoai = useMemo(() => {
+    try {
+      return laHostLocalhost(new URL(chuanHoaRelayUrl(relayUrlInput)).hostname)
+    } catch {
+      return false
+    }
+  }, [relayUrlInput])
 
-  const capNhatUrl = useCallback((roomCode: string, roomToken = joinedRoomToken) => {
+  const capNhatUrl = useCallback((roomCode: string, roomToken = joinedRoomToken, relay = relayUrl) => {
     const url = new URL(window.location.href)
     url.searchParams.set('screen', 'remote')
     if (roomCode) {
@@ -71,17 +138,194 @@ export function RemoteScreen() {
     } else {
       url.searchParams.delete('token')
     }
+    const normalizedRelay = chuanHoaRelayUrl(relay)
+    if (normalizedRelay) {
+      url.searchParams.set('relay', normalizedRelay)
+    } else {
+      url.searchParams.delete('relay')
+    }
     window.history.replaceState({}, '', url.toString())
-  }, [joinedRoomToken])
+  }, [joinedRoomToken, relayUrl])
+
+  const apDungRelay = useCallback((relayValue = relayUrlInput) => {
+    const normalizedRelay = chuanHoaRelayUrl(relayValue)
+    if (!normalizedRelay) {
+      setStatusMessage('Relay URL không hợp lệ. Ví dụ: ws://192.168.1.50:8787 hoặc wss://relay.domain.com')
+      return null
+    }
+
+    setRelayUrlInput(normalizedRelay)
+    setLaptopIpInput(layIpTuRelayUrl(normalizedRelay))
+    setRelayUrl(normalizedRelay)
+    luuRelayUrl(normalizedRelay)
+    capNhatUrl(joinedRoom, joinedRoomToken, normalizedRelay)
+    return normalizedRelay
+  }, [capNhatUrl, joinedRoom, joinedRoomToken, relayUrlInput])
+
+  const apDungIpLaptop = useCallback(() => {
+    const nextRelayUrl = taoRelayUrlTuIpLaptop(laptopIpInput)
+    if (!nextRelayUrl) {
+      setStatusMessage('IP laptop không hợp lệ. Ví dụ đúng: 192.168.99.104')
+      return null
+    }
+    setStatusMessage(`Đã dùng relay laptop ${nextRelayUrl}`)
+    return apDungRelay(nextRelayUrl)
+  }, [apDungRelay, laptopIpInput])
+
+  const ketNoiPhong = useCallback((roomValue: string, roomTokenValue = '', relayValue = relayUrlInput) => {
+    const relayValueCanDung = relayDangTroVeMayDienThoai ? taoRelayUrlTuIpLaptop(laptopIpInput) || relayValue : relayValue
+    const normalizedRelay = apDungRelay(relayValueCanDung)
+    if (!normalizedRelay) return
+
+    const normalized = chuanHoaMaPhongRemote(roomValue)
+    if (!normalized) {
+      setStatusMessage('Mã TV không hợp lệ. Hãy quét lại QR hoặc nhập 6 số trên màn hình TV/laptop.')
+      return
+    }
+
+    const nextToken = chuanHoaTokenPhongRemote(roomTokenValue)
+    setRoomCodeInput(normalized)
+    setJoinedRoom(normalized)
+    setJoinedRoomToken(nextToken)
+    capNhatUrl(normalized, nextToken, normalizedRelay)
+  }, [apDungRelay, capNhatUrl, laptopIpInput, relayDangTroVeMayDienThoai, relayUrlInput])
 
   const vaoPhong = useCallback(() => {
     const normalized = chuanHoaMaPhongRemote(roomCodeInput)
     const nextToken = normalized === joinedRoom ? joinedRoomToken : ''
-    setRoomCodeInput(normalized)
-    setJoinedRoom(normalized)
-    setJoinedRoomToken(nextToken)
-    capNhatUrl(normalized, nextToken)
-  }, [capNhatUrl, joinedRoom, joinedRoomToken, roomCodeInput])
+    ketNoiPhong(normalized, nextToken, relayUrlInput)
+  }, [joinedRoom, joinedRoomToken, ketNoiPhong, relayUrlInput, roomCodeInput])
+
+  const kiemTraRelay = useCallback(async () => {
+    const relayCanDung = relayDangTroVeMayDienThoai ? taoRelayUrlTuIpLaptop(laptopIpInput) || relayUrlInput : relayUrlInput
+    const healthUrl = taoHealthUrlTuRelay(relayCanDung)
+    if (!healthUrl) {
+      setStatusMessage('Chưa có Relay URL hợp lệ để kiểm tra.')
+      return
+    }
+
+    setStatusMessage(`Đang kiểm tra ${healthUrl}...`)
+    try {
+      const response = await fetch(healthUrl, { cache: 'no-store' })
+      setStatusMessage(response.ok ? `Relay laptop OK: ${healthUrl}` : `Relay trả lỗi ${response.status}: ${healthUrl}`)
+    } catch {
+      setStatusMessage(`Không gọi được relay laptop: ${healthUrl}. Kiểm tra cùng Wi-Fi, firewall hoặc IP laptop.`)
+    }
+  }, [laptopIpInput, relayDangTroVeMayDienThoai, relayUrlInput])
+
+  const xuLyQrPayload = useCallback((payload: string) => {
+    const raw = payload.trim()
+    if (!raw) {
+      setScannerStatus('QR trống. Hãy thử quét lại.')
+      return false
+    }
+
+    try {
+      const url = new URL(raw, window.location.href)
+      const roomFromUrl = chuanHoaMaPhongRemote(url.searchParams.get('room') ?? '')
+      if (roomFromUrl) {
+        const tokenFromUrl = chuanHoaTokenPhongRemote(url.searchParams.get('token') ?? '')
+        const relayFromUrl = chuanHoaRelayUrl(url.searchParams.get('relay') ?? '') || relayUrlInput
+        ketNoiPhong(roomFromUrl, tokenFromUrl, relayFromUrl)
+        setScannerStatus('Đã quét QR. Đang kết nối TV/laptop...')
+        return true
+      }
+    } catch {
+      // Cho phep QR chi la ma TV.
+    }
+
+    const roomFromText = chuanHoaMaPhongRemote(raw)
+    if (roomFromText) {
+      ketNoiPhong(roomFromText, roomFromText === joinedRoom ? joinedRoomToken : '', relayUrlInput)
+      setScannerStatus('Đã quét mã TV. Đang kết nối...')
+      return true
+    }
+
+    setScannerStatus('QR này không phải mã KaraokeYT. Hãy quét QR trên màn hình liên kết.')
+    return false
+  }, [joinedRoom, joinedRoomToken, ketNoiPhong, relayUrlInput])
+
+  const dungCamera = useCallback(() => {
+    setScannerStatus('Đang mở camera...')
+    setScannerOpen(true)
+  }, [])
+
+  const tatCamera = useCallback(() => {
+    scannerControlsRef.current?.stop()
+    scannerControlsRef.current = null
+    setScannerOpen(false)
+  }, [])
+
+  useEffect(() => {
+    if (!scannerOpen) return
+
+    let cancelled = false
+    let found = false
+
+    async function batCamera() {
+      await Promise.resolve()
+      if (cancelled) return
+
+      const video = scannerVideoRef.current
+      if (!video) return
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setScannerStatus('Camera không khả dụng trên trình duyệt này. Hãy nhập mã TV thủ công.')
+        return
+      }
+
+      try {
+        const { BrowserQRCodeReader } = await import('@zxing/browser')
+        if (cancelled) return
+
+        const reader = new BrowserQRCodeReader(undefined, {
+          delayBetweenScanAttempts: 220,
+          delayBetweenScanSuccess: 800,
+        })
+        const controls = await reader.decodeFromConstraints(
+          {
+            audio: false,
+            video: {
+              facingMode: { ideal: 'environment' },
+              width: { ideal: 1280 },
+              height: { ideal: 720 },
+            },
+          },
+          video,
+          (result, _error, controlsInCallback) => {
+            if (!result || found) return
+            found = true
+            const accepted = xuLyQrPayload(result.getText())
+            if (!accepted) {
+              found = false
+              return
+            }
+            controlsInCallback.stop()
+            scannerControlsRef.current = null
+            setScannerOpen(false)
+          },
+        )
+
+        if (cancelled) {
+          controls.stop()
+          return
+        }
+
+        scannerControlsRef.current = controls
+        setScannerStatus('Đưa QR vào khung camera. App sẽ tự kết nối khi đọc được mã.')
+      } catch (error) {
+        if (cancelled) return
+        setScannerStatus(error instanceof Error ? `Không mở được camera: ${error.message}` : 'Không mở được camera. Hãy nhập mã TV thủ công.')
+      }
+    }
+
+    void batCamera()
+
+    return () => {
+      cancelled = true
+      scannerControlsRef.current?.stop()
+      scannerControlsRef.current = null
+    }
+  }, [scannerOpen, xuLyQrPayload])
 
   const roiPhong = useCallback(() => {
     connectionRef.current?.close()
@@ -93,8 +337,8 @@ export function RemoteScreen() {
     setJoinedRoomToken('')
     setShowQueue(false)
     setShowDetails(false)
-    capNhatUrl('', '')
-  }, [capNhatUrl])
+    capNhatUrl('', '', relayUrl)
+  }, [capNhatUrl, relayUrl])
 
   const guiLenh = useCallback(
     (factory: () => RemoteAction) => {
@@ -130,6 +374,17 @@ export function RemoteScreen() {
     cmd: roomState?.playerMode === 'playing' ? 'pause' : 'play',
   }
 
+  async function copyText(value: string, label: string) {
+    if (!value) return
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('Clipboard unavailable')
+      await navigator.clipboard.writeText(value)
+      setStatusMessage(`Đã copy ${label}`)
+    } catch {
+      setStatusMessage(`Không copy được ${label}. Hãy bấm giữ để copy thủ công.`)
+    }
+  }
+
   return (
     <div className="remotePage remotePageMinimal">
       <main className="remotePhoneShell">
@@ -156,7 +411,53 @@ export function RemoteScreen() {
           ) : (
             <>
               <div className="remoteConnectTitle">Nhập mã trên TV</div>
-              <div className="remoteConnectHint">Nếu quét QR thì app sẽ tự điền và tự kết nối.</div>
+              <div className="remoteConnectHint">Cách nhanh nhất: bấm Quét QR rồi đưa camera vào mã QR trên laptop/TV.</div>
+              {relayDangTroVeMayDienThoai ? (
+                <div className="remoteHintCard">
+                  App đang trỏ relay về localhost của điện thoại. Hãy quét QR trên laptop/TV hoặc nhập Relay URL dạng ws://IP-laptop:8787 trước khi bấm Kết nối.
+                </div>
+              ) : null}
+              <div className="field">
+                <div className="label">IP laptop chạy KaraokeYT</div>
+                <div className="remoteJoinRow remoteRelayRow">
+                  <input
+                    className="input"
+                    value={laptopIpInput}
+                    onChange={(e) => setLaptopIpInput(e.target.value)}
+                    onBlur={() => {
+                      if (!laptopIpInput.trim()) return
+                      apDungIpLaptop()
+                    }}
+                    placeholder="VD: 192.168.99.104"
+                    inputMode="decimal"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
+                  />
+                  <button className="ghost compactButton buttonWithIcon buttonToneMuted" onClick={apDungIpLaptop} type="button">
+                    <AppIcon name="screen" className="buttonIcon" />
+                    <span className="buttonLabel">Dùng IP</span>
+                  </button>
+                </div>
+                <div className="hint">Nếu không quét QR, nhập IP laptop rồi bấm Kết nối mã TV.</div>
+              </div>
+              <button className="primary buttonWithIcon buttonToneAccent remoteScanButton" onClick={dungCamera} type="button">
+                <AppIcon name="camera" className="buttonIcon" />
+                <span className="buttonLabel">Quét QR bằng camera</span>
+              </button>
+              {scannerOpen ? (
+                <div className="remoteScannerPanel">
+                  <div className="remoteScannerFrame">
+                    <video ref={scannerVideoRef} className="remoteScannerVideo" muted playsInline />
+                    <div className="remoteScannerReticle" aria-hidden="true" />
+                  </div>
+                  <div className="remoteScannerStatus">{scannerStatus}</div>
+                  <button className="ghost compactButton buttonWithIcon buttonToneMuted" onClick={tatCamera} type="button">
+                    <AppIcon name="clear" className="buttonIcon" />
+                    <span className="buttonLabel">Đóng camera</span>
+                  </button>
+                </div>
+              ) : null}
               <div className="remoteJoinRow remoteJoinRowMinimal">
                 <input
                   className="input remoteRoomInput remoteRoomInputMinimal"
@@ -178,6 +479,32 @@ export function RemoteScreen() {
                   <span className="buttonLabel">Kết nối</span>
                 </button>
               </div>
+              <div className="field">
+                <div className="label">Relay URL</div>
+                <div className="remoteJoinRow remoteRelayRow">
+                  <input
+                    className="input"
+                    value={relayUrlInput}
+                    onChange={(e) => setRelayUrlInput(e.target.value)}
+                    onBlur={() => {
+                      if (!relayUrlInput.trim()) return
+                      apDungRelay()
+                    }}
+                    placeholder="ws://192.168.1.50:8787"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
+                  />
+                  <button className="ghost compactButton buttonWithIcon buttonToneMuted" onClick={() => { apDungRelay() }} type="button">
+                    <AppIcon name="settings" className="buttonIcon" />
+                    <span className="buttonLabel">Lưu relay</span>
+                  </button>
+                  <button className="ghost compactButton buttonWithIcon buttonToneMuted" onClick={() => void kiemTraRelay()} type="button">
+                    <AppIcon name="shield" className="buttonIcon" />
+                    <span className="buttonLabel">Test</span>
+                  </button>
+                </div>
+              </div>
             </>
           )}
 
@@ -185,47 +512,80 @@ export function RemoteScreen() {
           {joinedRoom && !canSendRemote ? (
             <div className="remoteHintCard">Chưa thấy máy điều khiển. Hãy mở KaraokeYT trên TV/laptop hoặc chờ relay tự nối lại.</div>
           ) : null}
+          {joinedRoom && relayStatus === 'connected' && presence.hosts <= 0 ? (
+            <div className="remoteRecoveryCard">
+              <div className="remoteRecoveryTitle">Sửa nhanh khi chưa nối được TV/laptop</div>
+              <div className="remoteRecoveryStep">1. Mở link trình chiếu trên TV/laptop.</div>
+              <div className="remoteRecoveryStep">2. Đảm bảo TV/laptop và điện thoại cùng Wi-Fi.</div>
+              <div className="remoteRecoveryStep">3. Nếu vẫn chưa thấy, thử bấm Đổi TV rồi nhập lại mã.</div>
+              <div className="remoteRecoveryActions">
+                <button
+                  className="ghost compactButton buttonWithIcon buttonToneMuted"
+                  onClick={() => void copyText(displayJoinUrl, 'link trình chiếu TV/laptop')}
+                  type="button"
+                >
+                  <AppIcon name="screen" className="buttonIcon" />
+                  <span className="buttonLabel">Copy link TV</span>
+                </button>
+                <button
+                  className="ghost compactButton buttonWithIcon buttonToneMuted"
+                  onClick={() => void copyText(joinedRoom, 'mã TV')}
+                  type="button"
+                >
+                  <AppIcon name="spark" className="buttonIcon" />
+                  <span className="buttonLabel">Copy mã TV</span>
+                </button>
+              </div>
+            </div>
+          ) : null}
         </section>
 
         <section className="remoteNowPlaying remoteNowPlayingMinimal">
-          <div className="remoteNowHeader remoteNowHeaderMinimal">
-            <div>
-              <div className="panelEyebrow">Đang phát</div>
-              <div className="remoteNowTitle remoteNowTitleMinimal">{currentSong?.title ?? 'Chưa có bài đang phát'}</div>
-            </div>
-            <div className="remoteStatusPill">{roomState?.playerMode === 'playing' ? 'Đang phát' : roomState?.playerMode === 'paused' ? 'Đang dừng' : 'Chờ bài'}</div>
+          {/* Thumbnail DJ Pad style */}
+          <div className="remoteThumbnailCard">
+            {currentSong?.thumbnail ? (
+              <>
+                <img src={currentSong.thumbnail} alt="" aria-hidden="true" />
+                <div className="remoteThumbnailGrad" />
+                <div className="remoteThumbnailOverlay">
+                  <div className="remoteThumbnailSong">{currentSong.title}</div>
+                  <div className="remoteThumbnailCh">{currentSong.channelTitle}</div>
+                </div>
+              </>
+            ) : (
+              <div className="remoteThumbnailPh">🎵</div>
+            )}
           </div>
 
-          <div className="remotePrimaryControls">
+          {/* DJ Pad Controls — 4 buttons */}
+          <div className="remoteDJControls">
             <button
-              className={`ghost remotePrimaryButton buttonWithIcon ${roomState?.playerMode === 'playing' ? 'buttonToneMuted' : 'buttonToneAccent'}`}
+              className={`ghost remoteDJBtn remoteDJBtnPlay buttonWithIcon ${roomState?.playerMode === 'playing' ? 'buttonToneMuted' : 'buttonToneAccent'}`}
               disabled={!canSendRemote}
               onClick={() => guiLenh(() => playbackCommand)}
               type="button"
             >
               <AppIcon name={roomState?.playerMode === 'playing' ? 'pause' : 'play'} className="buttonIcon" />
-              <span className="buttonLabel">{playbackLabel}</span>
+              {playbackLabel}
             </button>
-            <button className="ghost remotePrimaryButton buttonWithIcon buttonToneAccent" disabled={!canSendRemote} onClick={() => guiLenh(() => ({ type: 'TRANSPORT', cmd: 'skip' }))} type="button">
+            <button className="ghost remoteDJBtn buttonWithIcon buttonToneAccent" disabled={!canSendRemote} onClick={() => guiLenh(() => ({ type: 'TRANSPORT', cmd: 'skip' }))} type="button">
               <AppIcon name="next" className="buttonIcon" />
-              <span className="buttonLabel">Tiếp theo</span>
+              Tiếp theo
             </button>
-          </div>
-
-          <div className="remoteSecondaryControls">
-            <button className="ghost compactButton buttonWithIcon buttonToneMuted" disabled={!canSendRemote} onClick={() => guiLenh(() => ({ type: 'TRANSPORT', cmd: 'restart' }))} type="button">
+            <button className="ghost remoteDJBtn buttonWithIcon buttonToneMuted" disabled={!canSendRemote} onClick={() => guiLenh(() => ({ type: 'TRANSPORT', cmd: 'restart' }))} type="button">
               <AppIcon name="restart" className="buttonIcon" />
-              <span className="buttonLabel">Từ đầu</span>
+              Từ đầu
             </button>
-            <button className="ghost compactButton buttonWithIcon buttonToneMuted" disabled={!canSendRemote} onClick={() => guiLenh(() => ({ type: 'TRANSPORT', cmd: 'prev' }))} type="button">
+            <button className="ghost remoteDJBtn buttonWithIcon buttonToneMuted" disabled={!canSendRemote} onClick={() => guiLenh(() => ({ type: 'TRANSPORT', cmd: 'prev' }))} type="button">
               <AppIcon name="prev" className="buttonIcon" />
-              <span className="buttonLabel">Bài trước</span>
+              Bài trước
             </button>
           </div>
 
+          {/* Volume */}
           <div className="remoteVolumeCard remoteVolumeCardMinimal">
             <div className="remoteVolumeHead">
-              <div className="remoteMetaLabel">Âm lượng</div>
+              <div className="remoteMetaLabel">🔊 Âm lượng</div>
               <div className="remoteMetaValue">{roomState?.volume ?? 0}%</div>
             </div>
             <input
@@ -253,7 +613,7 @@ export function RemoteScreen() {
             type="button"
           >
             <AppIcon name="queue" className="buttonIcon" />
-            <span className="buttonLabel">Hàng chờ ({queueLength})</span>
+            <span className="buttonLabel">📋 Hàng chờ ({queueLength})</span>
           </button>
           <button
             className={`ghost compactButton buttonWithIcon ${showDetails ? 'buttonToneAccent buttonStateActive' : 'buttonToneMuted'}`}
@@ -263,7 +623,7 @@ export function RemoteScreen() {
             type="button"
           >
             <AppIcon name="settings" className="buttonIcon" />
-            <span className="buttonLabel">Chi tiết</span>
+            <span className="buttonLabel">ℹ️ Chi tiết</span>
           </button>
         </section>
 
@@ -287,6 +647,10 @@ export function RemoteScreen() {
               <div className="remoteMetaCard">
                 <div className="remoteMetaLabel">Thiết bị</div>
                 <div className="remoteMetaValue">Host {presence.hosts} · TV {presence.displays}</div>
+              </div>
+              <div className="remoteMetaCard">
+                <div className="remoteMetaLabel">Relay</div>
+                <div className="remoteMetaValue">{relayUrl.replace(/^wss?:\/\//, '')}</div>
               </div>
             </div>
           </section>

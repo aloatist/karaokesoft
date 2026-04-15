@@ -23,6 +23,7 @@ type IconName =
   | 'add'
   | 'spark'
   | 'menu'
+  | 'camera'
 
 type Props = SVGProps<SVGSVGElement> & {
   name: IconName
@@ -191,6 +192,13 @@ function Path({ name }: { name: IconName }) {
           <path d="M4 7h16" />
           <path d="M4 12h16" />
           <path d="M4 17h16" />
+        </>
+      )
+    case 'camera':
+      return (
+        <>
+          <path d="M7 7h2l1.2-2h3.6L15 7h2a3 3 0 0 1 3 3v6a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3v-6a3 3 0 0 1 3-3Z" />
+          <circle cx="12" cy="13" r="3.2" />
         </>
       )
     default:

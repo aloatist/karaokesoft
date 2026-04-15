@@ -1,6 +1,18 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { USER_ROLE_LABEL, moTaVaiTro } from '../lib/auth'
 import { dangChayDesktop, layDanhSachManHinh, moManHinhTrinhChieu } from '../services/desktopBridge'
+import {
+  type AuditLogItem,
+  createUserApi,
+  deleteUserApi,
+  getDisplayAdApi,
+  listAuditApi,
+  listUsersApi,
+  mapApiUserToAppUser,
+  updateDisplayAdApi,
+  updateUserProfileApi,
+  updateUserRoleApi,
+} from '../services/authApi'
 import { useAuthStore } from '../store/authStore'
 import { DISPLAY_AD_TEXT_MAX, DISPLAY_AD_TITLE_MAX, useSettingsStore } from '../store/settingsStore'
 import type { DesktopDisplayInfo, UserRole } from '../types'
@@ -10,6 +22,7 @@ type Props = {
   onClose: () => void
   canManageUsers: boolean
   canManageDisplayAd: boolean
+  authServerOnline?: boolean
   onSaved?: () => void
   displayRoomCode?: string
 }
@@ -20,7 +33,57 @@ type UserEditDraft = {
   pin: string
 }
 
-export function SettingsModal({ open, onClose, canManageUsers, canManageDisplayAd, onSaved, displayRoomCode }: Props) {
+const AUDIT_LIMIT = 80
+
+const AUDIT_ACTION_LABEL: Record<string, string> = {
+  'bootstrap-owner': 'Khởi tạo quản trị chính',
+  login: 'Đăng nhập',
+  'refresh-session': 'Làm mới phiên',
+  'create-user': 'Tạo user mới',
+  'update-user-profile': 'Cập nhật hồ sơ user',
+  'update-user-role': 'Đổi vai trò user',
+  'delete-user': 'Xoá user',
+  'update-display-ad': 'Cập nhật quảng cáo trình chiếu',
+}
+
+function dinhDangThoiGianAudit(timestamp: number) {
+  if (!Number.isFinite(timestamp) || timestamp <= 0) return 'Không rõ thời gian'
+  return new Intl.DateTimeFormat('vi-VN', {
+    hour12: false,
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  }).format(new Date(timestamp))
+}
+
+function nhanHanhDongAudit(action: string) {
+  return AUDIT_ACTION_LABEL[action] ?? action
+}
+
+function tomTatChiTietAudit(detail?: Record<string, unknown>) {
+  if (!detail || typeof detail !== 'object') return ''
+  const pairs = Object.entries(detail).filter(([, value]) => value !== undefined && value !== null)
+  if (!pairs.length) return ''
+
+  return pairs
+    .slice(0, 4)
+    .map(([key, value]) => {
+      if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+        return `${key}: ${String(value)}`
+      }
+      try {
+        return `${key}: ${JSON.stringify(value)}`
+      } catch {
+        return `${key}: (dữ liệu)`
+      }
+    })
+    .join(' · ')
+}
+
+export function SettingsModal({ open, onClose, canManageUsers, canManageDisplayAd, authServerOnline = false, onSaved, displayRoomCode }: Props) {
   const karaokeFilterEnabled = useSettingsStore((s) => s.karaokeFilterEnabled)
   const autoplayNext = useSettingsStore((s) => s.autoplayNext)
   const replayMode = useSettingsStore((s) => s.replayMode)
@@ -41,11 +104,53 @@ export function SettingsModal({ open, onClose, canManageUsers, canManageDisplayA
   const [newUserRole, setNewUserRole] = useState<UserRole>('operator')
   const [userAdminMessage, setUserAdminMessage] = useState<string | null>(null)
   const [userEditDrafts, setUserEditDrafts] = useState<Record<string, UserEditDraft>>({})
+  const [savingUserId, setSavingUserId] = useState<string | null>(null)
+  const [creatingUser, setCreatingUser] = useState(false)
+  const [savingSettings, setSavingSettings] = useState(false)
+  const [settingsMessage, setSettingsMessage] = useState<string | null>(null)
+  const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>([])
+  const [auditLoading, setAuditLoading] = useState(false)
+  const [auditMessage, setAuditMessage] = useState<string | null>(null)
+
+  async function dongBoUsersTuServer() {
+    const res = await listUsersApi()
+    const nextUsers = (res.users ?? []).map(mapApiUserToAppUser)
+    useAuthStore.setState((state) => {
+      const fallback =
+        nextUsers.find((user) => user.id === state.currentUserId) ??
+        nextUsers.find((user) => user.role === 'admin') ??
+        nextUsers[0] ??
+        null
+
+      return {
+        users: nextUsers,
+        currentUserId: fallback?.id ?? state.currentUserId,
+        sessionMode: nextUsers.some((user) => user.id === state.currentUserId) ? state.sessionMode : 'guest',
+      }
+    })
+  }
 
   function capNhatBannerTrinhChieu(next: Partial<typeof displayAd>) {
     if (!canManageDisplayAd) return
     capNhat({ displayAd: { ...displayAd, ...next } })
   }
+
+  const taiNhatKyHoatDong = useCallback(async () => {
+    if (!authServerOnline || !canManageUsers) return
+    try {
+      setAuditLoading(true)
+      setAuditMessage(null)
+      const result = await listAuditApi(AUDIT_LIMIT)
+      if (!result.ok) {
+        throw new Error(result.message || 'Không tải được nhật ký hoạt động')
+      }
+      setAuditLogs(Array.isArray(result.logs) ? result.logs : [])
+    } catch (error) {
+      setAuditMessage(error instanceof Error ? error.message : 'Không tải được nhật ký hoạt động')
+    } finally {
+      setAuditLoading(false)
+    }
+  }, [authServerOnline, canManageUsers])
 
   useEffect(() => {
     if (!open || !laDesktop) return
@@ -77,6 +182,41 @@ export function SettingsModal({ open, onClose, canManageUsers, canManageDisplayA
       return next
     })
   }, [canManageUsers, open, users])
+
+  useEffect(() => {
+    if (!open || !authServerOnline) return
+
+    let mounted = true
+    ;(async () => {
+      try {
+        if (canManageUsers) {
+          await dongBoUsersTuServer()
+          await taiNhatKyHoatDong()
+        }
+        if (canManageDisplayAd) {
+          const adRes = await getDisplayAdApi()
+          if (mounted && adRes.ok && adRes.displayAd) {
+            capNhat({ displayAd: adRes.displayAd })
+          }
+        }
+      } catch {
+        if (mounted) {
+          setUserAdminMessage('Không đồng bộ được dữ liệu từ auth server. Đang dùng dữ liệu local.')
+        }
+      }
+    })()
+
+    return () => {
+      mounted = false
+    }
+  }, [authServerOnline, canManageDisplayAd, canManageUsers, capNhat, open, taiNhatKyHoatDong])
+
+  useEffect(() => {
+    if (!open) return
+    setSettingsMessage(null)
+    setUserAdminMessage(null)
+    setAuditMessage(null)
+  }, [open])
 
   function capNhatBanNhapUser(userId: string, patch: Partial<UserEditDraft>) {
     setUserEditDrafts((current) => {
@@ -285,7 +425,7 @@ export function SettingsModal({ open, onClose, canManageUsers, canManageDisplayA
                             {user.isOwner ? <span className="miniBadge miniBadgeSuccess">Quản trị chính</span> : null}
                           </div>
                           <div className="hint">
-                            Username: {user.username} · {user.pin ? 'Đã có mật khẩu/PIN' : 'Chưa có mật khẩu/PIN'} · {moTaVaiTro(user.role)}
+                            Username: {user.username} · {authServerOnline ? 'Mật khẩu/PIN được quản lý phía server' : user.pin ? 'Đã có mật khẩu/PIN' : 'Chưa có mật khẩu/PIN'} · {moTaVaiTro(user.role)}
                           </div>
                           <div className="userAdminEditGrid">
                             <input
@@ -315,12 +455,27 @@ export function SettingsModal({ open, onClose, canManageUsers, canManageDisplayA
                             className="input compactSelect"
                             value={user.role}
                             disabled={user.isOwner}
-                            onChange={(e) =>
-                              capNhatVaiTro(
-                                user.id,
-                                e.target.value === 'admin' || e.target.value === 'operator' ? e.target.value : 'viewer',
-                              )
-                            }
+                            onChange={async (e) => {
+                              const nextRole =
+                                e.target.value === 'admin' || e.target.value === 'operator' ? e.target.value : 'viewer'
+
+                              if (!authServerOnline) {
+                                capNhatVaiTro(user.id, nextRole)
+                                setUserAdminMessage(`Đã cập nhật vai trò cho ${user.name}`)
+                                return
+                              }
+
+                              try {
+                                setSavingUserId(user.id)
+                                await updateUserRoleApi({ userId: user.id, role: nextRole })
+                                await dongBoUsersTuServer()
+                                setUserAdminMessage(`Đã cập nhật vai trò cho ${user.name}`)
+                              } catch (error) {
+                                setUserAdminMessage(error instanceof Error ? error.message : 'Không đổi được vai trò user')
+                              } finally {
+                                setSavingUserId(null)
+                              }
+                            }}
                           >
                             <option value="admin">{USER_ROLE_LABEL.admin}</option>
                             <option value="operator">{USER_ROLE_LABEL.operator}</option>
@@ -328,15 +483,36 @@ export function SettingsModal({ open, onClose, canManageUsers, canManageDisplayA
                           </select>
                           <button
                             className="ghost compactButton buttonToneSuccess"
-                            onClick={() => {
-                              const result = capNhatThongTinNguoiDung(user.id, {
-                                name: draft.name,
-                                username: draft.username,
-                                pin: draft.pin.trim() ? draft.pin : undefined,
-                              })
-                              setUserAdminMessage(result.message)
-                              if (result.ok) {
+                            disabled={savingUserId === user.id}
+                            onClick={async () => {
+                              if (!authServerOnline) {
+                                const result = capNhatThongTinNguoiDung(user.id, {
+                                  name: draft.name,
+                                  username: draft.username,
+                                  pin: draft.pin.trim() ? draft.pin : undefined,
+                                })
+                                setUserAdminMessage(result.message)
+                                if (result.ok) {
+                                  capNhatBanNhapUser(user.id, { pin: '' })
+                                }
+                                return
+                              }
+
+                              try {
+                                setSavingUserId(user.id)
+                                await updateUserProfileApi({
+                                  userId: user.id,
+                                  name: draft.name,
+                                  username: draft.username,
+                                  pin: draft.pin.trim() ? draft.pin : undefined,
+                                })
+                                await dongBoUsersTuServer()
+                                setUserAdminMessage(`Đã cập nhật user ${draft.name || user.name}`)
                                 capNhatBanNhapUser(user.id, { pin: '' })
+                              } catch (error) {
+                                setUserAdminMessage(error instanceof Error ? error.message : 'Không lưu được user')
+                              } finally {
+                                setSavingUserId(null)
                               }
                             }}
                             type="button"
@@ -345,8 +521,24 @@ export function SettingsModal({ open, onClose, canManageUsers, canManageDisplayA
                           </button>
                           <button
                             className="ghost compactButton buttonToneDanger"
-                            disabled={users.length <= 1 || user.isOwner}
-                            onClick={() => xoaNguoiDung(user.id)}
+                            disabled={users.length <= 1 || user.isOwner || savingUserId === user.id}
+                            onClick={async () => {
+                              if (!authServerOnline) {
+                                xoaNguoiDung(user.id)
+                                setUserAdminMessage(`Đã xoá user ${user.name}`)
+                                return
+                              }
+                              try {
+                                setSavingUserId(user.id)
+                                await deleteUserApi(user.id)
+                                await dongBoUsersTuServer()
+                                setUserAdminMessage(`Đã xoá user ${user.name}`)
+                              } catch (error) {
+                                setUserAdminMessage(error instanceof Error ? error.message : 'Không xoá được user')
+                              } finally {
+                                setSavingUserId(null)
+                              }
+                            }}
                             type="button"
                           >
                             Xoá
@@ -393,15 +585,38 @@ export function SettingsModal({ open, onClose, canManageUsers, canManageDisplayA
                   </select>
                   <button
                     className="primary"
-                    disabled={!newUserName.trim() || !newUsername.trim() || newUserPin.trim().length < 6}
-                    onClick={() => {
-                      const result = themNguoiDung(newUserName, newUserRole, newUsername, newUserPin)
-                      setUserAdminMessage(result.message)
-                      if (result.ok) {
+                    disabled={!newUserName.trim() || !newUsername.trim() || newUserPin.trim().length < 6 || creatingUser}
+                    onClick={async () => {
+                      if (!authServerOnline) {
+                        const result = themNguoiDung(newUserName, newUserRole, newUsername, newUserPin)
+                        setUserAdminMessage(result.message)
+                        if (result.ok) {
+                          setNewUserName('')
+                          setNewUsername('')
+                          setNewUserPin('')
+                          setNewUserRole('operator')
+                        }
+                        return
+                      }
+
+                      try {
+                        setCreatingUser(true)
+                        await createUserApi({
+                          name: newUserName,
+                          role: newUserRole,
+                          username: newUsername,
+                          pin: newUserPin,
+                        })
+                        await dongBoUsersTuServer()
+                        setUserAdminMessage(`Đã tạo user ${newUserName}`)
                         setNewUserName('')
                         setNewUsername('')
                         setNewUserPin('')
                         setNewUserRole('operator')
+                      } catch (error) {
+                        setUserAdminMessage(error instanceof Error ? error.message : 'Không tạo được user')
+                      } finally {
+                        setCreatingUser(false)
                       }
                     }}
                     type="button"
@@ -410,6 +625,60 @@ export function SettingsModal({ open, onClose, canManageUsers, canManageDisplayA
                   </button>
                 </div>
                 {userAdminMessage ? <div className="settingsInfoCard">{userAdminMessage}</div> : null}
+
+                <div className="settingsAuditCard">
+                  <div className="settingsAuditHead">
+                    <div>
+                      <div className="settingsInfoTitle">Nhật ký quản trị</div>
+                      <div className="hint">Theo dõi thao tác quản trị user, phân quyền và quảng cáo gần nhất.</div>
+                    </div>
+                    <button
+                      className="ghost compactButton buttonWithIcon buttonToneMuted"
+                      disabled={!authServerOnline || auditLoading}
+                      onClick={() => void taiNhatKyHoatDong()}
+                      type="button"
+                    >
+                      {auditLoading ? 'Đang tải...' : 'Làm mới'}
+                    </button>
+                  </div>
+
+                  {!authServerOnline ? (
+                    <div className="settingsInfoCard">
+                      Nhật ký chỉ khả dụng khi auth server đang chạy. Hiện bạn đang ở chế độ dữ liệu cục bộ.
+                    </div>
+                  ) : null}
+
+                  {auditMessage ? <div className="settingsInfoCard">{auditMessage}</div> : null}
+
+                  <div className="settingsAuditList">
+                    {auditLogs.length ? (
+                      auditLogs.map((log) => {
+                        const actor = log.actorUserId ? users.find((user) => user.id === log.actorUserId) : null
+                        const actorLabel = actor
+                          ? `${actor.name} (@${actor.username})`
+                          : log.actorUserId
+                            ? `ID: ${log.actorUserId}`
+                            : 'Hệ thống'
+                        const detailText = tomTatChiTietAudit(log.detail)
+
+                        return (
+                          <div key={log.id} className="settingsAuditRow">
+                            <div className="settingsAuditMeta">
+                              <div className="settingsAuditAction">{nhanHanhDongAudit(log.action)}</div>
+                              <div className="hint">{dinhDangThoiGianAudit(log.at)}</div>
+                            </div>
+                            <div className="hint">Người thực hiện: {actorLabel}</div>
+                            {detailText ? <div className="settingsAuditDetail">{detailText}</div> : null}
+                          </div>
+                        )
+                      })
+                    ) : (
+                      <div className="settingsInfoCard">
+                        Chưa có thao tác quản trị nào được ghi nhận.
+                      </div>
+                    )}
+                  </div>
+                </div>
               </>
             ) : (
               <div className="settingsInfoCard">
@@ -422,17 +691,34 @@ export function SettingsModal({ open, onClose, canManageUsers, canManageDisplayA
           </div>
         </div>
 
+        {settingsMessage ? <div className="settingsInfoCard">{settingsMessage}</div> : null}
+
         <div className="modalFooter">
           <button
             className="primary"
+            disabled={savingSettings}
             onClick={async () => {
+              setSettingsMessage(null)
               try {
+                setSavingSettings(true)
+                if (authServerOnline && canManageDisplayAd) {
+                  const result = await updateDisplayAdApi(displayAd)
+                  if (!result.ok) {
+                    throw new Error(result.message || 'Không lưu được quảng cáo trình chiếu')
+                  }
+                  if (result.displayAd) {
+                    capNhat({ displayAd: result.displayAd })
+                  }
+                }
                 if (laDesktop) {
                   await moManHinhTrinhChieu(displayMonitorIndex, displayRoomCode)
                 }
-              } finally {
                 onSaved?.()
                 onClose()
+              } catch (error) {
+                setSettingsMessage(error instanceof Error ? error.message : 'Không lưu được cài đặt')
+              } finally {
+                setSavingSettings(false)
               }
             }}
           >

@@ -20,7 +20,8 @@ npm run android:sync
 cd "$ROOT_DIR/android"
 ./gradlew assembleDebug
 
+APP_VERSION="$(cd "$ROOT_DIR" && node -p "require('./package.json').version")"
 mkdir -p "$ROOT_DIR/release"
-cp "$ROOT_DIR/android/app/build/outputs/apk/debug/app-debug.apk" "$ROOT_DIR/release/KaraokeYT-0.1.0-debug.apk"
+cp "$ROOT_DIR/android/app/build/outputs/apk/debug/app-debug.apk" "$ROOT_DIR/release/KaraokeYT-$APP_VERSION-debug.apk"
 
-echo "APK debug: $ROOT_DIR/release/KaraokeYT-0.1.0-debug.apk"
+echo "APK debug: $ROOT_DIR/release/KaraokeYT-$APP_VERSION-debug.apk"

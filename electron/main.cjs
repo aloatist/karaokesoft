@@ -1,6 +1,7 @@
 const fs = require('node:fs')
 const http = require('node:http')
 const path = require('node:path')
+const { pathToFileURL } = require('node:url')
 const { app, BrowserWindow, ipcMain, screen } = require('electron')
 
 const preloadPath = path.join(__dirname, 'preload.cjs')
@@ -13,6 +14,7 @@ let controlWindow = null
 let displayWindow = null
 let rendererServer = null
 let rendererBaseUrl = null
+let remoteRelayStarted = false
 
 function taoUserAgent() {
   return (app.userAgentFallback || '').replace(/\sElectron\/[\d.]+/, '')
@@ -78,7 +80,7 @@ async function batMayChuRenderer() {
 
   await new Promise((resolve, reject) => {
     rendererServer.once('error', reject)
-    rendererServer.listen(0, '127.0.0.1', () => {
+    rendererServer.listen(0, '0.0.0.0', () => {
       resolve()
     })
   })
@@ -90,6 +92,41 @@ async function batMayChuRenderer() {
 
   rendererBaseUrl = `http://127.0.0.1:${address.port}`
   return rendererBaseUrl
+}
+
+function kiemTraRelayLocal() {
+  return new Promise((resolve) => {
+    const req = http.get('http://127.0.0.1:8787/health', { timeout: 1200 }, (res) => {
+      res.resume()
+      resolve(Boolean(res.statusCode && res.statusCode >= 200 && res.statusCode < 500))
+    })
+    req.on('timeout', () => {
+      req.destroy()
+      resolve(false)
+    })
+    req.on('error', () => resolve(false))
+  })
+}
+
+async function batRemoteRelayNeuCan() {
+  if (remoteRelayStarted || process.env.KARAOKEYT_DISABLE_EMBEDDED_RELAY === '1') return
+  if (await kiemTraRelayLocal()) return
+
+  const relayScriptPath = path.join(__dirname, '..', 'server', 'remoteRelay.mjs')
+  if (!fs.existsSync(relayScriptPath)) {
+    console.warn('Không tìm thấy server/remoteRelay.mjs để mở relay nhúng.')
+    return
+  }
+
+  process.env.RELAY_HOST = process.env.RELAY_HOST || '0.0.0.0'
+  process.env.PORT = process.env.PORT || '8787'
+
+  try {
+    await import(pathToFileURL(relayScriptPath).href)
+    remoteRelayStarted = true
+  } catch (error) {
+    console.warn('Không mở được relay nhúng:', error)
+  }
 }
 
 function taoThongTinManHinh(display, index) {
@@ -261,6 +298,7 @@ function dangKyIpc() {
 }
 
 app.whenReady().then(async () => {
+  await batRemoteRelayNeuCan()
   dangKyIpc()
   await taoCuaSoDieuKhien()
   await taoCuaSoTrinhChieu()

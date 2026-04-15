@@ -1,36 +1,64 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { AccountModal } from '../components/AccountModal'
 import { AppIcon } from '../components/AppIcon'
+import { FakeProgressBar } from '../components/FakeProgressBar'
 import { LegalModal } from '../components/LegalModal'
+import { NowPlayingMini } from '../components/NowPlayingMini'
 import { OpenDisplayButton } from '../components/OpenDisplayButton'
 import { QueueList } from '../components/QueueList'
 import { RemotePairingModal } from '../components/RemotePairingModal'
 import { SearchBar } from '../components/SearchBar'
+import { SearchHistoryDropdown } from '../components/SearchHistoryDropdown'
 import { SearchModeToggle } from '../components/SearchModeToggle'
 import { SearchResults } from '../components/SearchResults'
 import { SettingsModal } from '../components/SettingsModal'
 import { UserSwitcher } from '../components/UserSwitcher'
+import { WaveformIcon } from '../components/WaveformIcon'
 import { phatCaiDatTrinhChieu, phatLenhPlayer, useBroadcastReceiver, useBroadcastSender } from '../hooks/useBroadcastSync'
-import { AUTH_SESSION_LABEL, coQuyen, USER_ROLE_LABEL } from '../lib/auth'
+import { AUTH_SESSION_LABEL, coQuyen, USER_ROLE_LABEL, type UserPermission } from '../lib/auth'
+import { saveToSearchHistory } from '../lib/searchHistory'
 import { useYouTubeSearch } from '../hooks/useYouTubeSearch'
 import {
+  chuanHoaRelayUrl,
   chuanHoaTokenPhongRemote,
   docMaPhongRemoteDaLuu,
   docTokenPhongRemoteDaLuu,
+  doiHostUrl,
+  laHostLocalhost,
   layRelayUrlMacDinh,
+  layThongTinMangRelay,
   luuMaPhongRemote,
+  luuRelayUrl,
   luuTokenPhongRemote,
-  taoDuongDanDieuKhien,
+  taoDanhSachRelayUrlUngVien,
   taoDuongDanTrinhChieu,
   taoDuongDanRemote,
   taoKetNoiRelay,
   taoMaPhongRemote,
   taoTokenPhongRemote,
 } from '../services/remoteRelay'
+import {
+  authBootstrapOwner,
+  authHealth,
+  authLogin,
+  authLogout,
+  authMe,
+  authRefresh,
+  mapApiUserToAppUser,
+} from '../services/authApi'
 import { useAuthStore } from '../store/authStore'
 import { useQueueStore } from '../store/queueStore'
 import { useSettingsStore } from '../store/settingsStore'
-import type { PlayerCommand, RemoteAction, RemotePresence, RemoteRelayStatus, ReplayMode, SearchSong, SyncMessage } from '../types'
+import type {
+  AppUser,
+  PlayerCommand,
+  RemoteAction,
+  RemotePresence,
+  RemoteRelayStatus,
+  ReplayMode,
+  SearchSong,
+  SyncMessage,
+} from '../types'
 
 const BREAKPOINT_3_PANE = 1280
 const MOBILE_BREAKPOINT = 720
@@ -39,6 +67,8 @@ const MIN_COMMAND_PERCENT = 28
 const MIN_QUEUE_PERCENT = 24
 const CONTROL_LAYOUT_STORAGE_KEY = 'karaokeyt-control-layout-v2'
 const EMPTY_REMOTE_PRESENCE: RemotePresence = { hosts: 0, remotes: 0, displays: 0 }
+
+type MobileControlTarget = 'laptop' | 'tv'
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n))
@@ -93,6 +123,31 @@ function docThongSoTokenPhongRemote() {
   return docTokenPhongRemoteDaLuu()
 }
 
+function docCheDoDieuKhienMobileBanDau(): MobileControlTarget | null {
+  if (typeof window === 'undefined') {
+    return null
+  }
+
+  const params = new URLSearchParams(window.location.search)
+  return params.get('screen') === 'remote' ? 'tv' : null
+}
+
+function layHostnameLanTuInput(input: string) {
+  const trimmed = input.trim()
+  if (!trimmed) return ''
+
+  try {
+    const withProtocol = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`
+    return new URL(withProtocol).hostname
+  } catch {
+    return trimmed
+      .replace(/^https?:\/\//i, '')
+      .replace(/\/.*$/, '')
+      .replace(/:\d+$/, '')
+      .trim()
+  }
+}
+
 export function ControlScreen() {
   useBroadcastSender()
 
@@ -107,7 +162,11 @@ export function ControlScreen() {
   const users = useAuthStore((s) => s.users)
   const currentUserId = useAuthStore((s) => s.currentUserId)
   const sessionMode = useAuthStore((s) => s.sessionMode)
-  const { dangNhapUser, khoiTaoQuanTriChinh, dangXuat } = useAuthStore((s) => s.actions)
+  const {
+    dangNhapUser: dangNhapUserLocal,
+    khoiTaoQuanTriChinh: khoiTaoQuanTriChinhLocal,
+    dangXuat: dangXuatLocal,
+  } = useAuthStore((s) => s.actions)
 
   const [openAccountModal, setOpenAccountModal] = useState(false)
   const [openSettings, setOpenSettings] = useState(false)
@@ -134,11 +193,25 @@ export function ControlScreen() {
   const [remoteRoomToken, setRemoteRoomToken] = useState(() => docThongSoTokenPhongRemote())
   const [remoteRelayStatus, setRemoteRelayStatus] = useState<RemoteRelayStatus>('connecting')
   const [remoteRelayMessage, setRemoteRelayMessage] = useState<string | null>(null)
+  const [remotePhoneBaseUrl, setRemotePhoneBaseUrl] = useState('')
+  const [remotePhoneRelayUrl, setRemotePhoneRelayUrl] = useState('')
+  const [remotePhoneLinkHint, setRemotePhoneLinkHint] = useState<string | null>(null)
   const [remotePresence, setRemotePresence] = useState<RemotePresence>(EMPTY_REMOTE_PRESENCE)
   const [paneSizes, setPaneSizes] = useState(() => docThongSoKhung())
   const [isThreePane, setIsThreePane] = useState(() => window.innerWidth >= BREAKPOINT_3_PANE)
   const [isMobileLayout, setIsMobileLayout] = useState(() => window.innerWidth <= MOBILE_BREAKPOINT)
-  const [mobilePanel, setMobilePanel] = useState<'command' | 'queue' | null>(null)
+  // Mobile 4-tab navigation state
+  const [mobileTab, setMobileTab] = useState<'search' | 'playing' | 'queue' | 'remote'>(() =>
+    docCheDoDieuKhienMobileBanDau() ? 'remote' : 'search',
+  )
+  const [mobileControlTarget, setMobileControlTarget] = useState<MobileControlTarget | null>(() =>
+    docCheDoDieuKhienMobileBanDau(),
+  )
+  const [showSearchHistory, setShowSearchHistory] = useState(false)
+  const [authServerOnline, setAuthServerOnline] = useState(false)
+  const [authOwnerReady, setAuthOwnerReady] = useState<boolean | null>(null)
+  const [authProbeDone, setAuthProbeDone] = useState(false)
+  const [serverCapabilities, setServerCapabilities] = useState<string[]>([])
   const layoutRef = useRef<HTMLDivElement | null>(null)
   const searchInputRef = useRef<HTMLInputElement | null>(null)
   const commandPanelRef = useRef<HTMLDivElement | null>(null)
@@ -154,15 +227,28 @@ export function ControlScreen() {
     [currentUserId, users],
   )
   const userDangDangNhap = sessionMode === 'authenticated' ? (nguoiDungHienTai ?? null) : null
-  const canThietLapQuanTri = !users.some((user) => user.role === 'admin' && user.isOwner && user.pin)
+  const canThietLapQuanTri = !authProbeDone
+    ? false
+    : authServerOnline
+      ? authOwnerReady === false
+      : !users.some((user) => user.role === 'admin' && user.isOwner && user.pin)
   const vaiTroHienTai = userDangDangNhap?.role ?? 'viewer'
-  const canOpenSettings = coQuyen(vaiTroHienTai, 'settings')
-  const canManageUsers = coQuyen(vaiTroHienTai, 'manage-users')
-  const canManageDisplayAd = coQuyen(vaiTroHienTai, 'manage-ads')
-  const canSearch = coQuyen(vaiTroHienTai, 'search')
-  const canQueueSongs = coQuyen(vaiTroHienTai, 'queue')
-  const canPlayback = coQuyen(vaiTroHienTai, 'playback')
-  const canOpenDisplay = coQuyen(vaiTroHienTai, 'display')
+  const coCapability = useCallback(
+    (permission: UserPermission) => {
+      if (authServerOnline && sessionMode === 'authenticated' && serverCapabilities.length > 0) {
+        return serverCapabilities.includes(permission)
+      }
+      return coQuyen(vaiTroHienTai, permission)
+    },
+    [authServerOnline, serverCapabilities, sessionMode, vaiTroHienTai],
+  )
+  const canOpenSettings = coCapability('settings')
+  const canManageUsers = coCapability('manage-users')
+  const canManageDisplayAd = coCapability('manage-ads')
+  const canSearch = coCapability('search')
+  const canQueueSongs = coCapability('queue')
+  const canPlayback = coCapability('playback')
+  const canOpenDisplay = coCapability('display')
   const canUseRemote = canQueueSongs || canPlayback
   const tongBai = queue.length
   const soBaiSapToi = baiDangPhat ? Math.max(queue.length - currentIndex - 1, 0) : queue.length
@@ -170,11 +256,19 @@ export function ControlScreen() {
     status === 'success' ? `${results.length} kết quả` : status === 'loading' ? 'Đang tìm…' : 'Sẵn sàng'
   const hienThiPlayerMode = baiDangPhat ? (playerMode === 'idle' ? 'playing' : playerMode) : 'idle'
   const nhanTaiKhoan = userDangDangNhap?.name ?? 'Khách dùng nhanh'
-  const nhanDongBo = sessionMode === 'authenticated' ? 'Cookie/local' : 'Dữ liệu cục bộ'
+  const nhanDongBo = authServerOnline
+    ? sessionMode === 'authenticated'
+      ? 'Auth server + Cookie'
+      : 'Auth server'
+    : authProbeDone
+      ? sessionMode === 'authenticated'
+        ? 'Cookie/local'
+        : 'Dữ liệu cục bộ'
+      : 'Đang kiểm tra auth...'
   const nhanTaiKhoanDayDu = userDangDangNhap
     ? `${userDangDangNhap.username} · ${USER_ROLE_LABEL[userDangDangNhap.role]}${userDangDangNhap.isOwner ? ' · Quản trị chính' : ''}`
     : 'Chưa đăng nhập'
-  const hienThiModalTaiKhoan = openAccountModal || canThietLapQuanTri
+  const hienThiModalTaiKhoan = openAccountModal || (canThietLapQuanTri && !isMobileLayout)
 
   const nhanCheDoLapLai = useMemo(() => {
     const labels: Record<ReplayMode, string> = {
@@ -185,13 +279,137 @@ export function ControlScreen() {
     return labels[replayMode]
   }, [replayMode])
 
-  const remoteRelayUrl = useMemo(() => layRelayUrlMacDinh(), [])
-  const controlJoinUrl = useMemo(() => taoDuongDanDieuKhien(remoteRoomCode, remoteRoomToken), [remoteRoomCode, remoteRoomToken])
-  const displayJoinUrl = useMemo(() => taoDuongDanTrinhChieu(remoteRoomCode, remoteRoomToken), [remoteRoomCode, remoteRoomToken])
-  const remoteJoinUrl = useMemo(() => taoDuongDanRemote(remoteRoomCode, remoteRoomToken), [remoteRoomCode, remoteRoomToken])
+  const [remoteRelayUrl, setRemoteRelayUrl] = useState(() => layRelayUrlMacDinh())
+  const phonePairingRelayUrl = remotePhoneRelayUrl || remoteRelayUrl
+  const phonePairingBaseUrl = remotePhoneBaseUrl || undefined
+  const displayJoinUrl = useMemo(
+    () => taoDuongDanTrinhChieu(remoteRoomCode, remoteRoomToken, phonePairingRelayUrl, phonePairingBaseUrl),
+    [phonePairingBaseUrl, phonePairingRelayUrl, remoteRoomCode, remoteRoomToken],
+  )
+  const remoteJoinUrl = useMemo(
+    () => taoDuongDanRemote(remoteRoomCode, remoteRoomToken, phonePairingRelayUrl, phonePairingBaseUrl),
+    [phonePairingBaseUrl, phonePairingRelayUrl, remoteRoomCode, remoteRoomToken],
+  )
+  const remoteRelayReady = remoteRelayStatus === 'connected'
+  const remoteDisplayReady = remoteRelayReady && remotePresence.displays > 0
+  const remoteMobileReady = remoteRelayReady && remotePresence.remotes > 0
+  const remoteReadyToUse = remoteDisplayReady && remoteMobileReady
+  const remoteTotalConnected = remotePresence.displays + remotePresence.remotes
+  const mobileRemoteCurrentStep = !remoteDisplayReady ? 1 : !remoteMobileReady ? 2 : 3
+  const mobileTargetTitle = mobileControlTarget === 'laptop' ? 'Điều khiển laptop' : 'Điều khiển TV'
+  const mobileTargetDevice = mobileControlTarget === 'laptop' ? 'laptop' : 'TV/laptop'
+  const mobileTargetHint =
+    mobileControlTarget === 'laptop'
+      ? 'Laptop mở màn hình trình chiếu, điện thoại dùng để tìm bài, xếp lượt và điều khiển phát.'
+      : 'TV hoặc laptop mở màn hình trình chiếu, điện thoại dùng để tìm bài, xếp lượt và điều khiển phát.'
 
   const thongBao = useCallback((message: string) => {
     setToast(message)
+  }, [])
+
+  const chonCheDoDieuKhienMobile = useCallback((target: MobileControlTarget) => {
+    setMobileControlTarget(target)
+    setMobileTab('remote')
+    setOpenMobileMenu(false)
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+
+    const currentUrl = new URL(window.location.href)
+    let relayHostname = ''
+    try {
+      relayHostname = new URL(remoteRelayUrl).hostname
+    } catch {
+      relayHostname = ''
+    }
+
+    const canDungIpLan =
+      currentUrl.protocol === 'file:' ||
+      currentUrl.protocol === 'capacitor:' ||
+      laHostLocalhost(currentUrl.hostname) ||
+      currentUrl.port === '5173' ||
+      currentUrl.port === '4173' ||
+      (relayHostname ? laHostLocalhost(relayHostname) : false)
+    if (!canDungIpLan) {
+      return () => {
+        cancelled = true
+      }
+    }
+
+    async function napIpLan() {
+      await Promise.resolve()
+      if (cancelled) return
+
+      setRemotePhoneLinkHint('Đang tìm IP LAN của laptop để điện thoại có thể kết nối.')
+      let matched: { relayUrl: string; address: string; baseUrl: string } | null = null
+
+      for (const relayCandidateUrl of taoDanhSachRelayUrlUngVien(remoteRelayUrl)) {
+        const info = await layThongTinMangRelay(relayCandidateUrl)
+        if (cancelled) return
+        const candidate =
+          info?.addresses.find((item) => item.family === 'IPv4' && !item.address.startsWith('169.254.')) ??
+          info?.addresses.find((item) => item.family === 'IPv4') ??
+          info?.addresses[0]
+
+        if (candidate?.address) {
+          matched = { relayUrl: relayCandidateUrl, address: candidate.address, baseUrl: candidate.url || `http://${candidate.address}:8787/` }
+          break
+        }
+      }
+
+      if (!matched) {
+        setRemotePhoneBaseUrl('')
+        setRemotePhoneRelayUrl('')
+        setRemotePhoneLinkHint(
+          'Chưa thấy relay trên laptop. Hãy chạy `npm run dev:remote` hoặc `npm run remote:relay`, sau đó bấm Đổi mã TV hoặc quét lại QR.',
+        )
+        return
+      }
+
+      try {
+        const normalizedMatchedRelayUrl = chuanHoaRelayUrl(matched.relayUrl)
+        if (
+          normalizedMatchedRelayUrl &&
+          normalizedMatchedRelayUrl !== chuanHoaRelayUrl(remoteRelayUrl) &&
+          remoteRelayStatus !== 'connected'
+        ) {
+          setRemoteRelayUrl(normalizedMatchedRelayUrl)
+          luuRelayUrl(normalizedMatchedRelayUrl)
+        }
+
+        setRemotePhoneBaseUrl(matched.baseUrl)
+        setRemotePhoneRelayUrl(doiHostUrl(matched.relayUrl, matched.address))
+        setRemotePhoneLinkHint(`QR/link đang dùng relay LAN ${matched.baseUrl}. Điện thoại cần cùng Wi-Fi với laptop.`)
+      } catch {
+        setRemotePhoneBaseUrl('')
+        setRemotePhoneRelayUrl('')
+        setRemotePhoneLinkHint('Không tạo được link LAN. Hãy mở Control bằng http://IP-laptop:5173 rồi quét lại QR.')
+      }
+    }
+
+    void napIpLan()
+
+    return () => {
+      cancelled = true
+    }
+  }, [remoteRelayStatus, remoteRelayUrl])
+
+  const dongBoPhienDangNhapTuServer = useCallback((user: AppUser, capabilities?: string[]) => {
+    useAuthStore.setState((state) => {
+      const mergedUser: AppUser = {
+        ...(state.users.find((item) => item.id === user.id) ?? user),
+        ...user,
+        pin: '',
+      }
+
+      return {
+        users: [mergedUser, ...state.users.filter((item) => item.id !== mergedUser.id)],
+        currentUserId: mergedUser.id,
+        sessionMode: 'authenticated',
+      }
+    })
+    setServerCapabilities(Array.isArray(capabilities) ? capabilities.filter((item) => typeof item === 'string') : [])
   }, [])
 
   const guiLenhTrinhChieu = useCallback((cmd: PlayerCommand, value?: number) => {
@@ -205,7 +423,7 @@ export function ControlScreen() {
 
   const duaDenKhung = useCallback((panel: 'command' | 'queue') => {
     if (isMobileLayout) {
-      setMobilePanel(panel)
+      setMobileTab(panel === 'command' ? 'playing' : 'queue')
       return
     }
     if (isThreePane) return
@@ -293,6 +511,59 @@ export function ControlScreen() {
   useBroadcastReceiver(onMsg)
 
   useEffect(() => {
+    let mounted = true
+
+    async function khoiDongAuthServer() {
+      try {
+        const health = await authHealth()
+        if (!mounted) return
+
+        setAuthServerOnline(Boolean(health.ok))
+        setAuthOwnerReady(typeof health.ownerReady === 'boolean' ? health.ownerReady : null)
+        if (!health.ok) return
+
+        try {
+          const me = await authMe()
+          if (!mounted) return
+          if (me.ok && me.user) {
+            dongBoPhienDangNhapTuServer(mapApiUserToAppUser(me.user), me.capabilities)
+            return
+          }
+        } catch {
+          try {
+            const refreshed = await authRefresh()
+            if (!mounted) return
+            if (refreshed.ok && refreshed.user) {
+              dongBoPhienDangNhapTuServer(mapApiUserToAppUser(refreshed.user), refreshed.capabilities)
+              return
+            }
+          } catch {
+            // giữ guest mode
+          }
+        }
+
+        if (!mounted) return
+        useAuthStore.setState({ sessionMode: 'guest' })
+        setServerCapabilities([])
+      } catch {
+        if (!mounted) return
+        setAuthServerOnline(false)
+        setAuthOwnerReady(null)
+        setServerCapabilities([])
+      } finally {
+        if (mounted) {
+          setAuthProbeDone(true)
+        }
+      }
+    }
+
+    void khoiDongAuthServer()
+    return () => {
+      mounted = false
+    }
+  }, [dongBoPhienDangNhapTuServer])
+
+  useEffect(() => {
     phatCaiDatTrinhChieu({ displayAd })
   }, [displayAd, settingsSyncNonce])
 
@@ -329,7 +600,6 @@ export function ControlScreen() {
       setIsThreePane(nextThreePane)
       setIsMobileLayout(nextMobileLayout)
       if (!nextMobileLayout) {
-        setMobilePanel(null)
         setOpenMobileMenu(false)
       }
       if (!nextThreePane) {
@@ -408,27 +678,69 @@ export function ControlScreen() {
   }, [nhanNut])
 
   const dangNhapTaiKhoan = useCallback(
-    (payload: { username: string; pin: string; remember: boolean }) => {
-      const result = dangNhapUser(payload)
-      thongBao(result.message)
-      return result
+    async (payload: { username: string; pin: string; remember: boolean }) => {
+      if (!authServerOnline) {
+        const result = dangNhapUserLocal(payload)
+        thongBao(result.message)
+        return result
+      }
+
+      try {
+        const result = await authLogin(payload)
+        if (result.ok && result.user) {
+          dongBoPhienDangNhapTuServer(mapApiUserToAppUser(result.user), result.capabilities)
+          setAuthOwnerReady(true)
+        }
+        const message = result.message || (result.ok ? 'Đăng nhập thành công' : 'Đăng nhập thất bại')
+        thongBao(message)
+        return { ok: Boolean(result.ok), message }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Không thể đăng nhập auth server'
+        thongBao(message)
+        return { ok: false, message }
+      }
     },
-    [dangNhapUser, thongBao],
+    [authServerOnline, dangNhapUserLocal, dongBoPhienDangNhapTuServer, thongBao],
   )
 
   const thietLapQuanTriChinh = useCallback(
-    (payload: { name: string; username: string; pin: string; remember: boolean }) => {
-      const result = khoiTaoQuanTriChinh(payload)
-      thongBao(result.message)
-      return result
+    async (payload: { name: string; username: string; pin: string; remember: boolean }) => {
+      if (!authServerOnline) {
+        const result = khoiTaoQuanTriChinhLocal(payload)
+        thongBao(result.message)
+        return result
+      }
+
+      try {
+        const result = await authBootstrapOwner(payload)
+        if (result.ok && result.user) {
+          dongBoPhienDangNhapTuServer(mapApiUserToAppUser(result.user), result.capabilities)
+          setAuthOwnerReady(true)
+        }
+        const message = result.message || (result.ok ? 'Đã tạo quản trị chính' : 'Không thể tạo quản trị chính')
+        thongBao(message)
+        return { ok: Boolean(result.ok), message }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Không thể kết nối auth server'
+        thongBao(message)
+        return { ok: false, message }
+      }
     },
-    [khoiTaoQuanTriChinh, thongBao],
+    [authServerOnline, dongBoPhienDangNhapTuServer, khoiTaoQuanTriChinhLocal, thongBao],
   )
 
-  const dangXuatTaiKhoan = useCallback(() => {
-    dangXuat()
+  const dangXuatTaiKhoan = useCallback(async () => {
+    if (authServerOnline) {
+      try {
+        await authLogout()
+      } catch {
+        // nếu lỗi mạng vẫn reset local session để an toàn quyền hạn
+      }
+    }
+    dangXuatLocal()
+    setServerCapabilities([])
     thongBao('Đã chuyển về chế độ khách')
-  }, [dangXuat, thongBao])
+  }, [authServerOnline, dangXuatLocal, thongBao])
 
   const chuyenCheDoLapLai = useCallback(() => {
     if (!canPlayback) return
@@ -658,6 +970,36 @@ export function ControlScreen() {
     thongBao(`Đã liên kết theo mã TV: ${roomCode}`)
   }, [thongBao])
 
+  const apDungIpLanThuCong = useCallback((input: string) => {
+    const host = layHostnameLanTuInput(input)
+    if (!host) {
+      thongBao('Hãy nhập IP LAN của laptop, ví dụ 192.168.1.50')
+      return
+    }
+
+    try {
+      const localRelayUrl = 'ws://127.0.0.1:8787'
+      const relayBase = chuanHoaRelayUrl(remoteRelayUrl) || localRelayUrl
+      let relayHostIsLocal = false
+      try {
+        relayHostIsLocal = laHostLocalhost(new URL(relayBase).hostname)
+      } catch {
+        relayHostIsLocal = false
+      }
+      const relayForPhone = relayHostIsLocal || remoteRelayStatus === 'connected' ? relayBase : localRelayUrl
+      if (relayForPhone !== relayBase) {
+        setRemoteRelayUrl(localRelayUrl)
+        luuRelayUrl(localRelayUrl)
+      }
+      setRemotePhoneBaseUrl(`http://${host}:8787/`)
+      setRemotePhoneRelayUrl(doiHostUrl(relayForPhone, host))
+      setRemotePhoneLinkHint(`Đã dùng IP LAN ${host} qua relay http://${host}:8787/. Điện thoại cần cùng Wi-Fi và relay phải đang chạy trên laptop.`)
+      thongBao(`Đã dùng IP LAN ${host} cho QR điện thoại`)
+    } catch {
+      thongBao('IP LAN không hợp lệ. Ví dụ đúng: 192.168.1.50')
+    }
+  }, [remoteRelayStatus, remoteRelayUrl, thongBao])
+
   const taoPhongRemoteMoi = useCallback(() => {
     const nextRoomCode = taoMaPhongRemote()
     setRemotePresence(EMPTY_REMOTE_PRESENCE)
@@ -757,7 +1099,29 @@ export function ControlScreen() {
         </div>
         <div className="sectionSub">{nhanKetQua}</div>
       </div>
-      <SearchBar ref={searchInputRef} value={query} onChange={setQuery} onClear={() => setQuery('')} disabled={!canSearch} />
+      <div className="searchBarWrap">
+        <SearchBar
+          ref={searchInputRef}
+          value={query}
+          onChange={(val) => {
+            setQuery(val)
+            setShowSearchHistory(false)
+          }}
+          onClear={() => { setQuery(''); setShowSearchHistory(false) }}
+          disabled={!canSearch}
+          onFocus={() => { if (!query) setShowSearchHistory(true) }}
+        />
+        {showSearchHistory && !query && (
+          <SearchHistoryDropdown
+            onSelect={(q) => {
+              setQuery(q)
+              setShowSearchHistory(false)
+              searchInputRef.current?.focus()
+            }}
+            onClose={() => setShowSearchHistory(false)}
+          />
+        )}
+      </div>
       <div className="spacer12" />
       <div className="searchUtilityRow">
         <SearchModeToggle disabled={!canSearch} />
@@ -770,14 +1134,17 @@ export function ControlScreen() {
           results={results}
           onAdd={(song) => {
             nhanNut(`search-end:${song.videoId}`)
+            saveToSearchHistory(query)
             themCuoiHangCho(song)
           }}
           onAddNext={(song) => {
             nhanNut(`search-next:${song.videoId}`)
+            saveToSearchHistory(query)
             themKeTiep(song)
           }}
           onPlayNow={(song) => {
             nhanNut(`search-play:${song.videoId}`)
+            saveToSearchHistory(query)
             phatNgay(song)
           }}
           recentAction={recentAction}
@@ -814,10 +1181,26 @@ export function ControlScreen() {
         {baiDangPhat ? (
           <div className={`commandCard ${isMobileLayout ? 'commandCardMobile' : ''}`}>
             <div className={`nowPlaying ${isMobileLayout ? 'nowPlayingCompact' : ''}`}>
+              {/* Thumbnail 16:9 với waveform overlay */}
+              {!isMobileLayout && baiDangPhat.thumbnail && (
+                <div className="npThumbnailWrap npEntering">
+                  <img src={baiDangPhat.thumbnail} alt="" aria-hidden="true" />
+                  <div className="npThumbnailGradient" />
+                  <div className="npThumbnailOverlay">
+                    <div className="npThumbnailTitle">{baiDangPhat.title}</div>
+                    <WaveformIcon isPlaying={hienThiPlayerMode === 'playing'} size="md" />
+                  </div>
+                </div>
+              )}
               <div className="nowPlayingHeading">
-                <div className="nowPlayingLabel">Bài hiện tại</div>
+                <div className="nowPlayingLabel" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  Bài hiện tại
+                  {isMobileLayout && <WaveformIcon isPlaying={hienThiPlayerMode === 'playing'} size="sm" />}
+                </div>
               </div>
-              <div className="npTitle">{baiDangPhat.title}</div>
+              {(isMobileLayout || !baiDangPhat.thumbnail) && (
+                <div className="npTitle">{baiDangPhat.title}</div>
+              )}
               <div className="npMetaList">
                 <div className="npMetaItem">
                   <div className="npMetaKey">Kênh</div>
@@ -828,6 +1211,10 @@ export function ControlScreen() {
                   <div className="npMetaValue">{baiTiepTheo ? baiTiepTheo.title : 'Chưa có bài kế tiếp'}</div>
                 </div>
               </div>
+              {/* Fake progress bar */}
+              {!isMobileLayout && (
+                <FakeProgressBar isPlaying={hienThiPlayerMode === 'playing'} durationSeconds={240} />
+              )}
               <div className="statsRow">
                 <div className="statBlock">
                   <div className="statValue">{tongBai}</div>
@@ -971,12 +1358,34 @@ export function ControlScreen() {
   )
 
   return (
-    <div className={`page ${isMobileLayout ? 'pageMobile' : ''}`}>
+    <div className={`page ${isMobileLayout ? 'pageMobile' : ''} ${isMobileLayout && !mobileControlTarget ? 'pageMobileModePicker' : ''}`}>
       <header className="header">
         <div className="headerBrand">
           <div className="appTitle">KaraokeYT</div>
-          <div className="appSub">Màn hình điều khiển</div>
+          {!isMobileLayout && <div className="appSub">Màn hình điều khiển</div>}
         </div>
+
+        {/* Inline now-playing indicator — desktop only */}
+        {!isMobileLayout && baiDangPhat && (
+          <div className="headerNowPlaying">
+            <WaveformIcon isPlaying={hienThiPlayerMode === 'playing'} size="sm" />
+            <div className="headerNowPlayingTitle">{baiDangPhat.title}</div>
+          </div>
+        )}
+
+        {/* Connection status pill — desktop */}
+        {!isMobileLayout && (
+          <div className="headerConnStatus">
+            <span className={`headerConnDot ${remoteRelayStatus === 'connected' ? 'headerConnDot--connected' : remoteRelayStatus === 'error' ? 'headerConnDot--error' : ''}`} />
+            <span>Mã {remoteRoomCode}</span>
+            {remotePresence.displays + remotePresence.remotes > 0 && (
+              <span style={{ color: 'var(--success)', marginLeft: 2 }}>
+                · {remotePresence.displays + remotePresence.remotes} kết nối
+              </span>
+            )}
+          </div>
+        )}
+
         <div className="headerActions">
           {isMobileLayout ? (
             <div className="mobileHeaderMenuWrap">
@@ -1084,7 +1493,7 @@ export function ControlScreen() {
                         className="ghost compactButton buttonToneDanger buttonWithIcon"
                         onClick={() => {
                           setOpenMobileMenu(false)
-                          dangXuatTaiKhoan()
+                          void dangXuatTaiKhoan()
                         }}
                         role="menuitem"
                         type="button"
@@ -1103,7 +1512,9 @@ export function ControlScreen() {
                 currentUser={userDangDangNhap}
                 sessionMode={sessionMode}
                 onOpenAccount={moModalTaiKhoan}
-                onLogout={dangXuatTaiKhoan}
+                onLogout={() => {
+                  void dangXuatTaiKhoan()
+                }}
               />
               <OpenDisplayButton
                 className={`primary buttonToneAccent ${activeButtonKey === 'open-display' ? 'buttonStateActive' : ''}`}
@@ -1164,6 +1575,14 @@ export function ControlScreen() {
         </div>
         <div className="statusChip statusChipMeta">Hồ sơ: {nhanTaiKhoanDayDu}</div>
         <div className="statusChip statusChipMeta">Đồng bộ: {nhanDongBo}</div>
+        <div className={`statusChip ${authServerOnline ? 'statusChipSuccess' : 'statusChipWarning'}`}>
+          Auth: {authServerOnline ? 'Server' : 'Local fallback'}
+        </div>
+        {authServerOnline ? (
+          <div className="statusChip statusChipMeta">
+            Owner: {authOwnerReady === false ? 'Chưa thiết lập' : 'Sẵn sàng'}
+          </div>
+        ) : null}
         <div className="statusChip">Mã TV: {remoteRoomCode}</div>
         <div className="statusChip">TV/laptop: {remotePresence.displays}</div>
         <div className="statusChip statusChipAccent">
@@ -1177,67 +1596,211 @@ export function ControlScreen() {
       </div>
 
       {isMobileLayout ? (
-        <>
-          <main className="mobileSearchWorkspace">{searchSection}</main>
-          <div className="mobileDockSpacer" aria-hidden="true" />
-          <div className="mobileOperatorDock">
-            <button
-              className={`ghost compactButton mobileDockTab ${mobilePanel === 'command' ? 'buttonToneAccent buttonStateActive' : 'buttonToneMuted'}`}
-              data-pressed={mobilePanel === 'command'}
-              onClick={() => setMobilePanel((current) => (current === 'command' ? null : 'command'))}
-              type="button"
-            >
-              <span className="buttonLabel">
-                <AppIcon name="control" className="buttonIcon" />
-                Điều khiển
-              </span>
-              <span className="mobileDockCount">{baiDangPhat ? '1' : '0'}</span>
-            </button>
-            <button
-              className={`ghost compactButton mobileDockTab ${mobilePanel === 'queue' ? 'buttonToneAccent buttonStateActive' : 'buttonToneMuted'}`}
-              data-pressed={mobilePanel === 'queue'}
-              onClick={() => setMobilePanel((current) => (current === 'queue' ? null : 'queue'))}
-              type="button"
-            >
-              <span className="buttonLabel">
-                <AppIcon name="queue" className="buttonIcon" />
-                Hàng chờ
-              </span>
-              <span className="mobileDockCount">{tongBai}</span>
-            </button>
-            <div className="mobileDockSummary">
-              <div className="mobileDockLabel">{mobilePanel === 'queue' ? 'Lượt hát' : 'Đang phát'}</div>
-              <div className="mobileDockValue">{baiDangPhat ? baiDangPhat.title : 'Chưa có bài nào trong lượt phát'}</div>
+        mobileControlTarget ? (
+          <>
+            <main className="mobileSearchWorkspace mobileSearchWorkspaceWithDock">
+              {mobileTab === 'search' && searchSection}
+              {mobileTab === 'playing' && (
+                <section className="panel" style={{ minHeight: 'calc(100dvh - 200px)' }}>
+                  {commandSectionContent}
+                </section>
+              )}
+              {mobileTab === 'queue' && (
+                <section className="panel" style={{ minHeight: 'calc(100dvh - 200px)' }}>
+                  {queueSectionContent}
+                </section>
+              )}
+              {mobileTab === 'remote' && (
+                <section className="panel mobileRemotePanel" style={{ minHeight: 'calc(100dvh - 200px)' }}>
+                  <div className="panelTitleRow">
+                    <div>
+                      <div className="panelEyebrow">Liên kết thiết bị</div>
+                      <div className="panelTitle">{mobileTargetTitle}</div>
+                    </div>
+                    <button
+                      className="ghost compactButton buttonToneMuted buttonWithIcon"
+                      onClick={() => setMobileControlTarget(null)}
+                      type="button"
+                    >
+                      <AppIcon name="menu" className="buttonIcon" />
+                      <span className="buttonLabel">Đổi chế độ</span>
+                    </button>
+                  </div>
+                  <div className="sectionSub">{mobileTargetHint}</div>
+                  <div className="mobileRemoteHero">
+                    <div>
+                      <div className="mobileRemoteHeroLabel">Mã kết nối</div>
+                      <div className="mobileRemoteHeroCode">{remoteRoomCode}</div>
+                    </div>
+                    <div className={`mobileRemoteHeroState ${remoteReadyToUse ? 'statusChipSuccess' : remoteRelayReady ? 'statusChipAccent' : 'statusChipWarning'}`}>
+                      {remoteReadyToUse ? 'Sẵn sàng' : remoteRelayReady ? 'Đang ghép' : 'Relay lỗi'}
+                    </div>
+                  </div>
+                  <div className="mobileRemoteSteps" aria-label={`3 bước ${mobileTargetTitle.toLowerCase()}`}>
+                    <div className={`mobileRemoteStep ${remoteDisplayReady ? 'mobileRemoteStepReady' : ''} ${mobileRemoteCurrentStep === 1 ? 'mobileRemoteStepActive' : ''}`}>
+                      <span className="mobileRemoteStepIcon">
+                        <AppIcon name="screen" className="buttonIcon" />
+                      </span>
+                      <div>
+                        <div className="mobileRemoteStepTitle">1. Mở {mobileTargetDevice}</div>
+                        <div className="hint">
+                          {remoteDisplayReady
+                            ? 'Đã thấy màn hình trình chiếu.'
+                            : `Mở KaraokeYT trên ${mobileTargetDevice}, sau đó bấm Mở màn hình trình chiếu.`}
+                        </div>
+                      </div>
+                      <span className={`miniBadge ${remoteDisplayReady ? 'miniBadgeSuccess' : ''}`}>{remoteDisplayReady ? 'Xong' : 'Chờ'}</span>
+                    </div>
+                    <div className={`mobileRemoteStep ${remoteMobileReady ? 'mobileRemoteStepReady' : ''} ${mobileRemoteCurrentStep === 2 ? 'mobileRemoteStepActive' : ''}`}>
+                      <span className="mobileRemoteStepIcon">
+                        <AppIcon name="control" className="buttonIcon" />
+                      </span>
+                      <div>
+                        <div className="mobileRemoteStepTitle">2. Ghép điện thoại</div>
+                        <div className="hint">{remoteMobileReady ? 'Điện thoại đã vào đúng phòng.' : 'Bấm QR / mã kết nối nếu cần quét lại hoặc nhập mã thủ công.'}</div>
+                      </div>
+                      <span className={`miniBadge ${remoteMobileReady ? 'miniBadgeSuccess' : ''}`}>{remoteMobileReady ? 'Xong' : 'Chờ'}</span>
+                    </div>
+                    <div className={`mobileRemoteStep ${remoteReadyToUse ? 'mobileRemoteStepReady' : ''} ${mobileRemoteCurrentStep === 3 ? 'mobileRemoteStepActive' : ''}`}>
+                      <span className="mobileRemoteStepIcon">
+                        <AppIcon name="play" className="buttonIcon" />
+                      </span>
+                      <div>
+                        <div className="mobileRemoteStepTitle">3. Tìm bài và phát</div>
+                        <div className="hint">{remoteReadyToUse ? 'Có thể qua tab Tìm để chọn bài và điều khiển màn hình chiếu.' : 'Khi đủ màn chiếu và điện thoại, các nút phát sẽ điều khiển từ xa.'}</div>
+                      </div>
+                      <span className={`miniBadge ${remoteReadyToUse ? 'miniBadgeSuccess' : ''}`}>{remoteReadyToUse ? 'OK' : 'Chờ'}</span>
+                    </div>
+                  </div>
+                  <div className="mobileRemoteActions">
+                    <button
+                      className={`primary buttonToneAccent buttonWithIcon ${activeButtonKey === 'open-remote' ? 'buttonStateActive' : ''}`}
+                      disabled={!canUseRemote}
+                      onClick={() => {
+                        if (!canUseRemote) return
+                        nhanNut('open-remote')
+                        setOpenRemoteModal(true)
+                      }}
+                      type="button"
+                    >
+                      <AppIcon name="camera" className="buttonIcon" />
+                      <span className="buttonLabel">QR / mã kết nối</span>
+                    </button>
+                    <button
+                      className="ghost compactButton buttonToneMuted buttonWithIcon"
+                      onClick={() => setMobileTab('search')}
+                      type="button"
+                    >
+                      <AppIcon name="search" className="buttonIcon" />
+                      <span className="buttonLabel">Tìm bài ngay</span>
+                    </button>
+                  </div>
+                  <div className="headerConnStatus mobileRemoteConnectionStatus">
+                    <span className={`headerConnDot ${remoteRelayStatus === 'connected' ? 'headerConnDot--connected' : remoteRelayStatus === 'error' ? 'headerConnDot--error' : ''}`} />
+                    <span>
+                      {remoteRelayStatus === 'connected' ? 'Relay đã kết nối' : remoteRelayStatus === 'connecting' ? 'Đang kết nối relay...' : 'Lỗi relay'}
+                    </span>
+                    {remoteTotalConnected > 0 && (
+                      <span style={{ color: 'var(--success)' }}>
+                        · {remoteTotalConnected} thiết bị
+                      </span>
+                    )}
+                  </div>
+                </section>
+              )}
+            </main>
+
+            <div className="mobileNowPlayingDock">
+              <NowPlayingMini
+                currentSong={baiDangPhat}
+                isPlaying={hienThiPlayerMode === 'playing'}
+                onPlayPause={() => {
+                  if (hienThiPlayerMode === 'playing') tamDungPhat()
+                  else batDauPhat()
+                }}
+                onClick={() => setMobileTab('playing')}
+                disabled={!canPlayback}
+              />
             </div>
-          </div>
-          {mobilePanel ? <button className="mobileSheetScrim" aria-label="Đóng khay điều khiển" onClick={() => setMobilePanel(null)} type="button" /> : null}
-          <section className={`mobileBottomSheet ${mobilePanel ? 'mobileBottomSheetOpen' : ''}`} aria-hidden={!mobilePanel}>
-            <div className="mobileBottomSheetHandle" aria-hidden="true" />
-            <div className="mobileBottomSheetTabs">
+
+            <nav className="mobileTabNav" aria-label="Điều hướng chính">
               <button
-                className={`ghost compactButton buttonWithIcon ${mobilePanel === 'command' ? 'buttonToneAccent buttonStateActive' : 'buttonToneMuted'}`}
-                data-pressed={mobilePanel === 'command'}
-                onClick={() => setMobilePanel('command')}
+                className={`mobileTabNavBtn ${mobileTab === 'search' ? 'mobileTabNavBtn--active' : ''}`}
+                onClick={() => setMobileTab('search')}
                 type="button"
+                aria-label="Tìm kiếm"
               >
-                <AppIcon name="control" className="buttonIcon" />
-                <span className="buttonLabel">{isMobileLayout ? 'Điều khiển' : 'Trung tâm điều khiển'}</span>
+                <AppIcon name="search" className="buttonIcon" />
+                Tìm
               </button>
               <button
-                className={`ghost compactButton buttonWithIcon ${mobilePanel === 'queue' ? 'buttonToneAccent buttonStateActive' : 'buttonToneMuted'}`}
-                data-pressed={mobilePanel === 'queue'}
-                onClick={() => setMobilePanel('queue')}
+                className={`mobileTabNavBtn ${mobileTab === 'playing' ? 'mobileTabNavBtn--active' : ''}`}
+                onClick={() => setMobileTab('playing')}
                 type="button"
+                aria-label="Đang phát"
+              >
+                <AppIcon name="play" className="buttonIcon" />
+                Phát
+              </button>
+              <button
+                className={`mobileTabNavBtn ${mobileTab === 'queue' ? 'mobileTabNavBtn--active' : ''}`}
+                onClick={() => setMobileTab('queue')}
+                type="button"
+                aria-label="Hàng chờ"
               >
                 <AppIcon name="queue" className="buttonIcon" />
-                <span className="buttonLabel">{isMobileLayout ? 'Lượt hát' : 'Quản lý lượt hát'}</span>
+                Lượt hát
+                {tongBai > 0 && <span className="mobileTabNavBadge">{tongBai > 99 ? '99+' : tongBai}</span>}
+              </button>
+              <button
+                className={`mobileTabNavBtn ${mobileTab === 'remote' ? 'mobileTabNavBtn--active' : ''}`}
+                onClick={() => setMobileTab('remote')}
+                type="button"
+                aria-label="Kết nối màn chiếu"
+              >
+                <AppIcon name="control" className="buttonIcon" />
+                Kết nối
+                {remoteTotalConnected > 0 && (
+                  <span className="mobileTabNavBadge">{remoteTotalConnected}</span>
+                )}
+              </button>
+            </nav>
+          </>
+        ) : (
+          <main className="mobileModePicker" aria-label="Chọn cách điều khiển">
+            <section className="mobileModeHero">
+              <div className="panelEyebrow">Bắt đầu</div>
+              <h1>Chọn màn hình muốn điều khiển</h1>
+              <p>Điện thoại sẽ dùng giao diện KaraokeYT đầy đủ: tìm bài, phát, quản lý lượt hát và kết nối màn chiếu.</p>
+            </section>
+            <div className="mobileModeGrid">
+              <button
+                className="mobileModeCard mobileModeCardPrimary"
+                onClick={() => chonCheDoDieuKhienMobile('laptop')}
+                type="button"
+              >
+                <span className="mobileModeIcon">
+                  <AppIcon name="screen" className="buttonIcon" />
+                </span>
+                <span className="mobileModeTitle">Remote lên laptop</span>
+                <span className="mobileModeText">Laptop/Mac/Windows làm màn hình trình chiếu. Điện thoại tìm bài, xếp hàng và bấm phát.</span>
+                <span className="mobileModeAction">Chọn laptop</span>
+              </button>
+              <button
+                className="mobileModeCard"
+                onClick={() => chonCheDoDieuKhienMobile('tv')}
+                type="button"
+              >
+                <span className="mobileModeIcon mobileModeIconAlt">
+                  <AppIcon name="control" className="buttonIcon" />
+                </span>
+                <span className="mobileModeTitle">Remote TV</span>
+                <span className="mobileModeText">TV hoặc trình duyệt trên TV mở màn hình trình chiếu. Điện thoại điều khiển và quản lý lượt hát.</span>
+                <span className="mobileModeAction">Chọn TV</span>
               </button>
             </div>
-            <div className="mobileBottomSheetContent">
-              {mobilePanel === 'queue' ? queueSectionContent : commandSectionContent}
-            </div>
-          </section>
-        </>
+          </main>
+        )
       ) : (
         <main ref={layoutRef} className={`controlWorkspace ${isThreePane ? 'controlWorkspaceDesktop' : ''}`} style={layoutStyle}>
           {searchSection}
@@ -1295,21 +1858,23 @@ export function ControlScreen() {
         open={openRemoteModal && canUseRemote}
         onClose={() => setOpenRemoteModal(false)}
         roomCode={remoteRoomCode}
-        controlUrl={controlJoinUrl}
         displayUrl={displayJoinUrl}
         remoteUrl={remoteJoinUrl}
-        relayUrl={remoteRelayUrl}
+        relayUrl={phonePairingRelayUrl}
+        networkHint={remotePhoneLinkHint ?? undefined}
         status={remoteRelayStatus}
         statusMessage={remoteRelayMessage ?? undefined}
         presence={remotePresence}
         onRegenerate={taoPhongRemoteMoi}
         onUseRoomCode={dungMaTV}
+        onUseLanHost={apDungIpLanThuCong}
       />
       <SettingsModal
         open={openSettings && canOpenSettings}
         onClose={() => setOpenSettings(false)}
         canManageUsers={canManageUsers}
         canManageDisplayAd={canManageDisplayAd}
+        authServerOnline={authServerOnline}
         onSaved={dongBoCaiDatTrinhChieu}
         displayRoomCode={remoteRoomCode}
       />

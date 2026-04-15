@@ -16,6 +16,9 @@ android/keystores
 *.jks
 *.keystore
 *.local
+.playwright-cli/
+server/data/*
+!server/data/.gitkeep
 
 # Editor directories and files
 .vscode/*

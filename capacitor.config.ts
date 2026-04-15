@@ -5,10 +5,11 @@ const config: CapacitorConfig = {
   appName: 'KaraokeYT',
   webDir: 'dist',
   server: {
-    androidScheme: 'https',
+    androidScheme: 'http',
   },
   android: {
     path: 'android',
+    allowMixedContent: true,
   },
 }
 

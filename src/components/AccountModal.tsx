@@ -4,6 +4,7 @@ import { AUTH_SESSION_LABEL, USER_ROLE_LABEL, moTaCheDoPhien } from '../lib/auth
 import type { AppUser, AuthSessionMode } from '../types'
 
 type AuthResult = { ok: boolean; message: string }
+type MaybeAsyncResult = AuthResult | Promise<AuthResult>
 
 type AuthPayload = {
   username: string
@@ -21,9 +22,9 @@ type Props = {
   setupRequired: boolean
   sessionMode: AuthSessionMode
   currentUser: AppUser | null
-  onLogin: (payload: AuthPayload) => AuthResult
-  onSetupOwner: (payload: SetupPayload) => AuthResult
-  onLogout: () => void
+  onLogin: (payload: AuthPayload) => MaybeAsyncResult
+  onSetupOwner: (payload: SetupPayload) => MaybeAsyncResult
+  onLogout: () => void | Promise<void>
 }
 
 export function AccountModal({
@@ -44,6 +45,7 @@ export function AccountModal({
   const [setupPin, setSetupPin] = useState('')
   const [setupPinConfirm, setSetupPinConfirm] = useState('')
   const [message, setMessage] = useState<string | null>(null)
+  const [submitting, setSubmitting] = useState(false)
 
   const canLogin = useMemo(() => Boolean(username.trim() && pin.trim()), [pin, username])
   const canSetup = useMemo(
@@ -169,16 +171,23 @@ export function AccountModal({
               <div className="accountCardActions">
                 <button
                   className="primary primaryStrong buttonWithIcon"
-                  disabled={!canSetup}
-                  onClick={() => {
-                    const result = onSetupOwner({
-                      name: setupName,
-                      username: setupUsername,
-                      pin: setupPin,
-                      remember,
-                    })
-                    setMessage(result.message)
-                    if (result.ok) onClose()
+                  disabled={!canSetup || submitting}
+                  onClick={async () => {
+                    try {
+                      setSubmitting(true)
+                      const result = await onSetupOwner({
+                        name: setupName,
+                        username: setupUsername,
+                        pin: setupPin,
+                        remember,
+                      })
+                      setMessage(result.message)
+                      if (result.ok) onClose()
+                    } catch (error) {
+                      setMessage(error instanceof Error ? error.message : 'Không thể tạo quản trị chính')
+                    } finally {
+                      setSubmitting(false)
+                    }
                   }}
                   type="button"
                 >
@@ -234,11 +243,18 @@ export function AccountModal({
               <div className="accountCardActions">
                 <button
                   className="primary primaryStrong buttonWithIcon"
-                  disabled={!canLogin}
-                  onClick={() => {
-                    const result = onLogin({ username, pin, remember })
-                    setMessage(result.message)
-                    if (result.ok) onClose()
+                  disabled={!canLogin || submitting}
+                  onClick={async () => {
+                    try {
+                      setSubmitting(true)
+                      const result = await onLogin({ username, pin, remember })
+                      setMessage(result.message)
+                      if (result.ok) onClose()
+                    } catch (error) {
+                      setMessage(error instanceof Error ? error.message : 'Không thể đăng nhập')
+                    } finally {
+                      setSubmitting(false)
+                    }
                   }}
                   type="button"
                 >
@@ -247,7 +263,7 @@ export function AccountModal({
                 </button>
 
                 {sessionMode === 'authenticated' ? (
-                  <button className="ghost buttonToneDanger buttonWithIcon" onClick={onLogout} type="button">
+                  <button className="ghost buttonToneDanger buttonWithIcon" onClick={() => void onLogout()} type="button">
                     <AppIcon name="logout" className="buttonIcon" />
                     <span className="buttonLabel">Đăng xuất</span>
                   </button>
