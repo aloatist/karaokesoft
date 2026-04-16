@@ -77,6 +77,54 @@ Lưu ý:
 - Relay có heartbeat cleanup kết nối treo (mặc định 15s, chỉnh bằng `RELAY_HEARTBEAT_INTERVAL_MS`)
 - Display tự poll cấu hình quảng cáo từ auth server mỗi 20 giây (fallback về state remote/local nếu auth server không sẵn sàng)
 
+## Cast to TV (Phát lên TV)
+
+Tính năng cho phép điện thoại phát video karaoke trực tiếp lên Smart TV mà không cần laptop.
+
+### Hỗ trợ thiết bị:
+- **Chromecast**: Google Chromecast, Android TV, TV có Chromecast built-in
+- **Samsung Smart TV**: Tizen OS (qua DLNA/Web App)
+- **LG Smart TV**: WebOS (qua DLNA/Web App)
+- **Sony/Philips TV**: Android TV (qua Chromecast)
+
+### Cách sử dụng:
+
+1. **Kết nối điện thoại với TV**:
+   - Mở app KaraokeYT trên điện thoại
+   - Chuyển sang chế độ Remote (`?screen=remote`)
+   - Bấm nút "📺 TV" → Chọn TV từ danh sách hoặc nhập IP TV thủ công
+
+2. **Phát video**:
+   - Khi đã kết nối TV, video đang phát trên điện thoại sẽ tự động cast lên TV
+   - Điều khiển (play/pause/next/volume) vẫn hoạt động qua điện thoại
+
+3. **Ngắt kết nối**:
+   - Bấm lại nút "📺 TV" → Chọn "Ngắt kết nối"
+
+### Lưu ý kỹ thuật:
+
+- **Web/PWA**: Chỉ hỗ trợ Chromecast (giới hạn của browser)
+- **Android APK**: Hỗ trợ đầy đủ Chromecast + DLNA
+- **iOS**: Hỗ trợ AirPlay (thông qua WebView native)
+- Điện thoại và TV phải cùng Wi-Fi
+- Một số Smart TV yêu cầu bật "Screen Mirroring" hoặc "Cast" trong settings
+
+### Cài đặt plugin (Android):
+
+```bash
+npm install @kaikidev/capacitor-plugin-google-cast
+npx cap sync android
+```
+
+Cấu hình trong `capacitor.config.ts`:
+```typescript
+plugins: {
+  GoogleCast: {
+    receiverApplicationId: 'CC1AD845', // Default Media Receiver
+  },
+}
+```
+
 ## API Phase B (Auth/RBAC)
 
 - `POST /api/auth/bootstrap-owner` tạo quản trị chính lần đầu.

@@ -1894,7 +1894,7 @@ button[data-pressed='true'] {
   justify-content: center;
   padding: 18px;
   overflow: auto;
-  z-index: 50;
+  z-index: 120;
 }
 
 .modal {
@@ -2927,6 +2927,42 @@ button[data-pressed='true'] {
   font-size: 13px;
   font-weight: 740;
   line-height: 1.45;
+}
+
+.remoteScannerStatusError {
+  color: #ff7a7a;
+  font-weight: 760;
+}
+
+.remoteScannerOverlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.85);
+  border-radius: 12px;
+  gap: 8px;
+}
+
+.remoteScannerErrorIcon {
+  font-size: 32px;
+  line-height: 1;
+}
+
+.remoteScannerErrorText {
+  color: #ff7a7a;
+  font-size: 14px;
+  font-weight: 760;
+  text-align: center;
+}
+
+.remoteScannerActions {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  flex-wrap: wrap;
 }
 
 .remoteHintCard {
@@ -4940,4 +4976,233 @@ button[data-pressed='true'] {
     border-radius: 14px;
     font-size: 10px;
   }
+}
+
+/* ============================================
+   CastButton & TV Casting Styles
+   ============================================ */
+
+.castButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.castButton:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.castButton.compact {
+  padding: 6px 10px;
+  gap: 6px;
+}
+
+.castButton.connected {
+  background: rgba(40, 194, 155, 0.15);
+  border-color: rgba(40, 194, 155, 0.4);
+  color: var(--success);
+}
+
+.castButton.connected:hover {
+  background: rgba(40, 194, 155, 0.25);
+}
+
+.castIcon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.castDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--success);
+  animation: pulseDot 2s infinite;
+}
+
+.castLabel {
+  font-size: 12px;
+  max-width: 100px;
+}
+
+.castLabel.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.castBadge {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 500;
+  margin-left: 4px;
+}
+
+.castBadgeConnected {
+  background: rgba(40, 194, 155, 0.2);
+  color: var(--success);
+}
+
+.castBadgePlaying {
+  background: rgba(255, 122, 40, 0.2);
+  color: var(--primary);
+}
+
+.castBadgeConnecting {
+  background: rgba(255, 193, 7, 0.2);
+  color: #ffc107;
+}
+
+.castBadgeError {
+  background: rgba(239, 68, 68, 0.2);
+  color: var(--danger);
+}
+
+@keyframes pulseDot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(0.85); }
+}
+
+/* Cast Device Modal */
+.castDeviceModal {
+  max-width: 360px;
+  width: 90%;
+}
+
+.castDeviceLoading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 40px 20px;
+  color: var(--muted);
+}
+
+.castDeviceEmpty {
+  padding: 24px 16px;
+  text-align: center;
+}
+
+.castDeviceEmpty p {
+  color: var(--muted);
+  margin: 0 0 16px;
+}
+
+.castHelp {
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 10px;
+  padding: 14px;
+  text-align: left;
+  font-size: 12px;
+  margin-bottom: 16px;
+}
+
+.castHelp strong {
+  color: var(--text);
+  display: block;
+  margin-bottom: 6px;
+}
+
+.castHelp ul {
+  margin: 0;
+  padding-left: 16px;
+  color: var(--muted);
+}
+
+.castHelp li {
+  margin: 4px 0;
+}
+
+.castDeviceError {
+  padding: 24px 16px;
+  text-align: center;
+}
+
+.castDeviceError p {
+  color: var(--danger);
+  margin: 0 0 16px;
+}
+
+.castDeviceList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 0;
+}
+
+.castDeviceItem {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.2s ease;
+}
+
+.castDeviceItem:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.castDeviceIcon {
+  font-size: 20px;
+  flex-shrink: 0;
+}
+
+.castDeviceInfo {
+  flex: 1;
+  min-width: 0;
+}
+
+.castDeviceName {
+  font-weight: 600;
+  color: var(--text);
+  font-size: 14px;
+  margin-bottom: 2px;
+}
+
+.castDeviceType {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.castDeviceArrow {
+  color: var(--muted);
+  font-size: 14px;
+  opacity: 0.6;
+}
+
+.castDeviceDivider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+  margin: 12px 0;
+}
+
+.castManualIp {
+  display: flex;
+  gap: 8px;
+  padding: 0 4px;
+}
+
+.castManualIp input {
+  flex: 1;
+}
+
+.castManualIp button {
+  flex-shrink: 0;
 }

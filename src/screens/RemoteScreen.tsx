@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { IScannerControls } from '@zxing/browser'
 import { AppIcon } from '../components/AppIcon'
+import { CastButton } from '../components/CastButton'
 import {
   chuanHoaMaPhongRemote,
   chuanHoaRelayUrl,
@@ -51,6 +52,21 @@ function taoHealthUrlTuRelay(relayUrl: string) {
   } catch {
     return ''
   }
+}
+
+function docThongBaoLoiCamera(error: unknown) {
+  const message = error instanceof Error ? error.message : ''
+  const normalized = message.toLowerCase()
+
+  if (normalized.includes('permission denied') || normalized.includes('notallowederror') || normalized.includes('permission')) {
+    return 'Bạn chưa cấp quyền camera cho KaraokeYT. Hãy cho phép camera trong trình duyệt hoặc cài đặt app rồi quét lại.'
+  }
+
+  if (normalized.includes('notfounderror') || normalized.includes('device not found') || normalized.includes('could not start video source')) {
+    return 'Thiết bị này chưa có camera sẵn sàng. Hãy dùng mã TV thủ công hoặc kiểm tra lại camera.'
+  }
+
+  return message ? `Không mở được camera: ${message}` : 'Không mở được camera. Hãy nhập mã TV thủ công.'
 }
 
 export function RemoteScreen() {
@@ -314,7 +330,7 @@ export function RemoteScreen() {
         setScannerStatus('Đưa QR vào khung camera. App sẽ tự kết nối khi đọc được mã.')
       } catch (error) {
         if (cancelled) return
-        setScannerStatus(error instanceof Error ? `Không mở được camera: ${error.message}` : 'Không mở được camera. Hãy nhập mã TV thủ công.')
+        setScannerStatus(docThongBaoLoiCamera(error))
       }
     }
 
@@ -411,7 +427,7 @@ export function RemoteScreen() {
           ) : (
             <>
               <div className="remoteConnectTitle">Nhập mã trên TV</div>
-              <div className="remoteConnectHint">Cách nhanh nhất: bấm Quét QR rồi đưa camera vào mã QR trên laptop/TV.</div>
+              <div className="remoteConnectHint">Cách nhanh nhất: bấm Quét QR rồi đưa camera vào mã QR trên laptop/TV. Sau khi kết nối, bạn có thể phát video lên Smart TV.</div>
               {relayDangTroVeMayDienThoai ? (
                 <div className="remoteHintCard">
                   App đang trỏ relay về localhost của điện thoại. Hãy quét QR trên laptop/TV hoặc nhập Relay URL dạng ws://IP-laptop:8787 trước khi bấm Kết nối.
@@ -450,12 +466,28 @@ export function RemoteScreen() {
                   <div className="remoteScannerFrame">
                     <video ref={scannerVideoRef} className="remoteScannerVideo" muted playsInline />
                     <div className="remoteScannerReticle" aria-hidden="true" />
+                    {scannerStatus.includes('không khả dụng') || scannerStatus.includes('Không mở được') ? (
+                      <div className="remoteScannerOverlay">
+                        <div className="remoteScannerErrorIcon">📷❌</div>
+                        <div className="remoteScannerErrorText">Camera bị chặn</div>
+                      </div>
+                    ) : null}
                   </div>
-                  <div className="remoteScannerStatus">{scannerStatus}</div>
-                  <button className="ghost compactButton buttonWithIcon buttonToneMuted" onClick={tatCamera} type="button">
-                    <AppIcon name="clear" className="buttonIcon" />
-                    <span className="buttonLabel">Đóng camera</span>
-                  </button>
+                  <div className={`remoteScannerStatus ${scannerStatus.includes('không khả dụng') || scannerStatus.includes('Không mở được') || scannerStatus.includes('Lỗi') ? 'remoteScannerStatusError' : ''}`}>
+                    {scannerStatus}
+                  </div>
+                  <div className="remoteScannerActions">
+                    {scannerStatus.includes('không khả dụng') || scannerStatus.includes('Không mở được') ? (
+                      <button className="ghost compactButton buttonWithIcon buttonToneAccent" onClick={tatCamera} type="button">
+                        <AppIcon name="search" className="buttonIcon" />
+                        <span className="buttonLabel">Nhập thủ công</span>
+                      </button>
+                    ) : null}
+                    <button className="ghost compactButton buttonWithIcon buttonToneMuted" onClick={tatCamera} type="button">
+                      <AppIcon name="clear" className="buttonIcon" />
+                      <span className="buttonLabel">Đóng camera</span>
+                    </button>
+                  </div>
                 </div>
               ) : null}
               <div className="remoteJoinRow remoteJoinRowMinimal">
@@ -605,6 +637,13 @@ export function RemoteScreen() {
         </section>
 
         <section className="remoteQuickActions">
+          {joinedRoom && canSendRemote ? (
+            <CastButton
+              videoId={currentSong?.videoId}
+              videoTitle={currentSong?.title}
+              compact
+            />
+          ) : null}
           <button
             className={`ghost compactButton buttonWithIcon ${showQueue ? 'buttonToneAccent buttonStateActive' : 'buttonToneMuted'}`}
             data-pressed={showQueue}

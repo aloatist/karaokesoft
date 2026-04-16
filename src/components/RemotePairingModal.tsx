@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { IScannerControls } from '@zxing/browser'
 import { AppIcon } from './AppIcon'
 import { QrCodePanel } from './QrCodePanel'
-import { chuanHoaMaPhongRemote } from '../services/remoteRelay'
+import { chuanHoaMaPhongRemote, chuanHoaRelayUrl, chuanHoaTokenPhongRemote } from '../services/remoteRelay'
 import type { RemotePresence, RemoteRelayStatus } from '../types'
 
 type Props = {
@@ -15,8 +16,12 @@ type Props = {
   status: RemoteRelayStatus
   statusMessage?: string
   presence: RemotePresence
+  controllerReady?: boolean
+  currentDeviceIsController?: boolean
+  autoOpenScanner?: boolean
   onRegenerate: () => void
   onUseRoomCode: (roomCode: string) => void
+  onUsePairingPayload?: (payload: { roomCode: string; roomToken?: string; relayUrl?: string }) => void
   onUseLanHost?: (host: string) => void
 }
 
@@ -43,6 +48,46 @@ function statusHint(status: RemoteRelayStatus, statusMessage?: string) {
   return 'Chưa vào phòng kết nối.'
 }
 
+function taoPairingPayloadTuQrPayload(payload: string) {
+  const raw = payload.trim()
+  if (!raw) return null
+
+  try {
+    const url = new URL(raw, window.location.href)
+    const roomCode = chuanHoaMaPhongRemote(url.searchParams.get('room') ?? '')
+    if (roomCode) {
+      const roomToken = chuanHoaTokenPhongRemote(url.searchParams.get('token') ?? '')
+      const relayUrl = chuanHoaRelayUrl(url.searchParams.get('relay') ?? '')
+      return {
+        roomCode,
+        roomToken: roomToken || undefined,
+        relayUrl: relayUrl || undefined,
+      }
+    }
+  } catch {
+    // Cho phép QR chỉ chứa mã TV.
+  }
+
+  const roomCode = chuanHoaMaPhongRemote(raw)
+  if (!roomCode) return null
+  return { roomCode }
+}
+
+function docThongBaoLoiCamera(error: unknown) {
+  const message = error instanceof Error ? error.message : ''
+  const normalized = message.toLowerCase()
+
+  if (normalized.includes('permission denied') || normalized.includes('notallowederror') || normalized.includes('permission')) {
+    return 'Bạn chưa cấp quyền camera cho KaraokeYT. Hãy cho phép camera trong trình duyệt hoặc cài đặt app rồi quét lại.'
+  }
+
+  if (normalized.includes('notfounderror') || normalized.includes('device not found') || normalized.includes('could not start video source')) {
+    return 'Thiết bị này chưa có camera sẵn sàng. Hãy dùng mã TV thủ công hoặc kiểm tra lại camera.'
+  }
+
+  return message ? `Không mở được camera: ${message}` : 'Không mở được camera. Hãy nhập mã TV thủ công.'
+}
+
 export function RemotePairingModal({
   open,
   onClose,
@@ -54,8 +99,12 @@ export function RemotePairingModal({
   status,
   statusMessage,
   presence,
+  controllerReady,
+  currentDeviceIsController = false,
+  autoOpenScanner = false,
   onRegenerate,
   onUseRoomCode,
+  onUsePairingPayload,
   onUseLanHost,
 }: Props) {
   const [linkCode, setLinkCode] = useState(roomCode)
@@ -63,6 +112,10 @@ export function RemotePairingModal({
   const [isPhoneViewport, setIsPhoneViewport] = useState(() => window.innerWidth <= MOBILE_PAIRING_BREAKPOINT)
   const [copyMessage, setCopyMessage] = useState<string | null>(null)
   const [manualLanHost, setManualLanHost] = useState('')
+  const [scannerOpen, setScannerOpen] = useState(false)
+  const [scannerStatus, setScannerStatus] = useState('Đưa camera vào mã QR trên laptop/TV.')
+  const scannerControlsRef = useRef<IScannerControls | null>(null)
+  const scannerVideoRef = useRef<HTMLVideoElement | null>(null)
 
   const chipTone = useMemo(() => {
     if (status === 'connected') return 'statusChipSuccess'
@@ -79,6 +132,111 @@ export function RemotePairingModal({
     return () => media.removeEventListener('change', onChange)
   }, [])
 
+  const dongCamera = useCallback(() => {
+    scannerControlsRef.current?.stop()
+    scannerControlsRef.current = null
+    setScannerOpen(false)
+  }, [])
+
+  const xuLyPayloadTuCamera = useCallback((payload: string) => {
+    const pairingPayload = taoPairingPayloadTuQrPayload(payload)
+    if (!pairingPayload) {
+      setScannerStatus('QR này không phải mã KaraokeYT. Hãy quét QR đúng trên laptop/TV.')
+      return false
+    }
+
+    if (onUsePairingPayload) {
+      onUsePairingPayload(pairingPayload)
+    } else {
+      onUseRoomCode(pairingPayload.roomCode)
+    }
+
+    setScannerStatus('Đã quét QR. Đang liên kết TV/laptop...')
+    return true
+  }, [onUsePairingPayload, onUseRoomCode])
+
+  useEffect(() => {
+    if (!open || !scannerOpen) return
+
+    let cancelled = false
+    let found = false
+
+    async function batCamera() {
+      await Promise.resolve()
+      if (cancelled) return
+
+      const video = scannerVideoRef.current
+      if (!video) return
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setScannerStatus('Thiết bị này không hỗ trợ camera trong app. Hãy nhập mã TV thủ công.')
+        return
+      }
+
+      try {
+        const { BrowserQRCodeReader } = await import('@zxing/browser')
+        if (cancelled) return
+
+        const reader = new BrowserQRCodeReader(undefined, {
+          delayBetweenScanAttempts: 220,
+          delayBetweenScanSuccess: 800,
+        })
+
+        const controls = await reader.decodeFromConstraints(
+          {
+            audio: false,
+            video: {
+              facingMode: { ideal: 'environment' },
+              width: { ideal: 1280 },
+              height: { ideal: 720 },
+            },
+          },
+          video,
+          (result, _error, controlsInCallback) => {
+            if (!result || found) return
+            found = true
+
+            const accepted = xuLyPayloadTuCamera(result.getText())
+            if (!accepted) {
+              found = false
+              return
+            }
+
+            controlsInCallback.stop()
+            scannerControlsRef.current = null
+            setScannerOpen(false)
+            onClose()
+          },
+        )
+
+        if (cancelled) {
+          controls.stop()
+          return
+        }
+
+        scannerControlsRef.current = controls
+        setScannerStatus('Đưa QR vào khung camera. App sẽ tự liên kết khi đọc được mã.')
+      } catch (error) {
+        if (cancelled) return
+        setScannerStatus(docThongBaoLoiCamera(error))
+      }
+    }
+
+    void batCamera()
+
+    return () => {
+      cancelled = true
+      scannerControlsRef.current?.stop()
+      scannerControlsRef.current = null
+    }
+  }, [onClose, open, scannerOpen, xuLyPayloadTuCamera])
+
+  useEffect(() => {
+    if (!open || !autoOpenScanner) return
+    setActiveTab('phone')
+    setScannerStatus('Đang mở camera...')
+    setScannerOpen(true)
+  }, [autoOpenScanner, open])
+
   if (!open) return null
 
   const visibleTab = isPhoneViewport ? 'phone' : activeTab
@@ -86,9 +244,9 @@ export function RemotePairingModal({
   const relayReady = status === 'connected'
   const hostReady = relayReady && presence.hosts > 0
   const displayReady = status === 'connected' && presence.displays > 0
-  const mobileReady = relayReady && mobileCount > 0
-  const readyToUse = displayReady && mobileReady
-  const currentStep = !displayReady ? 1 : !mobileReady ? 2 : 3
+  const effectiveControllerReady = controllerReady ?? (relayReady && mobileCount > 0)
+  const readyToUse = displayReady && effectiveControllerReady
+  const currentStep = !displayReady ? 1 : !effectiveControllerReady ? 2 : 3
 
   async function copyLink(value: string, label: string) {
     try {
@@ -106,6 +264,11 @@ export function RemotePairingModal({
 
   function openRemoteWindow() {
     window.open(remoteUrl, '_blank', 'noopener')
+  }
+
+  function moCamera() {
+    setScannerStatus('Đang mở camera...')
+    setScannerOpen(true)
   }
 
   return (
@@ -143,7 +306,7 @@ export function RemotePairingModal({
               </div>
               <div className={`remotePairSignal ${mobileCount ? 'statusChipSuccess' : ''}`}>
                 <AppIcon name="user" className="buttonIcon" />
-                <span>Mobile: {mobileCount}</span>
+                <span>Remote tối giản: {mobileCount}</span>
               </div>
             </div>
           </div>
@@ -166,15 +329,21 @@ export function RemotePairingModal({
               </div>
               <span className={`miniBadge ${displayReady ? 'miniBadgeSuccess' : ''}`}>{displayReady ? 'Xong' : 'Cần làm'}</span>
             </div>
-            <div className={`remotePairFlowStep ${mobileReady ? 'remotePairFlowStepReady' : ''} ${currentStep === 2 ? 'remotePairFlowStepActive' : ''}`}>
+            <div className={`remotePairFlowStep ${effectiveControllerReady ? 'remotePairFlowStepReady' : ''} ${currentStep === 2 ? 'remotePairFlowStepActive' : ''}`}>
               <span className="remotePairFlowIcon">
                 <AppIcon name="control" className="buttonIcon" />
               </span>
               <div>
-                <div className="remotePairFlowTitle">2. Ghép điện thoại</div>
-                <div className="hint">{mobileReady ? 'Đã thấy điện thoại điều khiển.' : 'Quét QR hoặc mở remote tối giản bằng link bên dưới.'}</div>
+                <div className="remotePairFlowTitle">2. Ghép bộ điều khiển</div>
+                <div className="hint">
+                  {currentDeviceIsController
+                    ? 'Điện thoại này đang là bộ điều khiển của phòng.'
+                    : effectiveControllerReady
+                      ? 'Đã thấy điện thoại điều khiển hoặc remote tối giản.'
+                      : 'Quét QR hoặc mở remote tối giản bằng link bên dưới.'}
+                </div>
               </div>
-              <span className={`miniBadge ${mobileReady ? 'miniBadgeSuccess' : ''}`}>{mobileReady ? 'Xong' : 'Cần làm'}</span>
+              <span className={`miniBadge ${effectiveControllerReady ? 'miniBadgeSuccess' : ''}`}>{effectiveControllerReady ? 'Xong' : 'Cần làm'}</span>
             </div>
             <div className={`remotePairFlowStep ${readyToUse ? 'remotePairFlowStepReady' : ''} ${currentStep === 3 ? 'remotePairFlowStepActive' : ''}`}>
               <span className="remotePairFlowIcon">
@@ -236,8 +405,31 @@ export function RemotePairingModal({
           {visibleTab === 'phone' ? (
             <div className="remotePairLayout">
               <div className="remotePairCard">
-                <div className="remotePairCardTitle">Cách nhanh nhất: quét QR</div>
-                <div className="hint">QR/link có token ẩn để giảm nhầm phòng. Nhập mã TV chỉ dùng khi không quét được QR.</div>
+              <div className="remotePairCardTitle">Cách nhanh nhất: quét QR</div>
+              <div className="hint">QR/link có token ẩn để giảm nhầm phòng. Nhập mã TV chỉ dùng khi không quét được QR.</div>
+
+                <button
+                  className="primary buttonWithIcon buttonToneAccent"
+                  onClick={moCamera}
+                  type="button"
+                >
+                  <AppIcon name="camera" className="buttonIcon" />
+                  <span className="buttonLabel">Quét QR bằng camera</span>
+                </button>
+
+                {scannerOpen ? (
+                  <div className="remoteScannerPanel">
+                    <div className="remoteScannerFrame">
+                      <video ref={scannerVideoRef} className="remoteScannerVideo" muted playsInline />
+                      <div className="remoteScannerReticle" aria-hidden="true" />
+                    </div>
+                    <div className="remoteScannerStatus">{scannerStatus}</div>
+                    <button className="ghost compactButton buttonWithIcon buttonToneMuted" onClick={dongCamera} type="button">
+                      <AppIcon name="clear" className="buttonIcon" />
+                      <span className="buttonLabel">Đóng camera</span>
+                    </button>
+                  </div>
+                ) : null}
 
                 <div className="field">
                   <div className="label">Nhập mã TV thủ công</div>
@@ -254,7 +446,11 @@ export function RemotePairingModal({
                       disabled={!linkCode}
                       onClick={() => {
                         if (!linkCode) return
-                        onUseRoomCode(linkCode)
+                        if (onUsePairingPayload) {
+                          onUsePairingPayload({ roomCode: linkCode })
+                        } else {
+                          onUseRoomCode(linkCode)
+                        }
                         onClose()
                       }}
                       type="button"
@@ -276,7 +472,11 @@ export function RemotePairingModal({
                   </div>
                   <div className="remotePairStep">
                     <span className="miniBadge">3</span>
-                    <span>Nếu trạng thái Điều khiển hoặc Mobile tăng lên, điện thoại đã vào đúng phòng.</span>
+                    <span>
+                      {currentDeviceIsController
+                        ? 'Nếu màn này đang là điều khiển và TV/laptop mở đúng mã phòng, bạn có thể phát ngay.'
+                        : 'Nếu trạng thái Điều khiển hoặc Remote tối giản tăng lên, điện thoại đã vào đúng phòng.'}
+                    </span>
                   </div>
                 </div>
 

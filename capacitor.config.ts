@@ -11,6 +11,12 @@ const config: CapacitorConfig = {
     path: 'android',
     allowMixedContent: true,
   },
+  plugins: {
+    // Chromecast plugin configuration
+    GoogleCast: {
+      receiverApplicationId: 'CC1AD845', // Default Media Receiver
+    },
+  },
 }
 
 export default config

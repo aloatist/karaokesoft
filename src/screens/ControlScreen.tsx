@@ -20,6 +20,7 @@ import { saveToSearchHistory } from '../lib/searchHistory'
 import { useYouTubeSearch } from '../hooks/useYouTubeSearch'
 import {
   chuanHoaRelayUrl,
+  chuanHoaMaPhongRemote,
   chuanHoaTokenPhongRemote,
   docMaPhongRemoteDaLuu,
   docTokenPhongRemoteDaLuu,
@@ -67,6 +68,7 @@ const MIN_COMMAND_PERCENT = 28
 const MIN_QUEUE_PERCENT = 24
 const CONTROL_LAYOUT_STORAGE_KEY = 'karaokeyt-control-layout-v2'
 const EMPTY_REMOTE_PRESENCE: RemotePresence = { hosts: 0, remotes: 0, displays: 0 }
+const GUEST_CONTROL_PERMISSIONS = new Set<UserPermission>(['search', 'queue', 'playback', 'display'])
 
 type MobileControlTarget = 'laptop' | 'tv'
 
@@ -235,6 +237,9 @@ export function ControlScreen() {
   const vaiTroHienTai = userDangDangNhap?.role ?? 'viewer'
   const coCapability = useCallback(
     (permission: UserPermission) => {
+      if (sessionMode !== 'authenticated') {
+        return GUEST_CONTROL_PERMISSIONS.has(permission)
+      }
       if (authServerOnline && sessionMode === 'authenticated' && serverCapabilities.length > 0) {
         return serverCapabilities.includes(permission)
       }
@@ -621,7 +626,11 @@ export function ControlScreen() {
     const url = new URL(window.location.href)
     url.searchParams.delete('screen')
     url.searchParams.set('room', remoteRoomCode)
-    url.searchParams.set('token', remoteRoomToken)
+    if (remoteRoomToken) {
+      url.searchParams.set('token', remoteRoomToken)
+    } else {
+      url.searchParams.delete('token')
+    }
     window.history.replaceState({}, '', url.toString())
   }, [remoteRoomCode, remoteRoomToken])
 
@@ -966,8 +975,30 @@ export function ControlScreen() {
   const dungMaTV = useCallback((roomCode: string) => {
     setRemotePresence(EMPTY_REMOTE_PRESENCE)
     setRemoteRoomCode(roomCode)
-    setRemoteRoomToken(taoTokenPhongRemote())
+    setRemoteRoomToken('')
     thongBao(`Đã liên kết theo mã TV: ${roomCode}`)
+  }, [thongBao])
+
+  const apDungThongTinPairing = useCallback((payload: { roomCode: string; roomToken?: string; relayUrl?: string }) => {
+    const roomCode = chuanHoaMaPhongRemote(payload.roomCode)
+    if (!roomCode) {
+      thongBao('Mã TV không hợp lệ. Hãy quét lại QR hoặc nhập lại mã.')
+      return
+    }
+
+    const roomToken = chuanHoaTokenPhongRemote(payload.roomToken ?? '')
+    const relayUrl = chuanHoaRelayUrl(payload.relayUrl ?? '')
+
+    setRemotePresence(EMPTY_REMOTE_PRESENCE)
+    setRemoteRoomCode(roomCode)
+    setRemoteRoomToken(roomToken)
+
+    if (relayUrl) {
+      setRemoteRelayUrl(relayUrl)
+      luuRelayUrl(relayUrl)
+    }
+
+    thongBao(roomToken || relayUrl ? `Đã quét QR và liên kết TV: ${roomCode}` : `Đã liên kết theo mã TV: ${roomCode}`)
   }, [thongBao])
 
   const apDungIpLanThuCong = useCallback((input: string) => {
@@ -1684,7 +1715,7 @@ export function ControlScreen() {
                       type="button"
                     >
                       <AppIcon name="camera" className="buttonIcon" />
-                      <span className="buttonLabel">QR / mã kết nối</span>
+                      <span className="buttonLabel">Quét QR / mã TV</span>
                     </button>
                     <button
                       className="ghost compactButton buttonToneMuted buttonWithIcon"
@@ -1867,6 +1898,7 @@ export function ControlScreen() {
         presence={remotePresence}
         onRegenerate={taoPhongRemoteMoi}
         onUseRoomCode={dungMaTV}
+        onUsePairingPayload={apDungThongTinPairing}
         onUseLanHost={apDungIpLanThuCong}
       />
       <SettingsModal
