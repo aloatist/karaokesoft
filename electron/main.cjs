@@ -108,9 +108,37 @@ function kiemTraRelayLocal() {
   })
 }
 
+function docConfigMayChu() {
+  // Read config from outside asar in userData folder or app directory
+  const possiblePaths = [
+    path.join(app.getPath('userData'), 'karaokeyt-config.json'),
+    path.join(path.dirname(app.getPath('exe')), 'karaokeyt-config.json'),
+    path.join(__dirname, '..', '..', 'karaokeyt-config.json'), // dev mode
+  ]
+  
+  for (const configPath of possiblePaths) {
+    if (fs.existsSync(configPath)) {
+      try {
+        const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'))
+        if (config.YOUTUBE_API_KEY && !process.env.YOUTUBE_API_KEY) {
+          process.env.YOUTUBE_API_KEY = config.YOUTUBE_API_KEY
+          console.log('Đã đọc YOUTUBE_API_KEY từ:', configPath)
+        }
+        return config
+      } catch (error) {
+        console.warn('Không đọc được config từ', configPath)
+      }
+    }
+  }
+  return null
+}
+
 async function batRemoteRelayNeuCan() {
   if (remoteRelayStarted || process.env.KARAOKEYT_DISABLE_EMBEDDED_RELAY === '1') return
   if (await kiemTraRelayLocal()) return
+
+  // Read config before starting relay
+  docConfigMayChu()
 
   const relayScriptPath = path.join(__dirname, '..', 'server', 'remoteRelay.mjs')
   if (!fs.existsSync(relayScriptPath)) {

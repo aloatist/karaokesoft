@@ -132,6 +132,13 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": "always"
-    }
+    },
+    "extraResources": [
+      {
+        "from": "server",
+        "to": "server",
+        "filter": ["*.mjs"]
+      }
+    ]
   }
 }

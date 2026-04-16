@@ -16,13 +16,23 @@ function normalizeKey(q: string, karaokeFilter: boolean, lang: string) {
   return `${q.trim().toLowerCase()}|${karaokeFilter ? 'karaoke' : 'all'}|${lang}`
 }
 
+// Detect if running in Electron desktop app
+const isElectron = typeof window !== 'undefined' && (window as { __ELECTRON__?: boolean }).__ELECTRON__ === true
+const isDesktopApp = isElectron || (typeof navigator !== 'undefined' && navigator.userAgent?.includes('Electron'))
+
+// Default proxy URL for desktop app (localhost relay)
+const DEFAULT_DESKTOP_PROXY = 'http://localhost:8787/api/youtube/search'
+
 export function useYouTubeSearch(query: string) {
   const karaokeFilterEnabled = useSettingsStore((s) => s.karaokeFilterEnabled)
   const searchLanguage = useSettingsStore((s) => s.searchLanguage)
   const apiKey = import.meta.env.DEV && import.meta.env.VITE_YT_API_KEY ? String(import.meta.env.VITE_YT_API_KEY) : ''
-  const proxyUrl = import.meta.env.VITE_YOUTUBE_SEARCH_PROXY_URL
+  
+  // Use env variable or fallback to localhost for desktop apps
+  const envProxyUrl = import.meta.env.VITE_YOUTUBE_SEARCH_PROXY_URL
     ? String(import.meta.env.VITE_YOUTUBE_SEARCH_PROXY_URL)
     : ''
+  const proxyUrl = envProxyUrl || (isDesktopApp ? DEFAULT_DESKTOP_PROXY : '')
 
   const [state, setState] = useState<State>({ status: 'idle', results: [] })
 
@@ -39,7 +49,9 @@ export function useYouTubeSearch(query: string) {
       return {
         status: 'error',
         results: [],
-        errorMessage: 'Chưa cấu hình YouTube Search Proxy hoặc API key trong môi trường chạy ứng dụng.',
+        errorMessage: isDesktopApp
+          ? 'Desktop app cần chạy relay server local (npm run relay) để tìm kiếm YouTube.'
+          : 'Chưa cấu hình YouTube Search Proxy hoặc API key.',
       }
     }
 
