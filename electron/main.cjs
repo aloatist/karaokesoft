@@ -3,6 +3,7 @@ const http = require('node:http')
 const path = require('node:path')
 const { pathToFileURL } = require('node:url')
 const { app, BrowserWindow, ipcMain, screen } = require('electron')
+const { SecureStorage } = require('./secureStorage.cjs')
 
 const preloadPath = path.join(__dirname, 'preload.cjs')
 const distRootPath = path.join(__dirname, '..', 'dist')
@@ -15,6 +16,7 @@ let displayWindow = null
 let rendererServer = null
 let rendererBaseUrl = null
 let remoteRelayStarted = false
+const secureStorage = new SecureStorage()
 
 function taoUserAgent() {
   return (app.userAgentFallback || '').replace(/\sElectron\/[\d.]+/, '')
@@ -108,8 +110,18 @@ function kiemTraRelayLocal() {
   })
 }
 
+async function initSecureStorage() {
+  await secureStorage.init()
+  
+  // Try to get API key from secure storage
+  const apiKey = await secureStorage.getApiKey()
+  if (apiKey) {
+    console.log('[Main] YouTube API Key loaded from secure storage')
+  }
+}
+
 function docConfigMayChu() {
-  // Read config from outside asar in userData folder or app directory
+  // Legacy: Read config from outside asar in userData folder or app directory
   const possiblePaths = [
     path.join(app.getPath('userData'), 'karaokeyt-config.json'),
     path.join(path.dirname(app.getPath('exe')), 'karaokeyt-config.json'),
@@ -121,8 +133,14 @@ function docConfigMayChu() {
       try {
         const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'))
         if (config.YOUTUBE_API_KEY && !process.env.YOUTUBE_API_KEY) {
-          process.env.YOUTUBE_API_KEY = config.YOUTUBE_API_KEY
-          console.log('Đã đọc YOUTUBE_API_KEY từ:', configPath)
+          // Migrate to secure storage and delete plaintext file
+          secureStorage.saveApiKey(config.YOUTUBE_API_KEY).then(() => {
+            console.log('[Main] Migrated API key from', configPath, 'to secure storage')
+            try {
+              fs.unlinkSync(configPath)
+              console.log('[Main] Deleted plaintext config file')
+            } catch {}
+          })
         }
         return config
       } catch (error) {
@@ -325,7 +343,52 @@ function dangKyIpc() {
   })
 }
 
+// Register IPC handlers for secure storage
+ipcMain.handle('secure-storage:save-key', async (_event, apiKey) => {
+  try {
+    await secureStorage.saveApiKey(apiKey)
+    return { success: true }
+  } catch (error) {
+    console.error('[IPC] Failed to save API key:', error)
+    return { success: false, error: error.message }
+  }
+})
+
+ipcMain.handle('secure-storage:get-key', async () => {
+  try {
+    const key = await secureStorage.getApiKey()
+    return { success: true, key }
+  } catch (error) {
+    console.error('[IPC] Failed to get API key:', error)
+    return { success: false, error: error.message }
+  }
+})
+
+ipcMain.handle('secure-storage:delete-key', async () => {
+  try {
+    await secureStorage.deleteApiKey()
+    return { success: true }
+  } catch (error) {
+    console.error('[IPC] Failed to delete API key:', error)
+    return { success: false, error: error.message }
+  }
+})
+
+ipcMain.handle('secure-storage:has-key', async () => {
+  try {
+    const hasKey = await secureStorage.hasApiKey()
+    return { success: true, hasKey }
+  } catch (error) {
+    console.error('[IPC] Failed to check API key:', error)
+    return { success: false, error: error.message }
+  }
+})
+
 app.whenReady().then(async () => {
+  // Init secure storage first
+  await initSecureStorage()
+  docConfigMayChu() // Migrate legacy config if exists
+  
   await batRemoteRelayNeuCan()
   dangKyIpc()
   await taoCuaSoDieuKhien()

@@ -171,10 +171,19 @@ export type OpenDisplayWindowResult = {
   reused: boolean
 }
 
+export interface SecureStorageApi {
+  saveKey: (apiKey: string) => Promise<{ success: boolean; error?: string }>
+  getKey: () => Promise<{ success: boolean; key?: string; error?: string }>
+  deleteKey: () => Promise<{ success: boolean; error?: string }>
+  hasKey: () => Promise<{ success: boolean; hasKey?: boolean; error?: string }>
+}
+
 export type DesktopBridgeApi = {
   isElectron: true
+  __ELECTRON__: true
   getDisplays: () => Promise<DesktopDisplayInfo[]>
   openDisplayWindow: (monitorIndex?: number, roomCode?: string, roomToken?: string) => Promise<OpenDisplayWindowResult>
   sendSyncMessage: (msg: SyncMessage) => void
   onSyncMessage: (listener: (msg: SyncMessage) => void) => () => void
+  secureStorage: SecureStorageApi
 }
