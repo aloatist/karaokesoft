@@ -48,6 +48,8 @@
     "argon2": "^0.44.0",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
+    "electron-log": "^5.4.3",
+    "electron-updater": "^6.8.3",
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.3",
     "keytar": "^7.9.0",
@@ -142,6 +144,13 @@
           "*.mjs"
         ]
       }
-    ]
+    ],
+    "publish": {
+      "provider": "github",
+      "owner": "aloatist",
+      "repo": "karaokesoft",
+      "releaseType": "release",
+      "vPrefixedTagName": true
+    }
   }
 }

@@ -4,6 +4,7 @@ const path = require('node:path')
 const { pathToFileURL } = require('node:url')
 const { app, BrowserWindow, ipcMain, screen } = require('electron')
 const { SecureStorage } = require('./secureStorage.cjs')
+const { setupAutoUpdate } = require('./autoUpdate.cjs')
 
 const preloadPath = path.join(__dirname, 'preload.cjs')
 const distRootPath = path.join(__dirname, '..', 'dist')
@@ -393,6 +394,11 @@ app.whenReady().then(async () => {
   dangKyIpc()
   await taoCuaSoDieuKhien()
   await taoCuaSoTrinhChieu()
+
+  // Setup auto-updater (only after windows are created)
+  if (controlWindow) {
+    setupAutoUpdate(controlWindow)
+  }
 
   app.on('activate', async () => {
     if (BrowserWindow.getAllWindows().length === 0) {

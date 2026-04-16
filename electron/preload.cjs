@@ -20,4 +20,26 @@ contextBridge.exposeInMainWorld('karaokeDesktop', {
     deleteKey: () => ipcRenderer.invoke('secure-storage:delete-key'),
     hasKey: () => ipcRenderer.invoke('secure-storage:has-key'),
   },
+  // Auto-updater API
+  update: {
+    check: () => ipcRenderer.invoke('update:check'),
+    download: () => ipcRenderer.invoke('update:download'),
+    install: () => ipcRenderer.invoke('update:install'),
+    getState: () => ipcRenderer.invoke('update:get-state'),
+  },
+  onUpdateMessage: (callback) => {
+    const wrapped = (_event, channel, data) => callback(channel, data)
+    ipcRenderer.on('update:checking', () => wrapped(null, 'update:checking', null))
+    ipcRenderer.on('update:available', (_e, info) => wrapped(null, 'update:available', info))
+    ipcRenderer.on('update:progress', (_e, progress) => wrapped(null, 'update:progress', progress))
+    ipcRenderer.on('update:downloaded', (_e, info) => wrapped(null, 'update:downloaded', info))
+    ipcRenderer.on('update:error', (_e, err) => wrapped(null, 'update:error', err))
+    return () => {
+      ipcRenderer.removeAllListeners('update:checking')
+      ipcRenderer.removeAllListeners('update:available')
+      ipcRenderer.removeAllListeners('update:progress')
+      ipcRenderer.removeAllListeners('update:downloaded')
+      ipcRenderer.removeAllListeners('update:error')
+    }
+  },
 })

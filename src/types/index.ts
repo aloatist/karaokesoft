@@ -178,6 +178,13 @@ export interface SecureStorageApi {
   hasKey: () => Promise<{ success: boolean; hasKey?: boolean; error?: string }>
 }
 
+export interface UpdateApi {
+  check: () => Promise<{ success: boolean; state?: string; info?: unknown; error?: string }>
+  download: () => Promise<{ success: boolean; error?: string }>
+  install: () => void
+  getState: () => Promise<{ state: string; info?: unknown }>
+}
+
 export type DesktopBridgeApi = {
   isElectron: true
   __ELECTRON__: true
@@ -186,4 +193,6 @@ export type DesktopBridgeApi = {
   sendSyncMessage: (msg: SyncMessage) => void
   onSyncMessage: (listener: (msg: SyncMessage) => void) => () => void
   secureStorage: SecureStorageApi
+  update: UpdateApi
+  onUpdateMessage?: (callback: (channel: string, data: unknown) => void) => () => void
 }
