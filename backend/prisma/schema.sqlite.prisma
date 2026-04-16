@@ -1,0 +1,149 @@
+// SQLite schema for local testing
+// Copy this to schema.prisma for quick testing without PostgreSQL
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                    String    @id @default(uuid())
+  email                 String    @unique
+  passwordHash          String
+  
+  // Profile
+  name                  String?
+  avatarUrl             String?
+  
+  // Subscription
+  subscriptionTier      String    @default("free")
+  subscriptionStatus    String    @default("active")
+  subscriptionExpiresAt DateTime?
+  stripeCustomerId      String?
+  stripeSubscriptionId String?
+  
+  // Relations
+  sessions              Session[]
+  usageLogs             UsageLog[]
+  payments              Payment[]
+  auditLogs             AuditLog[]
+  apiKey                ApiKey?
+  
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  lastLoginAt           DateTime?
+  
+  @@index([email])
+}
+
+model ApiKey {
+  id              String   @id @default(uuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  keyHash         String   @unique
+  keyPrefix       String
+  encryptedKey    String
+  
+  tier            String
+  dailyQuota      Int
+  usedToday       Int      @default(0)
+  lastUsedAt      DateTime?
+  
+  isActive        Boolean  @default(true)
+  revokedAt       DateTime?
+  revokedReason   String?
+  
+  createdAt       DateTime @default(now())
+  expiresAt       DateTime?
+  rotatedAt       DateTime?
+  
+  @@index([keyHash])
+}
+
+model Session {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  token       String   @unique
+  refreshToken String  @unique
+  
+  userAgent   String?
+  ipAddress   String?
+  
+  isActive    Boolean  @default(true)
+  expiresAt   DateTime
+  lastActiveAt DateTime @default(now())
+  createdAt   DateTime @default(now())
+  
+  @@index([userId])
+  @@index([token])
+}
+
+model UsageLog {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  apiKeyId    String?
+  action      String
+  
+  query       String?
+  videoId     String?
+  
+  ipAddress   String?
+  userAgent   String?
+  responseTimeMs Int?
+  
+  createdAt   DateTime @default(now())
+  
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model Payment {
+  id                String   @id @default(uuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  amount            Float
+  currency          String   @default("USD")
+  status            String
+  
+  provider          String   @default("stripe")
+  providerPaymentId String?
+  providerInvoiceId String?
+  
+  subscriptionTier  String
+  isRecurring       Boolean  @default(false)
+  
+  refundedAt        DateTime?
+  refundAmount      Float?
+  
+  createdAt         DateTime @default(now())
+  
+  @@index([userId])
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  
+  action      String
+  details     String?  // JSON as string for SQLite
+  
+  ipAddress   String?
+  userAgent   String?
+  
+  createdAt   DateTime @default(now())
+  
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+}
