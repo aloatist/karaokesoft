@@ -1,0 +1,194 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                    String    @id @default(uuid())
+  email                 String    @unique
+  passwordHash          String
+  
+  // Profile
+  name                  String?
+  avatarUrl             String?
+  
+  // Subscription
+  subscriptionTier      String    @default("free") // free, premium, pro
+  subscriptionStatus    String    @default("active") // active, cancelled, past_due
+  subscriptionExpiresAt DateTime?
+  stripeCustomerId      String?
+  stripeSubscriptionId String?
+  
+  // API Key
+  apiKey                ApiKey?
+  
+  // Relations
+  sessions              Session[]
+  usageLogs             UsageLog[]
+  payments              Payment[]
+  auditLogs             AuditLog[]
+  
+  // Timestamps
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  lastLoginAt           DateTime?
+  
+  @@index([email])
+  @@index([subscriptionTier])
+  @@index([subscriptionExpiresAt])
+}
+
+model ApiKey {
+  id              String   @id @default(uuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Key storage (hashed for lookup, encrypted for retrieval)
+  keyHash         String   @unique
+  keyPrefix       String   // First 8 chars for display
+  encryptedKey    String   // AES-256 encrypted
+  
+  // Quota
+  tier            String   // free, premium, pro
+  dailyQuota      Int
+  usedToday       Int      @default(0)
+  lastUsedAt      DateTime?
+  
+  // Status
+  isActive        Boolean  @default(true)
+  revokedAt       DateTime?
+  revokedReason   String?
+  
+  // Rotation
+  createdAt       DateTime @default(now())
+  expiresAt       DateTime?
+  rotatedAt       DateTime?
+  
+  @@index([keyHash])
+  @@index([isActive])
+}
+
+model Session {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  token       String   @unique
+  refreshToken String  @unique
+  
+  // Metadata
+  userAgent   String?
+  ipAddress   String?
+  
+  // Status
+  isActive    Boolean  @default(true)
+  expiresAt   DateTime
+  lastActiveAt DateTime @default(now())
+  createdAt   DateTime @default(now())
+  
+  @@index([userId])
+  @@index([token])
+  @@index([isActive])
+}
+
+model UsageLog {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  apiKeyId    String?
+  action      String   // youtube_search, cast_start, etc.
+  
+  // Request details
+  query       String?  // Search query
+  videoId     String?  // YouTube video ID
+  
+  // Metadata
+  ipAddress   String?
+  userAgent   String?
+  responseTimeMs Int?  // API response time
+  
+  createdAt   DateTime @default(now())
+  
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+}
+
+model Payment {
+  id                String   @id @default(uuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Payment details
+  amount            Decimal  @db.Decimal(10, 2)
+  currency          String   @default("USD")
+  status            String   // pending, completed, failed, refunded
+  
+  // Provider (Stripe)
+  provider          String   @default("stripe")
+  providerPaymentId String?
+  providerInvoiceId String?
+  
+  // Subscription details
+  subscriptionTier  String
+  isRecurring       Boolean  @default(false)
+  
+  // Refund
+  refundedAt        DateTime?
+  refundAmount      Decimal? @db.Decimal(10, 2)
+  
+  createdAt         DateTime @default(now())
+  
+  @@index([userId])
+  @@index([status])
+  @@index([providerPaymentId])
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  
+  action      String   // login, logout, api_key_rotated, subscription_changed, etc.
+  details     Json?    // Additional context
+  
+  ipAddress   String?
+  userAgent   String?
+  
+  createdAt   DateTime @default(now())
+  
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+}
+
+// For admin settings
+model Config {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  value       String
+  description String?
+  updatedAt   DateTime @updatedAt
+  updatedBy   String?
+}
+
+// Rate limiting (optional, can also use Redis)
+model RateLimit {
+  id          String   @id @default(uuid())
+  identifier  String   // IP or userId
+  action      String   // login, api_call, etc.
+  count       Int      @default(0)
+  windowStart DateTime
+  
+  @@unique([identifier, action, windowStart])
+  @@index([identifier])
+  @@index([windowStart])
+}
