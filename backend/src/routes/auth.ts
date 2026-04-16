@@ -2,6 +2,7 @@ import { Router } from 'express'
 import argon2 from 'argon2'
 import jwt from 'jsonwebtoken'
 import { z } from 'zod'
+import crypto from 'node:crypto'
 import { prisma } from '../server'
 import { logger } from '../utils/logger'
 
