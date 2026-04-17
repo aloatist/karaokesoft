@@ -2764,11 +2764,16 @@ button[data-pressed='true'] {
 }
 
 .mobileRemoteCompactTop,
-.mobileRemoteCodeRow {
+.mobileRemoteCodeRow,
+.mobileRemoteStatusRow {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
+}
+
+.mobileRemoteStatusRow {
+  justify-content: flex-start;
 }
 
 .mobileRemoteCompactHint {
@@ -2777,8 +2782,102 @@ button[data-pressed='true'] {
   line-height: 1.45;
 }
 
+.mobileDisplayRunMode {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 5px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.mobileDisplayRunMode .compactButton {
+  width: 100%;
+  min-height: 40px;
+  justify-content: center;
+}
+
+.mobileDisplayRunHint {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.mobileTvDisplayMode {
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(40, 194, 155, 0.22);
+  background: rgba(40, 194, 155, 0.08);
+  display: grid;
+  gap: 10px;
+}
+
+.mobileTvDisplayModeHead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.mobileTvDisplayEyebrow {
+  color: #b9fff0;
+  font-size: 11px;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.mobileTvDisplayTitle {
+  margin-top: 2px;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 850;
+  line-height: 1.25;
+}
+
+.mobileTvDisplayUrl {
+  width: 100%;
+  min-height: 48px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(40, 194, 155, 0.3);
+  background: rgba(0, 0, 0, 0.22);
+  color: #d8fff7;
+  font: 760 13px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.mobileTvDisplayHint {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.mobileTvDisplayActions {
+  display: grid;
+  grid-template-columns: 1fr 0.72fr;
+  gap: 8px;
+}
+
+.mobileTvDisplayActions .buttonWithIcon {
+  width: 100%;
+  justify-content: center;
+}
+
+.mobileTvDisplayState {
+  width: fit-content;
+  padding: 7px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 850;
+}
+
 .mobileRemoteActionsCompact {
   grid-template-columns: 1fr 0.72fr;
+}
+
+.mobileRemoteActionsSingle {
+  grid-template-columns: 1fr;
 }
 
 .mobileRemoteConnectionStatusCompact {
@@ -3532,11 +3631,16 @@ button[data-pressed='true'] {
   }
 
   .mobileRemoteCompactTop,
-  .mobileRemoteCodeRow {
+  .mobileRemoteCodeRow,
+  .mobileRemoteStatusRow {
     align-items: center;
   }
 
   .mobileRemoteActionsCompact {
+    grid-template-columns: 1fr;
+  }
+
+  .mobileTvDisplayActions {
     grid-template-columns: 1fr;
   }
 
@@ -4960,6 +5064,51 @@ button[data-pressed='true'] {
 
 .displayIdleQrImage .qrHint {
   display: none;
+}
+
+.displayStandbyRoot {
+  position: relative;
+  z-index: 2;
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: clamp(18px, 4vw, 42px);
+}
+
+.displayStandbyCard {
+  width: min(760px, 100%);
+  padding: clamp(22px, 5vw, 42px);
+  border-radius: 8px;
+  border: 1px solid rgba(40, 194, 155, 0.28);
+  background:
+    radial-gradient(circle at top left, rgba(40, 194, 155, 0.18), transparent 46%),
+    rgba(10, 8, 18, 0.78);
+  box-shadow: rgba(0, 0, 0, 0.38) 0 24px 70px;
+  text-align: center;
+}
+
+.displayStandbyEyebrow {
+  color: #b9fff0;
+  font-size: clamp(13px, 1.6vw, 18px);
+  font-weight: 900;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.displayStandbyTitle {
+  margin-top: 12px;
+  color: #f7efe9;
+  font-size: clamp(30px, 5.2vw, 58px);
+  font-weight: 900;
+  line-height: 1.04;
+}
+
+.displayStandbyText {
+  margin: 14px auto 0;
+  max-width: 620px;
+  color: rgba(255, 255, 255, 0.74);
+  font-size: clamp(16px, 2.2vw, 24px);
+  line-height: 1.45;
 }
 
 .displayPhoneRedirectRoot {

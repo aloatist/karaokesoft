@@ -25,7 +25,7 @@ import {
 } from '../services/remoteRelay'
 import { getDisplayAdApi } from '../services/authApi'
 import { DEFAULT_DISPLAY_AD, chuanHoaDisplayAd, useSettingsStore } from '../store/settingsStore'
-import type { DisplayAdSettings, RemotePresence, RemoteRelayStatus, SongItem, SyncMessage } from '../types'
+import type { DisplayAdSettings, DisplayRunMode, DisplayTarget, RemotePresence, RemoteRelayStatus, SongItem, SyncMessage } from '../types'
 
 type ViewState = {
   queue: SongItem[]
@@ -35,6 +35,14 @@ type ViewState = {
 const EMPTY_REMOTE_PRESENCE: RemotePresence = { hosts: 0, remotes: 0, displays: 0 }
 const DISPLAY_AD_POLL_MS = 20_000
 const MOBILE_DISPLAY_BREAKPOINT = 720
+
+function chuanHoaCheDoChayManChieu(input: unknown): DisplayRunMode {
+  return input === 'single' ? 'single' : 'parallel'
+}
+
+function chuanHoaManChieu(input: unknown): DisplayTarget {
+  return input === 'tv' ? 'tv' : 'laptop'
+}
 
 function laLoiYoutubeChanNhung(code: number) {
   return code === 101 || code === 150
@@ -75,6 +83,11 @@ function docTokenTVBanDau() {
   return chuanHoaTokenPhongRemote(params.get('token') ?? '')
 }
 
+function docManChieuHienTai(): DisplayTarget {
+  const params = new URLSearchParams(window.location.search)
+  return chuanHoaManChieu(params.get('displayTarget') ?? params.get('target'))
+}
+
 export function DisplayScreen() {
   const localDisplayAd = useSettingsStore((s) => s.displayAd)
   const [state, setState] = useState<ViewState>(() => docQueueTuLocalStorage() ?? { queue: [], currentIndex: 0 })
@@ -85,6 +98,9 @@ export function DisplayScreen() {
   const [relayStatus, setRelayStatus] = useState<RemoteRelayStatus>(tvCode ? 'connecting' : 'idle')
   const [presence, setPresence] = useState<RemotePresence>(EMPTY_REMOTE_PRESENCE)
   const [syncedDisplayAd, setSyncedDisplayAd] = useState<DisplayAdSettings | null>(null)
+  const [displayTarget] = useState<DisplayTarget>(() => docManChieuHienTai())
+  const [displayRunMode, setDisplayRunMode] = useState<DisplayRunMode>('parallel')
+  const [activeDisplayTarget, setActiveDisplayTarget] = useState<DisplayTarget>('laptop')
   const [remoteQrBaseUrl, setRemoteQrBaseUrl] = useState('')
   const [remoteQrRelayUrl, setRemoteQrRelayUrl] = useState('')
   const [isPhoneViewport, setIsPhoneViewport] = useState(() => window.innerWidth <= MOBILE_DISPLAY_BREAKPOINT)
@@ -110,6 +126,7 @@ export function DisplayScreen() {
     const url = new URL(window.location.href)
     url.searchParams.set('screen', 'display')
     url.searchParams.set('room', tvCode)
+    url.searchParams.set('displayTarget', displayTarget)
     if (tvToken) {
       url.searchParams.set('token', tvToken)
     } else {
@@ -122,7 +139,7 @@ export function DisplayScreen() {
       url.searchParams.delete('relay')
     }
     window.history.replaceState({}, '', url.toString())
-  }, [relayUrl, tvCode, tvToken])
+  }, [displayTarget, relayUrl, tvCode, tvToken])
 
   useEffect(() => {
     let cancelled = false
@@ -262,7 +279,7 @@ export function DisplayScreen() {
       roomToken: tvToken,
       role: 'display',
       relayUrl,
-      nickname: 'Display',
+      nickname: displayTarget === 'tv' ? 'TV Display' : 'Laptop Display',
       onStatusChange: (status) => {
         setRelayStatus(status)
       },
@@ -274,6 +291,8 @@ export function DisplayScreen() {
         })
         apDungDisplayAd(nextState.displayAd ?? DEFAULT_DISPLAY_AD, nextState.updatedAt || Date.now())
         setVolume(nextState.volume)
+        setDisplayRunMode(chuanHoaCheDoChayManChieu(nextState.displayRunMode))
+        setActiveDisplayTarget(chuanHoaManChieu(nextState.activeDisplayTarget))
 
         if (
           nextState.commandNonce === 0 &&
@@ -311,15 +330,18 @@ export function DisplayScreen() {
     return () => {
       connection.close()
     }
-  }, [apDungDisplayAd, relayUrl, tvCode, tvToken])
+  }, [apDungDisplayAd, displayTarget, relayUrl, tvCode, tvToken])
 
   const baiDangPhat = state.queue[state.currentIndex]
   const baiDangPhatVideoId = baiDangPhat?.videoId ?? null
   const baiTiepTheo = useMemo(() => state.queue[state.currentIndex + 1], [state.queue, state.currentIndex])
+  const manChieuDangHoatDong = displayRunMode === 'parallel' || activeDisplayTarget === displayTarget
+  const nhanManChieuHienTai = displayTarget === 'tv' ? 'TV' : 'laptop'
+  const nhanManChieuDangChon = activeDisplayTarget === 'tv' ? 'TV' : 'laptop'
   const displayAd = syncedDisplayAd ?? localDisplayAd
   const displayAdText = displayAd.text
   const displayAdTitle = displayAd.title.trim()
-  const hienThiDisplayAd = displayAd.enabled && displayAdText.trim()
+  const hienThiDisplayAd = manChieuDangHoatDong && displayAd.enabled && displayAdText.trim()
 
   useEffect(() => {
     if (!youtubeTrucTiepVideoIdRef.current || youtubeTrucTiepVideoIdRef.current === baiDangPhatVideoId) return
@@ -327,6 +349,12 @@ export function DisplayScreen() {
     youtubeTrucTiepVideoIdRef.current = null
     void dongYoutubeTrenManHinhTrinhChieu()
   }, [baiDangPhatVideoId])
+
+  useEffect(() => {
+    if (manChieuDangHoatDong) return
+    youtubeTrucTiepVideoIdRef.current = null
+    void dongYoutubeTrenManHinhTrinhChieu()
+  }, [manChieuDangHoatDong])
 
   const moYoutubeTrucTiep = useCallback((videoId: string) => {
     const targetVideoId = videoId.trim()
@@ -367,7 +395,7 @@ export function DisplayScreen() {
       <div className="displayAura displayAuraWarm" />
       <div className="displayAura displayAuraCool" />
       <div className="displayVideo">
-        {baiDangPhat ? (
+        {baiDangPhat && manChieuDangHoatDong ? (
           <YouTubePlayer
             videoId={baiDangPhat.videoId}
             volume={volume}
@@ -387,7 +415,17 @@ export function DisplayScreen() {
         </div>
       ) : null}
 
-      {baiDangPhat ? (
+      {baiDangPhat && !manChieuDangHoatDong ? (
+        <div className="displayStandbyRoot">
+          <div className="displayStandbyCard">
+            <div className="displayStandbyEyebrow">Màn chiếu tạm chờ</div>
+            <div className="displayStandbyTitle">{nhanManChieuHienTai} không phát trong chế độ chỉ 1 màn</div>
+            <div className="displayStandbyText">
+              Đang ưu tiên {nhanManChieuDangChon}. Đổi sang Song song trên điện thoại nếu muốn cả hai màn cùng phát.
+            </div>
+          </div>
+        </div>
+      ) : baiDangPhat ? (
         <>
           <SongOverlay title={baiDangPhat.title} channelTitle={baiDangPhat.channelTitle} />
           <NextSongTicker nextTitle={baiTiepTheo?.title} />

@@ -234,7 +234,7 @@ function chonManHinh(preferredIndex) {
   }
 }
 
-async function taiRenderer(targetWindow, targetScreen, roomCode, roomToken) {
+async function taiRenderer(targetWindow, targetScreen, roomCode, roomToken, displayTarget) {
   const baseUrl = await batMayChuRenderer()
   const url = new URL(baseUrl)
   url.searchParams.set('screen', targetScreen)
@@ -247,6 +247,11 @@ async function taiRenderer(targetWindow, targetScreen, roomCode, roomToken) {
     url.searchParams.set('token', String(roomToken))
   } else {
     url.searchParams.delete('token')
+  }
+  if (displayTarget) {
+    url.searchParams.set('displayTarget', String(displayTarget))
+  } else {
+    url.searchParams.delete('displayTarget')
   }
   await targetWindow.loadURL(url.toString())
 }
@@ -406,7 +411,7 @@ async function taoCuaSoDieuKhien() {
 async function taoCuaSoTrinhChieu(preferredIndex, roomCode, roomToken) {
   if (displayWindow && !displayWindow.isDestroyed()) {
     if (roomCode) {
-      await taiRenderer(displayWindow, 'display', roomCode, roomToken)
+      await taiRenderer(displayWindow, 'display', roomCode, roomToken, 'laptop')
     }
     const display = apDungKhungCuaSoTrinhChieu(displayWindow, preferredIndex)
     displayWindow.show()
@@ -440,7 +445,7 @@ async function taoCuaSoTrinhChieu(preferredIndex, roomCode, roomToken) {
     dongCuaSoYoutubeTrucTiep()
   })
 
-  await taiRenderer(displayWindow, 'display', roomCode, roomToken)
+  await taiRenderer(displayWindow, 'display', roomCode, roomToken, 'laptop')
   const appliedDisplay = apDungKhungCuaSoTrinhChieu(displayWindow, preferredIndex)
   displayWindow.show()
 

@@ -29,6 +29,7 @@ export function OpenDisplayButton({ className, onOpened, onBeforeOpen, disabled 
 
         const url = new URL(window.location.href)
         url.searchParams.set('screen', 'display')
+        url.searchParams.set('displayTarget', 'laptop')
         if (roomCode) {
           url.searchParams.set('room', roomCode)
         }

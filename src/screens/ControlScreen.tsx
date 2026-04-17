@@ -34,6 +34,7 @@ import {
   luuTokenPhongRemote,
   taoBaseUrlUngDungLan,
   taoDanhSachRelayUrlUngVien,
+  taoDuongDanTVDisplayNgan,
   taoDuongDanTrinhChieu,
   taoDuongDanRemote,
   taoKetNoiRelay,
@@ -54,6 +55,8 @@ import { useQueueStore } from '../store/queueStore'
 import { useSettingsStore } from '../store/settingsStore'
 import type {
   AppUser,
+  DisplayRunMode,
+  DisplayTarget,
   PlayerCommand,
   RemoteAction,
   RemotePresence,
@@ -75,8 +78,18 @@ const GUEST_CONTROL_PERMISSIONS = new Set<UserPermission>(['search', 'queue', 'p
 const REMOTE_STATE_SEND_DELAY_MS = 250
 const REMOTE_STATE_APPLY_DELAY_MS = 350
 const REMOTE_STATE_ECHO_MUTE_MS = 900
+const DISPLAY_RUN_MODE_STORAGE_KEY = 'karaokeyt-display-run-mode'
+const DISPLAY_ACTIVE_TARGET_STORAGE_KEY = 'karaokeyt-display-active-target'
 
 type MobileControlTarget = 'laptop' | 'tv'
+
+function chuanHoaCheDoChayManChieu(input: unknown): DisplayRunMode {
+  return input === 'single' ? 'single' : 'parallel'
+}
+
+function chuanHoaManChieuDangChon(input: unknown): DisplayTarget {
+  return input === 'tv' ? 'tv' : 'laptop'
+}
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n))
@@ -107,6 +120,8 @@ function taoKhoaDongBoRemote(state: RemoteRoomState) {
     replayMode: state.replayMode,
     displayAd: state.displayAd,
     displayMode: state.displayMode,
+    displayRunMode: chuanHoaCheDoChayManChieu(state.displayRunMode),
+    activeDisplayTarget: chuanHoaManChieuDangChon(state.activeDisplayTarget),
     lastPlayerCommand: state.lastPlayerCommand,
     commandNonce: state.commandNonce,
     commandValue: state.commandValue ?? null,
@@ -167,6 +182,16 @@ function docCheDoDieuKhienMobileBanDau(): MobileControlTarget | null {
   return params.get('screen') === 'remote' ? 'tv' : null
 }
 
+function docCheDoChayManChieuBanDau(): DisplayRunMode {
+  if (typeof window === 'undefined') return 'parallel'
+  return chuanHoaCheDoChayManChieu(window.localStorage.getItem(DISPLAY_RUN_MODE_STORAGE_KEY))
+}
+
+function docManChieuDangChonBanDau(): DisplayTarget {
+  if (typeof window === 'undefined') return 'laptop'
+  return chuanHoaManChieuDangChon(window.localStorage.getItem(DISPLAY_ACTIVE_TARGET_STORAGE_KEY))
+}
+
 function layHostnameLanTuInput(input: string) {
   const trimmed = input.trim()
   if (!trimmed) return ''
@@ -224,6 +249,8 @@ export function ControlScreen() {
     nonce: 0,
   })
   const [displayMode, setDisplayMode] = useState<'idle' | 'desktop' | 'browser'>('idle')
+  const [displayRunMode, setDisplayRunMode] = useState<DisplayRunMode>(() => docCheDoChayManChieuBanDau())
+  const [activeDisplayTarget, setActiveDisplayTarget] = useState<DisplayTarget>(() => docManChieuDangChonBanDau())
   const [remoteRoomCode, setRemoteRoomCode] = useState(() => docThongSoMaPhongRemote())
   const [remoteRoomToken, setRemoteRoomToken] = useState(() => docThongSoTokenPhongRemote())
   const [remoteRelayStatus, setRemoteRelayStatus] = useState<RemoteRelayStatus>('connecting')
@@ -329,8 +356,12 @@ export function ControlScreen() {
   const phonePairingRelayUrl = remotePhoneRelayUrl || remoteRelayUrl
   const phonePairingBaseUrl = remotePhoneBaseUrl || undefined
   const displayJoinUrl = useMemo(
-    () => taoDuongDanTrinhChieu(remoteRoomCode, remoteRoomToken, phonePairingRelayUrl, phonePairingBaseUrl),
+    () => taoDuongDanTrinhChieu(remoteRoomCode, remoteRoomToken, phonePairingRelayUrl, phonePairingBaseUrl, 'tv'),
     [phonePairingBaseUrl, phonePairingRelayUrl, remoteRoomCode, remoteRoomToken],
+  )
+  const tvDisplayShortUrl = useMemo(
+    () => taoDuongDanTVDisplayNgan(remoteRoomCode, phonePairingRelayUrl) || displayJoinUrl,
+    [displayJoinUrl, phonePairingRelayUrl, remoteRoomCode],
   )
   const remoteJoinUrl = useMemo(
     () => taoDuongDanRemote(remoteRoomCode, remoteRoomToken, phonePairingRelayUrl, phonePairingBaseUrl),
@@ -339,7 +370,9 @@ export function ControlScreen() {
   const remoteRelayReady = remoteRelayStatus === 'connected'
   const remoteDisplayReady = remoteRelayReady && remotePresence.displays > 0
   const remoteMobileReady = remoteRelayReady && remotePresence.remotes > 0
-  const remoteReadyToUse = remoteDisplayReady && remoteMobileReady
+  const currentDeviceIsController = isMobileLayout && mobileControlTarget !== null
+  const remoteControllerReady = currentDeviceIsController || remoteMobileReady
+  const remoteReadyToUse = remoteDisplayReady && remoteControllerReady
   const remoteTotalConnected = remotePresence.displays + remotePresence.remotes
   const mobileTargetTitle = mobileControlTarget === 'laptop' ? 'Điều khiển laptop' : 'Điều khiển TV'
   const mobileTargetDevice = mobileControlTarget === 'laptop' ? 'laptop' : 'TV/laptop'
@@ -359,6 +392,16 @@ export function ControlScreen() {
     : remoteDisplayReady
       ? 'Màn chiếu đã mở. Quét lại QR nếu điện thoại chưa vào đúng phòng.'
       : `Mở trình chiếu trên ${mobileTargetDevice}, rồi giữ điện thoại ở cùng Wi-Fi.`
+  const tvDisplayStatusLabel = remoteDisplayReady
+    ? 'TV Display đã nối'
+    : remoteRelayReady
+      ? 'Chờ TV mở link'
+      : 'Relay chưa sẵn sàng'
+  const nhanCheDoChayManChieu = displayRunMode === 'parallel'
+    ? 'Song song'
+    : activeDisplayTarget === 'tv'
+      ? 'Chỉ TV'
+      : 'Chỉ laptop'
   const soMayDieuKhienKhac = Math.max(remotePresence.hosts - 1, 0)
   const nhanDongBoHangCho =
     remoteRelayStatus === 'connected'
@@ -388,6 +431,46 @@ export function ControlScreen() {
     setToast(message)
   }, [])
 
+  const copyText = useCallback(async (value: string, label: string) => {
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('Clipboard unavailable')
+      await navigator.clipboard.writeText(value)
+      thongBao(`Đã copy ${label}`)
+    } catch {
+      thongBao(`Không copy được ${label}. Hãy chạm giữ link để copy thủ công.`)
+    }
+  }, [thongBao])
+
+  const copyTvDisplayLink = useCallback(() => {
+    void copyText(tvDisplayShortUrl, 'link TV Display')
+  }, [copyText, tvDisplayShortUrl])
+
+  const moThuTvDisplay = useCallback(() => {
+    danhDauDieuKhienNoiBo()
+    setActiveDisplayTarget('tv')
+    window.open(displayJoinUrl, '_blank', 'noopener')
+  }, [danhDauDieuKhienNoiBo, displayJoinUrl])
+
+  const chonCheDoChayManChieu = useCallback((mode: DisplayRunMode) => {
+    danhDauDieuKhienNoiBo()
+    setDisplayRunMode(mode)
+    if (mode === 'single') {
+      setActiveDisplayTarget(mobileControlTarget ?? 'laptop')
+    }
+    thongBao(mode === 'parallel' ? 'Màn chiếu chạy song song' : 'Chỉ chạy màn chiếu đang chọn')
+  }, [danhDauDieuKhienNoiBo, mobileControlTarget, thongBao])
+
+  useEffect(() => {
+    if (remoteDisplayReady && displayMode === 'idle') {
+      setDisplayMode('browser')
+    }
+  }, [displayMode, remoteDisplayReady])
+
+  useEffect(() => {
+    window.localStorage.setItem(DISPLAY_RUN_MODE_STORAGE_KEY, displayRunMode)
+    window.localStorage.setItem(DISPLAY_ACTIVE_TARGET_STORAGE_KEY, activeDisplayTarget)
+  }, [activeDisplayTarget, displayRunMode])
+
   useEffect(() => {
     return () => {
       if (pendingRemoteApplyTimerRef.current !== null) {
@@ -400,10 +483,12 @@ export function ControlScreen() {
   }, [])
 
   const chonCheDoDieuKhienMobile = useCallback((target: MobileControlTarget) => {
+    danhDauDieuKhienNoiBo()
+    setActiveDisplayTarget(target)
     setMobileControlTarget(target)
     setMobileTab('remote')
     setOpenMobileMenu(false)
-  }, [])
+  }, [danhDauDieuKhienNoiBo])
 
   useEffect(() => {
     let cancelled = false
@@ -1127,6 +1212,8 @@ export function ControlScreen() {
       setVolume(clamp(Math.round(stateToApply.volume), 0, 100))
       setPlayerMode(stateToApply.playerMode)
       setDisplayMode(stateToApply.displayMode)
+      setDisplayRunMode(chuanHoaCheDoChayManChieu(stateToApply.displayRunMode))
+      setActiveDisplayTarget(chuanHoaManChieuDangChon(stateToApply.activeDisplayTarget))
       setRelayPlayerCommand({
         cmd: stateToApply.lastPlayerCommand,
         value: stateToApply.commandValue,
@@ -1140,9 +1227,11 @@ export function ControlScreen() {
   }, [capNhat])
 
   const moDisplayThanhCong = useCallback((mode: 'desktop' | 'browser') => {
+    danhDauDieuKhienNoiBo()
+    setActiveDisplayTarget('laptop')
     setDisplayMode(mode)
     thongBao(mode === 'desktop' ? 'Đã mở màn hình trình chiếu trên desktop' : 'Đã mở màn hình trình chiếu bằng trình duyệt')
-  }, [thongBao])
+  }, [danhDauDieuKhienNoiBo, thongBao])
 
   const dungMaTV = useCallback((roomCode: string) => {
     setRemotePresence(EMPTY_REMOTE_PRESENCE)
@@ -1251,6 +1340,8 @@ export function ControlScreen() {
       replayMode,
       displayAd: nextDisplayAd,
       displayMode,
+      displayRunMode,
+      activeDisplayTarget,
       lastPlayerCommand: relayPlayerCommand.cmd,
       commandNonce: relayPlayerCommand.nonce,
       commandValue: relayPlayerCommand.value,
@@ -1281,9 +1372,11 @@ export function ControlScreen() {
     }, REMOTE_STATE_SEND_DELAY_MS)
     return true
   }, [
+    activeDisplayTarget,
     currentIndex,
     displayAd,
     displayMode,
+    displayRunMode,
     hienThiPlayerMode,
     nguoiDungHienTai?.name,
     queue,
@@ -1666,33 +1759,6 @@ export function ControlScreen() {
                       <AppIcon name={userDangDangNhap ? 'user' : 'login'} className="buttonIcon" />
                       <span className="buttonLabel">{userDangDangNhap ? 'Tài khoản' : 'Đăng nhập'}</span>
                     </button>
-                    <OpenDisplayButton
-                      className={`ghost compactButton buttonToneAccent ${activeButtonKey === 'open-display' ? 'buttonStateActive' : ''}`}
-                      disabled={!canOpenDisplay}
-                      roomCode={remoteRoomCode}
-                      roomToken={remoteRoomToken}
-                      onBeforeOpen={() => {
-                        setOpenMobileMenu(false)
-                        nhanNut('open-display')
-                      }}
-                      onOpened={moDisplayThanhCong}
-                    />
-                    <button
-                      className={`ghost compactButton buttonToneMuted buttonWithIcon ${activeButtonKey === 'open-remote' ? 'buttonStateActive' : ''}`}
-                      data-pressed={activeButtonKey === 'open-remote'}
-                      disabled={!canUseRemote}
-                      onClick={() => {
-                        if (!canUseRemote) return
-                        setOpenMobileMenu(false)
-                        nhanNut('open-remote')
-                        setOpenRemoteModal(true)
-                      }}
-                      role="menuitem"
-                      type="button"
-                    >
-                      <AppIcon name="control" className="buttonIcon" />
-                      <span className="buttonLabel">Mã TV</span>
-                    </button>
                     <button
                       className={`ghost compactButton buttonToneMuted buttonWithIcon ${activeButtonKey === 'open-settings' ? 'buttonStateActive' : ''}`}
                       data-pressed={activeButtonKey === 'open-settings'}
@@ -1823,6 +1889,7 @@ export function ControlScreen() {
         <div className="statusChip statusChipAccent">
           Trình chiếu: {displayMode === 'desktop' ? 'Desktop' : displayMode === 'browser' ? 'Trình duyệt' : 'Chưa mở'}
         </div>
+        <div className="statusChip">Chạy màn: {nhanCheDoChayManChieu}</div>
         <div className="statusChip">Autoplay: {autoplayNext ? 'Bật' : 'Tắt'}</div>
         <div className="statusChip">Hàng chờ: {tongBai} bài</div>
         <div className="statusChip statusChipMeta">Vai trò: {userDangDangNhap?.name ?? 'Khách'} · {USER_ROLE_LABEL[vaiTroHienTai]}</div>
@@ -1863,11 +1930,7 @@ export function ControlScreen() {
                       </button>
                     </div>
 
-                    <div className="mobileRemoteCodeRow">
-                      <div>
-                        <div className="mobileRemoteHeroLabel">Mã TV</div>
-                        <div className="mobileRemoteHeroCode">{remoteRoomCode}</div>
-                      </div>
+                    <div className="mobileRemoteStatusRow">
                       <div className={`mobileRemoteHeroState ${remoteReadyToUse ? 'statusChipSuccess' : remoteRelayReady ? 'statusChipAccent' : 'statusChipWarning'}`}>
                         {mobileRemoteStatusLabel}
                       </div>
@@ -1876,22 +1939,92 @@ export function ControlScreen() {
                     <div className="mobileRemoteCompactHint">
                       {mobileTargetHint} {mobileRemoteStatusHint}
                     </div>
+
+                    <div className="mobileDisplayRunMode" role="group" aria-label="Cách chạy màn chiếu">
+                      <button
+                        className={`compactButton ${displayRunMode === 'parallel' ? 'primary buttonToneAccent' : 'ghost buttonToneMuted'}`}
+                        data-pressed={displayRunMode === 'parallel'}
+                        onClick={() => chonCheDoChayManChieu('parallel')}
+                        type="button"
+                      >
+                        Song song
+                      </button>
+                      <button
+                        className={`compactButton ${displayRunMode === 'single' ? 'primary buttonToneAccent' : 'ghost buttonToneMuted'}`}
+                        data-pressed={displayRunMode === 'single'}
+                        onClick={() => chonCheDoChayManChieu('single')}
+                        type="button"
+                      >
+                        Chỉ 1 màn
+                      </button>
+                    </div>
+
+                    <div className="mobileDisplayRunHint">
+                      {displayRunMode === 'parallel'
+                        ? 'Laptop và TV có thể cùng làm màn chiếu.'
+                        : `Chỉ phát trên ${activeDisplayTarget === 'tv' ? 'TV' : 'laptop'}, màn còn lại tự về chờ.`}
+                    </div>
                   </div>
 
-                  <div className="mobileRemoteActions mobileRemoteActionsCompact">
-                    <button
-                      className={`primary buttonToneAccent buttonWithIcon ${activeButtonKey === 'open-remote' ? 'buttonStateActive' : ''}`}
-                      disabled={!canUseRemote}
-                      onClick={() => {
-                        if (!canUseRemote) return
-                        nhanNut('open-remote')
-                        setOpenRemoteModal(true)
-                      }}
-                      type="button"
-                    >
-                      <AppIcon name="camera" className="buttonIcon" />
-                      <span className="buttonLabel">Quét QR hoặc nhập mã</span>
-                    </button>
+                  {mobileControlTarget === 'tv' ? (
+                    <div className="mobileTvDisplayMode">
+                      <div className="mobileTvDisplayModeHead">
+                        <span className="mobileModeIcon mobileModeIconAlt">
+                          <AppIcon name="screen" className="buttonIcon" />
+                        </span>
+                        <div>
+                          <div className="mobileTvDisplayEyebrow">TV Display mode</div>
+                          <div className="mobileTvDisplayTitle">Mở link này trên trình duyệt TV</div>
+                        </div>
+                      </div>
+
+                      <button
+                        className="mobileTvDisplayUrl"
+                        onClick={copyTvDisplayLink}
+                        type="button"
+                        aria-label="Copy link TV Display"
+                      >
+                        {tvDisplayShortUrl}
+                      </button>
+
+                      <div className="mobileTvDisplayHint">
+                        Nếu TV đã mở sẵn trang này, giữ nguyên. Khi TV nối relay, bài đang phát sẽ tự hiện trên màn chiếu.
+                      </div>
+
+                      <div className="mobileTvDisplayActions">
+                        <button className="primary compactButton buttonToneAccent buttonWithIcon" onClick={copyTvDisplayLink} type="button">
+                          <AppIcon name="spark" className="buttonIcon" />
+                          <span className="buttonLabel">Copy link TV</span>
+                        </button>
+                        <button className="ghost compactButton buttonToneMuted buttonWithIcon" onClick={moThuTvDisplay} type="button">
+                          <AppIcon name="screen" className="buttonIcon" />
+                          <span className="buttonLabel">Mở thử</span>
+                        </button>
+                      </div>
+
+                      <div className={`mobileTvDisplayState ${remoteDisplayReady ? 'statusChipSuccess' : remoteRelayReady ? 'statusChipAccent' : 'statusChipWarning'}`}>
+                        {tvDisplayStatusLabel}
+                      </div>
+
+                    </div>
+                  ) : null}
+
+                  <div className={`mobileRemoteActions ${mobileControlTarget === 'tv' ? 'mobileRemoteActionsSingle' : 'mobileRemoteActionsCompact'}`}>
+                    {mobileControlTarget === 'laptop' ? (
+                      <button
+                        className={`primary buttonToneAccent buttonWithIcon ${activeButtonKey === 'open-remote' ? 'buttonStateActive' : ''}`}
+                        disabled={!canUseRemote}
+                        onClick={() => {
+                          if (!canUseRemote) return
+                          nhanNut('open-remote')
+                          setOpenRemoteModal(true)
+                        }}
+                        type="button"
+                      >
+                        <AppIcon name="camera" className="buttonIcon" />
+                        <span className="buttonLabel">Quét QR kết nối</span>
+                      </button>
+                    ) : null}
                     <button
                       className="ghost compactButton buttonToneMuted buttonWithIcon"
                       onClick={() => setMobileTab('search')}
@@ -2071,6 +2204,8 @@ export function ControlScreen() {
         status={remoteRelayStatus}
         statusMessage={remoteRelayMessage ?? undefined}
         presence={remotePresence}
+        controllerReady={remoteControllerReady}
+        currentDeviceIsController={currentDeviceIsController}
         onRegenerate={taoPhongRemoteMoi}
         onUseRoomCode={dungMaTV}
         onUsePairingPayload={apDungThongTinPairing}

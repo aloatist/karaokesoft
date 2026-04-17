@@ -130,7 +130,7 @@ export function RemoteScreen() {
 
   const currentSong = roomState?.queue[roomState.currentIndex]
   const displayJoinUrl = useMemo(
-    () => (joinedRoom ? taoDuongDanTrinhChieu(joinedRoom, joinedRoomToken, relayUrl) : ''),
+    () => (joinedRoom ? taoDuongDanTrinhChieu(joinedRoom, joinedRoomToken, relayUrl, undefined, 'tv') : ''),
     [joinedRoom, joinedRoomToken, relayUrl],
   )
   const relayDangTroVeMayDienThoai = useMemo(() => {

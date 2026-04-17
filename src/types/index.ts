@@ -76,6 +76,8 @@ export type PlayerCommand = Extract<SyncMessage, { type: 'PLAYER_CMD' }>['cmd']
 
 export type RemoteRole = 'host' | 'remote' | 'display'
 export type RemoteRelayStatus = 'idle' | 'connecting' | 'connected' | 'error'
+export type DisplayTarget = 'laptop' | 'tv'
+export type DisplayRunMode = 'parallel' | 'single'
 
 export type RemotePresence = {
   hosts: number
@@ -99,6 +101,8 @@ export type RemoteRoomState = {
   replayMode: ReplayMode
   displayAd: DisplayAdSettings
   displayMode: 'idle' | 'desktop' | 'browser'
+  displayRunMode: DisplayRunMode
+  activeDisplayTarget: DisplayTarget
   lastPlayerCommand: PlayerCommand | null
   commandNonce: number
   commandValue?: number

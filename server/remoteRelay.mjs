@@ -45,6 +45,8 @@ const SEARCH_RATE_WINDOW_MS = 10 * 60 * 1000
 const SEARCH_RATE_LIMIT = Number(process.env.YOUTUBE_SEARCH_RATE_LIMIT || 120)
 const HEARTBEAT_INTERVAL_MS = Math.max(5_000, Number(process.env.RELAY_HEARTBEAT_INTERVAL_MS || 15_000))
 const searchRateLimits = new Map()
+const rooms = new Map()
+const peers = new Map()
 
 function looksLikeYoutubeApiKey(value) {
   return /^AIza[0-9A-Za-z_-]{35}$/.test(String(value || '').trim())
@@ -280,11 +282,112 @@ function getLanAddresses() {
   return addresses
 }
 
+function getRequestProtocol(req) {
+  const forwardedProto = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim().toLowerCase()
+  if (forwardedProto === 'https') return 'https'
+  return 'http'
+}
+
+function getRequestHost(req) {
+  return String(req.headers.host || `127.0.0.1:${port}`).trim()
+}
+
+function getRequestBaseUrl(req) {
+  return `${getRequestProtocol(req)}://${getRequestHost(req)}`
+}
+
+function getRequestRelayUrl(req) {
+  const protocol = getRequestProtocol(req) === 'https' ? 'wss' : 'ws'
+  return `${protocol}://${getRequestHost(req)}/`
+}
+
+function getLatestActiveRoomCode() {
+  let selectedRoomCode = ''
+  let selectedUpdatedAt = 0
+
+  for (const [roomCode, room] of rooms.entries()) {
+    if (room.hosts.size <= 0) continue
+    const updatedAt = Number(room.updatedAt || room.createdAt || 0)
+    if (updatedAt >= selectedUpdatedAt) {
+      selectedRoomCode = roomCode
+      selectedUpdatedAt = updatedAt
+    }
+  }
+
+  return selectedRoomCode
+}
+
+function writeTvDisplayWaitingPage(req, res) {
+  const baseUrl = getRequestBaseUrl(req)
+  const html = `<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="refresh" content="3">
+  <title>KaraokeYT TV Display</title>
+  <style>
+    body{margin:0;min-height:100vh;background:#09090d;color:#f7efe9;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;display:grid;place-items:center}
+    main{max-width:760px;padding:36px;text-align:center}
+    h1{font-size:clamp(34px,6vw,64px);line-height:1;margin:0 0 18px}
+    p{font-size:clamp(18px,3vw,26px);line-height:1.45;color:#c9c0cd;margin:0}
+    code{display:inline-block;margin-top:22px;padding:10px 14px;border-radius:8px;background:rgba(255,255,255,.08);color:#ffd4b9}
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Chờ phòng KaraokeYT</h1>
+    <p>Hãy mở app điều khiển trên laptop hoặc điện thoại trước, rồi giữ TV ở trang này.</p>
+    <code>${baseUrl}/tv</code>
+  </main>
+</body>
+</html>`
+
+  res.writeHead(200, {
+    'content-type': 'text/html; charset=utf-8',
+    'cache-control': 'no-store',
+  })
+  res.end(html)
+}
+
+function handleTvDisplayRedirect(req, res, url) {
+  const match = url.pathname.match(/^\/tv(?:\/([A-Za-z0-9]{1,12}))?\/?$/)
+  if (!match) return false
+
+  const roomCode = normalizeRoomCode(match[1] || url.searchParams.get('room') || getLatestActiveRoomCode())
+  if (!roomCode) {
+    writeTvDisplayWaitingPage(req, res)
+    return true
+  }
+
+  const room = rooms.get(roomCode)
+  const roomToken = normalizeRoomToken(url.searchParams.get('token') || room?.token || '')
+  const targetUrl = new URL('/', getRequestBaseUrl(req))
+  targetUrl.searchParams.set('screen', 'display')
+  targetUrl.searchParams.set('room', roomCode)
+  if (roomToken) {
+    targetUrl.searchParams.set('token', roomToken)
+  }
+  targetUrl.searchParams.set('displayTarget', 'tv')
+  targetUrl.searchParams.set('relay', getRequestRelayUrl(req))
+
+  res.writeHead(302, {
+    location: targetUrl.toString(),
+    'cache-control': 'no-store',
+  })
+  res.end()
+  return true
+}
+
 const server = http.createServer((req, res) => {
   const url = new URL(req.url || '/', 'http://127.0.0.1')
 
   if (req.method === 'OPTIONS') {
     writeJson(req, res, 204, {})
+    return
+  }
+
+  if ((req.method === 'GET' || req.method === 'HEAD') && handleTvDisplayRedirect(req, res, url)) {
     return
   }
 
@@ -318,9 +421,6 @@ const server = http.createServer((req, res) => {
 
 const wss = new WebSocketServer({ server })
 
-const rooms = new Map()
-const peers = new Map()
-
 function normalizeRoomCode(value) {
   return String(value || '')
     .toUpperCase()
@@ -337,6 +437,8 @@ function getRoom(roomCode) {
       displays: new Set(),
       latestState: null,
       token: '',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
     })
   }
   return rooms.get(normalized)
@@ -441,6 +543,7 @@ wss.on('connection', (ws) => {
         nickname: String(payload.nickname || ''),
       })
       room[role === 'host' ? 'hosts' : role === 'display' ? 'displays' : 'remotes'].add(ws)
+      room.updatedAt = Date.now()
 
       send(ws, {
         type: 'ROOM_JOINED',
@@ -475,6 +578,7 @@ wss.on('connection', (ws) => {
 
       const room = getRoom(meta.roomCode)
       room.latestState = payload.state
+      room.updatedAt = Date.now()
 
       for (const peer of [...room.hosts, ...room.remotes, ...room.displays]) {
         if (peer === ws) continue

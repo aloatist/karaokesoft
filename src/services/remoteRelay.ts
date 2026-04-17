@@ -2,6 +2,7 @@ import type {
   RelayClientMessage,
   RelayServerMessage,
   RemoteAction,
+  DisplayTarget,
   RemotePresence,
   RemoteRelayStatus,
   RemoteRole,
@@ -293,6 +294,16 @@ function relayUrlThanhHttpUrl(relayUrl: string) {
   return url
 }
 
+export function taoDuongDanTVDisplayNgan(roomCode: string, relayUrl: string) {
+  const url = relayUrlThanhHttpUrl(relayUrl)
+  if (!url) return ''
+
+  url.pathname = `/tv/${chuanHoaMaPhongRemote(roomCode)}`
+  url.search = ''
+  url.hash = ''
+  return url.toString()
+}
+
 export async function layThongTinMangRelay(relayUrl: string): Promise<RelayNetworkInfo | null> {
   const url = relayUrlThanhHttpUrl(relayUrl)
   if (!url) return null
@@ -377,10 +388,15 @@ export function taoDuongDanRemote(roomCode: string, roomToken?: string, relayUrl
   return url.toString()
 }
 
-export function taoDuongDanTrinhChieu(roomCode: string, roomToken?: string, relayUrl?: string, baseHref?: string) {
+export function taoDuongDanTrinhChieu(roomCode: string, roomToken?: string, relayUrl?: string, baseHref?: string, displayTarget?: DisplayTarget) {
   const url = taoUrlUngDung(baseHref)
   url.searchParams.set('screen', 'display')
   ganThongTinPhong(url, roomCode, roomToken, relayUrl)
+  if (displayTarget) {
+    url.searchParams.set('displayTarget', displayTarget)
+  } else {
+    url.searchParams.delete('displayTarget')
+  }
   return url.toString()
 }
 
