@@ -14,6 +14,11 @@ export ANDROID_SDK_ROOT
 export JAVA_HOME
 export PATH="${JAVA_HOME:+$JAVA_HOME/bin:}$ANDROID_HOME/platform-tools:$PATH"
 
+# Do not bake localhost relay/proxy from .env into a phone build.
+# Pass LAN/production values explicitly when needed.
+export VITE_YOUTUBE_SEARCH_PROXY_URL="${VITE_YOUTUBE_SEARCH_PROXY_URL:-}"
+export VITE_REMOTE_RELAY_URL="${VITE_REMOTE_RELAY_URL:-}"
+
 cd "$ROOT_DIR"
 npm run android:sync
 

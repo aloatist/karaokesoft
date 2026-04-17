@@ -21,6 +21,24 @@ export async function moManHinhTrinhChieu(monitorIndex?: number, roomCode?: stri
   return bridge.openDisplayWindow(monitorIndex, roomCode, roomToken)
 }
 
+export async function moYoutubeTrenManHinhTrinhChieu(videoId: string) {
+  const bridge = layBridge()
+  if (!bridge?.openYoutubeOnDisplay) return null
+  return bridge.openYoutubeOnDisplay(videoId)
+}
+
+export async function dongYoutubeTrenManHinhTrinhChieu() {
+  const bridge = layBridge()
+  if (!bridge?.closeYoutubeOnDisplay) return null
+  return bridge.closeYoutubeOnDisplay()
+}
+
+export async function moDangNhapYoutubeDesktop() {
+  const bridge = layBridge()
+  if (!bridge?.openYoutubeLogin) return null
+  return bridge.openYoutubeLogin()
+}
+
 export function guiDongBoDesktop(msg: SyncMessage) {
   const bridge = layBridge()
   if (!bridge) return false

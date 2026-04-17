@@ -36,6 +36,8 @@ export PATH="${JAVA_HOME:+$JAVA_HOME/bin:}$ANDROID_HOME/platform-tools:$PATH"
 
 # Public builds must not bundle the YouTube API key into the client app.
 export VITE_YT_API_KEY=""
+export VITE_YOUTUBE_SEARCH_PROXY_URL="${VITE_YOUTUBE_SEARCH_PROXY_URL:-}"
+export VITE_REMOTE_RELAY_URL="${VITE_REMOTE_RELAY_URL:-}"
 
 if [[ -z "${VITE_YOUTUBE_SEARCH_PROXY_URL:-}" ]]; then
   echo "Canh bao: VITE_YOUTUBE_SEARCH_PROXY_URL chua duoc cau hinh. Ban release se khong tim YouTube duoc cho den khi tro ve proxy that." >&2

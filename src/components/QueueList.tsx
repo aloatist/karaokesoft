@@ -8,8 +8,10 @@ import type { SongItem } from '../types'
 
 function QueueRow({
   queueId,
+  videoId,
   title,
   channelTitle,
+  thumbnail,
   active,
   activeActionKey,
   disabled,
@@ -17,8 +19,10 @@ function QueueRow({
   onRemove,
 }: {
   queueId: string
+  videoId: string
   title: string
   channelTitle: string
+  thumbnail?: string
   active: boolean
   activeActionKey?: string | null
   disabled?: boolean
@@ -40,14 +44,21 @@ function QueueRow({
         ⋮⋮
       </button>
       <button className="rowMain" onClick={onPlayNow} type="button" disabled={disabled}>
-        <div className="rowHead rowHeadStack">
-          <div className="title">{title}</div>
-          <div className="sub">Kênh: {channelTitle}</div>
-          {active ? (
+        <div className="queueRowContent">
+          {thumbnail ? (
+            <img className="queueThumb" src={thumbnail} alt="" aria-hidden="true" />
+          ) : (
+            <div className="queueThumb queueThumbPh" aria-hidden="true" />
+          )}
+          <div className="rowHead rowHeadStack">
+            <div className="title">{title}</div>
+            <div className="sub">Kênh: {channelTitle}</div>
             <div className="rowBadgeLine">
-              <span className="liveBadge">Đang phát</span>
+              <span className="sourceBadge">YouTube</span>
+              <span className="sourceBadge sourceBadgeMuted">ID {videoId}</span>
+              {active ? <span className="liveBadge">Đang phát trên YouTube</span> : null}
             </div>
-          ) : null}
+          </div>
         </div>
       </button>
       <div className="rowActions">
@@ -125,8 +136,10 @@ export function QueueList({
             <QueueRow
               key={it.queueId}
               queueId={it.queueId}
+              videoId={it.videoId}
               title={it.title}
               channelTitle={it.channelTitle}
+              thumbnail={it.thumbnail}
               active={idx === currentIndex}
               activeActionKey={activeActionKey}
               disabled={disabled}

@@ -6,6 +6,7 @@ import { SongOverlay } from '../components/SongOverlay'
 import { YouTubePlayer } from '../components/YouTubePlayer'
 import { phatBaoHetBai, phatBaoLoiPlayer, phatYeuCauBoQuaBai, useBroadcastReceiver } from '../hooks/useBroadcastSync'
 import { chuanHoaMucHangCho } from '../lib/queue'
+import { dongYoutubeTrenManHinhTrinhChieu, moYoutubeTrenManHinhTrinhChieu } from '../services/desktopBridge'
 import {
   chuanHoaRelayUrl,
   chuanHoaMaPhongRemote,
@@ -17,6 +18,7 @@ import {
   layThongTinMangRelay,
   luuRelayUrl,
   luuMaTV,
+  taoBaseUrlUngDungLan,
   taoDanhSachRelayUrlUngVien,
   taoDuongDanRemote,
   taoKetNoiRelay,
@@ -33,6 +35,17 @@ type ViewState = {
 const EMPTY_REMOTE_PRESENCE: RemotePresence = { hosts: 0, remotes: 0, displays: 0 }
 const DISPLAY_AD_POLL_MS = 20_000
 const MOBILE_DISPLAY_BREAKPOINT = 720
+
+function laLoiYoutubeChanNhung(code: number) {
+  return code === 101 || code === 150
+}
+
+function taoYoutubeWatchUrl(videoId: string) {
+  const url = new URL('https://www.youtube.com/watch')
+  url.searchParams.set('v', videoId)
+  url.searchParams.set('autoplay', '1')
+  return url.toString()
+}
 
 function docQueueTuLocalStorage(): ViewState | null {
   try {
@@ -78,6 +91,7 @@ export function DisplayScreen() {
   const nonceRef = useRef(1)
   const displayAdUpdatedAtRef = useRef(0)
   const relayCommandNonceRef = useRef<number | null>(null)
+  const youtubeTrucTiepVideoIdRef = useRef<string | null>(null)
   const [relayUrl, setRelayUrl] = useState(() => layRelayUrlMacDinh())
   const qrRelayUrl = remoteQrRelayUrl || relayUrl
   const controlUrl = useMemo(() => taoDuongDanRemote(tvCode, tvToken, qrRelayUrl, remoteQrBaseUrl || undefined), [qrRelayUrl, remoteQrBaseUrl, tvCode, tvToken])
@@ -101,8 +115,14 @@ export function DisplayScreen() {
     } else {
       url.searchParams.delete('token')
     }
+    const normalizedRelayUrl = chuanHoaRelayUrl(relayUrl)
+    if (normalizedRelayUrl) {
+      url.searchParams.set('relay', normalizedRelayUrl)
+    } else {
+      url.searchParams.delete('relay')
+    }
     window.history.replaceState({}, '', url.toString())
-  }, [tvCode, tvToken])
+  }, [relayUrl, tvCode, tvToken])
 
   useEffect(() => {
     let cancelled = false
@@ -141,7 +161,11 @@ export function DisplayScreen() {
           info?.addresses.find((item) => item.family === 'IPv4') ??
           info?.addresses[0]
         if (candidate?.address) {
-          matched = { relayUrl: relayCandidateUrl, address: candidate.address, baseUrl: candidate.url || `http://${candidate.address}:8787/` }
+          matched = {
+            relayUrl: relayCandidateUrl,
+            address: candidate.address,
+            baseUrl: taoBaseUrlUngDungLan(candidate.address, candidate.url || `http://${candidate.address}:8787/`),
+          }
           break
         }
       }
@@ -290,11 +314,53 @@ export function DisplayScreen() {
   }, [apDungDisplayAd, relayUrl, tvCode, tvToken])
 
   const baiDangPhat = state.queue[state.currentIndex]
+  const baiDangPhatVideoId = baiDangPhat?.videoId ?? null
   const baiTiepTheo = useMemo(() => state.queue[state.currentIndex + 1], [state.queue, state.currentIndex])
   const displayAd = syncedDisplayAd ?? localDisplayAd
   const displayAdText = displayAd.text
   const displayAdTitle = displayAd.title.trim()
   const hienThiDisplayAd = displayAd.enabled && displayAdText.trim()
+
+  useEffect(() => {
+    if (!youtubeTrucTiepVideoIdRef.current || youtubeTrucTiepVideoIdRef.current === baiDangPhatVideoId) return
+
+    youtubeTrucTiepVideoIdRef.current = null
+    void dongYoutubeTrenManHinhTrinhChieu()
+  }, [baiDangPhatVideoId])
+
+  const moYoutubeTrucTiep = useCallback((videoId: string) => {
+    const targetVideoId = videoId.trim()
+    if (!targetVideoId || youtubeTrucTiepVideoIdRef.current === targetVideoId) return
+
+    youtubeTrucTiepVideoIdRef.current = targetVideoId
+
+    void (async () => {
+      const desktopResult = await moYoutubeTrenManHinhTrinhChieu(targetVideoId)
+      if (desktopResult) {
+        if (!desktopResult.success) {
+          console.warn('Không mở được YouTube trực tiếp trên màn hình trình chiếu:', desktopResult.error)
+        }
+        return
+      }
+
+      try {
+        await document.documentElement.requestFullscreen?.()
+      } catch {
+        // Trình duyệt thường chặn fullscreen nếu không có thao tác người dùng; vẫn mở YouTube trực tiếp.
+      }
+
+      window.location.assign(taoYoutubeWatchUrl(targetVideoId))
+    })()
+  }, [])
+
+  const xuLyLoiPlayer = useCallback((code: number, failedVideoId?: string) => {
+    phatBaoLoiPlayer(code, failedVideoId)
+
+    const targetVideoId = failedVideoId || baiDangPhatVideoId
+    if (targetVideoId && laLoiYoutubeChanNhung(code)) {
+      moYoutubeTrucTiep(targetVideoId)
+    }
+  }, [baiDangPhatVideoId, moYoutubeTrucTiep])
 
   return (
     <div className="displayRoot">
@@ -307,7 +373,7 @@ export function DisplayScreen() {
             volume={volume}
             command={cmd}
             onEnded={() => phatBaoHetBai()}
-            onError={(code, failedVideoId) => phatBaoLoiPlayer(code, failedVideoId)}
+            onError={xuLyLoiPlayer}
             onSkipSong={() => phatYeuCauBoQuaBai('ad-long')}
             hideAdAssist={Boolean(hienThiDisplayAd)}
           />
@@ -363,85 +429,53 @@ export function DisplayScreen() {
           </div>
         </div>
       ) : (
-        <div className="displayIdleRoot">
-          {/* Animated background auras */}
-          <div className="displayIdleBgAura displayIdleBgAura--warm" />
-          <div className="displayIdleBgAura displayIdleBgAura--cool" />
-          <div className="displayIdleBgAura displayIdleBgAura--teal" />
-
-          {/* Floating music notes (decorative) */}
-          {['🎵', '🎶', '🎤', '🎸', '🎹'].map((note, i) => (
-            <span
-              key={i}
-              className="displayMusicNote"
-              style={{
-                left: `${10 + i * 18}%`,
-                bottom: `${8 + (i % 3) * 12}%`,
-                animationDelay: `${i * 0.9}s`,
-                animationDuration: `${3.5 + i * 0.5}s`,
-                fontSize: `${22 + (i % 3) * 10}px`,
-              }}
-              aria-hidden="true"
-            >
-              {note}
-            </span>
-          ))}
-
-          <div className="displayIdleContent">
-            {/* Logo */}
-            <div className="displayIdleLogo">
-              <div className="displayIdleLogoMark" aria-hidden="true">🎤</div>
+        <div className="displayIdleRoot displayIdleRootSimple">
+          <div className="displayIdleContent displayIdleContentSimple">
+            <div className="displayIdleLogo displayIdleLogoSimple">
               <div>
-                <div className="displayIdleTagline">KaraokeYT — Đêm hát của bạn</div>
-                <div className="displayIdleTaglineSub">Màn hình trình chiếu đang sẵn sàng</div>
+                <div className="displayIdleTagline">KaraokeYT</div>
+                <div className="displayIdleTaglineSub">Quét QR hoặc nhập mã TV để điều khiển</div>
               </div>
             </div>
 
-            {/* Connect section */}
-            <div className="displayIdleConnect">
-              {/* QR Code box */}
-              <div className="displayIdleQrBox">
-                <div className="displayIdleQrLabel">📱 Quét để điều khiển</div>
+            <div className="displayIdleConnect displayIdleConnectSimple">
+              <div className="displayIdleQrBox displayIdleQrBoxSimple">
+                <div className="displayIdleQrLabel">Quét bằng điện thoại</div>
                 <div className="displayIdleQrImage">
                   <QrCodePanel value={controlUrl} />
                 </div>
               </div>
 
-              {/* Code + steps */}
-              <div className="displayIdleCodeCard">
+              <div className="displayIdleCodeCard displayIdleCodeCardSimple">
                 <div>
                   <div className="displayIdleCodeLabel">Mã TV</div>
                   <div className="displayIdleCodeValue">{tvCode}</div>
                 </div>
 
-                <div className="displayIdleSteps">
+                <div className="displayIdleSteps displayIdleStepsSimple">
                   <div className="displayIdleStep">
                     <div className="displayIdleStepNum">1</div>
-                    <div className="displayIdleStepText">Mở <strong>KaraokeYT</strong> trên điện thoại hoặc quét QR code bên trái.</div>
+                    <div className="displayIdleStepText">Điện thoại quét QR hoặc nhập mã TV.</div>
                   </div>
                   <div className="displayIdleStep">
                     <div className="displayIdleStepNum">2</div>
-                    <div className="displayIdleStepText">Nếu mở app thủ công, nhập đúng mã TV <strong>{tvCode}</strong> để liên kết.</div>
-                  </div>
-                  <div className="displayIdleStep">
-                    <div className="displayIdleStepNum">3</div>
-                    <div className="displayIdleStepText">Tìm bài, xếp hàng chờ và phát. Video sẽ tự hiện trên TV này!</div>
+                    <div className="displayIdleStepText">Tìm bài và bấm phát, video sẽ hiện trên màn hình này.</div>
                   </div>
                 </div>
 
                 <div className="displayIdleRelayRow">
                   <div className={`statusChip ${relayStatus === 'connected' ? 'statusChipSuccess' : relayStatus === 'error' ? 'statusChipWarning' : ''}`}>
-                    Relay: {relayStatus === 'connected' ? '✓ Đã kết nối' : relayStatus === 'connecting' ? 'Đang kết nối...' : relayStatus === 'error' ? 'Lỗi' : 'Chờ ghép'}
+                    {relayStatus === 'connected' ? 'Đã sẵn sàng' : relayStatus === 'connecting' ? 'Đang kết nối...' : relayStatus === 'error' ? 'Lỗi kết nối' : 'Chờ ghép'}
                   </div>
                   {presence.hosts + presence.remotes > 0 && (
                     <div className="statusChip statusChipSuccess">
-                      📱 {presence.hosts + presence.remotes} điện thoại
+                      {presence.hosts + presence.remotes} điện thoại
                     </div>
                   )}
                 </div>
                 <button className="ghost buttonWithIcon buttonToneAccent displayIdleRemoteSwitch" onClick={() => { window.location.href = controlUrl }} type="button">
                   <AppIcon name="control" className="buttonIcon" />
-                  <span className="buttonLabel">Chuyển sang điều khiển điện thoại</span>
+                  <span className="buttonLabel">Mở điều khiển</span>
                 </button>
               </div>
             </div>

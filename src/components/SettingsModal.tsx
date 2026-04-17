@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { USER_ROLE_LABEL, moTaVaiTro } from '../lib/auth'
-import { dangChayDesktop, layDanhSachManHinh, moManHinhTrinhChieu } from '../services/desktopBridge'
+import { dangChayDesktop, layDanhSachManHinh, moDangNhapYoutubeDesktop, moManHinhTrinhChieu } from '../services/desktopBridge'
 import {
   type AuditLogItem,
   createUserApi,
@@ -34,6 +34,7 @@ type UserEditDraft = {
 }
 
 const AUDIT_LIMIT = 80
+const YOUTUBE_LOGIN_URL = 'https://www.youtube.com/account'
 
 const AUDIT_ACTION_LABEL: Record<string, string> = {
   'bootstrap-owner': 'Khởi tạo quản trị chính',
@@ -133,6 +134,30 @@ export function SettingsModal({ open, onClose, canManageUsers, canManageDisplayA
   function capNhatBannerTrinhChieu(next: Partial<typeof displayAd>) {
     if (!canManageDisplayAd) return
     capNhat({ displayAd: { ...displayAd, ...next } })
+  }
+
+  async function moDangNhapYoutube() {
+    setSettingsMessage(null)
+
+    const desktopResult = await moDangNhapYoutubeDesktop()
+    if (desktopResult) {
+      setSettingsMessage(
+        desktopResult.success
+          ? 'Đã mở cửa sổ đăng nhập YouTube. Sau khi đăng nhập xong, đóng cửa sổ đó và phát lại bài.'
+          : desktopResult.error || 'Không mở được đăng nhập YouTube.',
+      )
+      return
+    }
+
+    const opened = window.open(YOUTUBE_LOGIN_URL, '_blank')
+    if (opened) {
+      opened.opener = null
+    }
+    setSettingsMessage(
+      opened
+        ? 'Đã mở YouTube trong tab mới. Sau khi đăng nhập xong, quay lại app và phát lại bài.'
+        : 'Trình duyệt đang chặn cửa sổ đăng nhập YouTube. Hãy cho phép popup rồi bấm lại.',
+    )
   }
 
   const taiNhatKyHoatDong = useCallback(async () => {
@@ -285,6 +310,16 @@ export function SettingsModal({ open, onClose, canManageUsers, canManageDisplayA
               <option value="repeat-one">Lặp bài hiện tại</option>
               <option value="repeat-all">Lặp cả danh sách</option>
             </select>
+          </div>
+
+          <div className="field settingsInfoCard">
+            <div className="settingsInfoTitle">Tài khoản YouTube Premium</div>
+            <div className="hint">
+              Đăng nhập YouTube trên máy phát để YouTube nhận phiên Premium. App không lưu mật khẩu Google; phiên đăng nhập do YouTube quản lý.
+            </div>
+            <button className="primary compactButton" onClick={() => void moDangNhapYoutube()} type="button">
+              Đăng nhập YouTube
+            </button>
           </div>
 
           <div className="field">

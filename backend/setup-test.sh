@@ -42,8 +42,8 @@ ALLOWED_ORIGINS=http://localhost:5173,http://localhost:8787
 FRONTEND_URL=http://localhost:5173
 
 # JWT Secrets (change for production!)
-JWT_ACCESS_SECRET=dev-access-secret-change-in-production
-JWT_REFRESH_SECRET=dev-refresh-secret-change-in-production
+JWT_ACCESS_SECRET=your_dev_access_secret
+JWT_REFRESH_SECRET=your_dev_refresh_secret
 
 # Stripe (optional for testing)
 STRIPE_SECRET_KEY=sk_test_xxx

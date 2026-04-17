@@ -2,13 +2,10 @@ import { Request, Response, NextFunction } from 'express'
 import jwt from 'jsonwebtoken'
 import { prisma } from '../server'
 
-// Extend Express Request
-declare global {
-  namespace Express {
-    interface Request {
-      userId?: string
-      token?: string
-    }
+declare module 'express-serve-static-core' {
+  interface Request {
+    userId?: string
+    token?: string
   }
 }
 

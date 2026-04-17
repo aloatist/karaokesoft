@@ -148,8 +148,8 @@ docker run -p 3001:3001 --env-file .env karaokeyt-backend
 ```env
 NODE_ENV=production
 DATABASE_URL=postgresql://...
-JWT_ACCESS_SECRET=strong-random-string
-JWT_REFRESH_SECRET=strong-random-string
+JWT_ACCESS_SECRET=your_jwt_access_secret
+JWT_REFRESH_SECRET=your_jwt_refresh_secret
 STRIPE_SECRET_KEY=sk_live_...
 STRIPE_WEBHOOK_SECRET=whsec_...
 ALLOWED_ORIGINS=https://yourdomain.com

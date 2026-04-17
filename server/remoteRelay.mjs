@@ -5,15 +5,61 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { WebSocket, WebSocketServer } from 'ws'
 
-const port = Number(process.env.PORT || 8787)
+const serverDirPath = path.dirname(fileURLToPath(import.meta.url))
+const projectRootPath = path.resolve(serverDirPath, '..')
+const envKeysLoadedFromFiles = new Set()
+
+function loadEnvFile(filePath, { overrideFileValues = false } = {}) {
+  if (!fs.existsSync(filePath)) return
+
+  const content = fs.readFileSync(filePath, 'utf8')
+  for (const line of content.split(/\r?\n/)) {
+    const trimmed = line.trim()
+    if (!trimmed || trimmed.startsWith('#')) continue
+
+    const match = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$/)
+    if (!match) continue
+
+    const [, key, rawValue] = match
+    const hasExistingValue = process.env[key] !== undefined
+    if (hasExistingValue && (!overrideFileValues || !envKeysLoadedFromFiles.has(key))) continue
+
+    const value = rawValue
+      .replace(/\s+#.*$/, '')
+      .replace(/^(['"])(.*)\1$/, '$2')
+      .replace(/\\n/g, '\n')
+
+    process.env[key] = value
+    envKeysLoadedFromFiles.add(key)
+  }
+}
+
+loadEnvFile(path.join(projectRootPath, '.env'))
+loadEnvFile(path.join(projectRootPath, '.env.local'), { overrideFileValues: true })
+
+const port = Number(process.env.PORT || process.env.RELAY_PORT || 8787)
 const host = process.env.RELAY_HOST || '0.0.0.0'
-const distRootPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'dist')
-const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY || process.env.YT_API_KEY || ''
+const distRootPath = path.join(projectRootPath, 'dist')
 const YOUTUBE_BASE_URL = 'https://www.googleapis.com/youtube/v3'
 const SEARCH_RATE_WINDOW_MS = 10 * 60 * 1000
 const SEARCH_RATE_LIMIT = Number(process.env.YOUTUBE_SEARCH_RATE_LIMIT || 120)
 const HEARTBEAT_INTERVAL_MS = Math.max(5_000, Number(process.env.RELAY_HEARTBEAT_INTERVAL_MS || 15_000))
 const searchRateLimits = new Map()
+
+function looksLikeYoutubeApiKey(value) {
+  return /^AIza[0-9A-Za-z_-]{35}$/.test(String(value || '').trim())
+}
+
+function getYoutubeApiKey() {
+  const serverKey = process.env.YOUTUBE_API_KEY || process.env.YT_API_KEY || ''
+  const devClientKey = process.env.VITE_YT_API_KEY || ''
+
+  if (looksLikeYoutubeApiKey(serverKey)) return serverKey.trim()
+  if (looksLikeYoutubeApiKey(devClientKey)) return devClientKey.trim()
+  return String(serverKey || devClientKey || '').trim()
+}
+
+const YOUTUBE_API_KEY = getYoutubeApiKey()
 
 function writeJson(req, res, status, payload) {
   const origin = req.headers.origin || '*'
@@ -127,6 +173,27 @@ async function fetchVideoDetails(videoIds) {
   return new Map(items.map((item) => [item.id, item]))
 }
 
+async function getYoutubeApiErrorMessage(response) {
+  const json = await response.json().catch(() => null)
+  const rawMessage = String(json?.error?.message || '').trim()
+  const reason = String(json?.error?.errors?.[0]?.reason || '').trim()
+  const normalized = `${rawMessage} ${reason}`.toLowerCase()
+
+  if (normalized.includes('api key not valid') || normalized.includes('keyinvalid')) {
+    return 'YouTube API key không hợp lệ. Hãy tạo key mới và bật YouTube Data API v3 trong Google Cloud.'
+  }
+
+  if (normalized.includes('quota') || normalized.includes('dailylimitexceeded')) {
+    return 'API_QUOTA_EXCEEDED'
+  }
+
+  if (rawMessage) {
+    return `Lỗi YouTube API: ${response.status} - ${rawMessage}`
+  }
+
+  return `Lỗi YouTube API: ${response.status}`
+}
+
 async function handleYoutubeSearch(req, res, url) {
   if (!YOUTUBE_API_KEY) {
     writeJson(req, res, 500, { ok: false, message: 'Server chưa cấu hình YOUTUBE_API_KEY.' })
@@ -162,12 +229,12 @@ async function handleYoutubeSearch(req, res, url) {
 
   const response = await fetch(`${YOUTUBE_BASE_URL}/search?${params}`)
   if (response.status === 403) {
-    writeJson(req, res, 403, { ok: false, message: 'API_QUOTA_EXCEEDED' })
+    writeJson(req, res, 403, { ok: false, message: await getYoutubeApiErrorMessage(response) })
     return
   }
 
   if (!response.ok) {
-    writeJson(req, res, response.status, { ok: false, message: `Lỗi YouTube API: ${response.status}` })
+    writeJson(req, res, response.status, { ok: false, message: await getYoutubeApiErrorMessage(response) })
     return
   }
 
@@ -409,7 +476,8 @@ wss.on('connection', (ws) => {
       const room = getRoom(meta.roomCode)
       room.latestState = payload.state
 
-      for (const peer of [...room.remotes, ...room.displays]) {
+      for (const peer of [...room.hosts, ...room.remotes, ...room.displays]) {
+        if (peer === ws) continue
         send(peer, {
           type: 'ROOM_STATE',
           roomCode: meta.roomCode,

@@ -61,9 +61,20 @@ export function laHostLocalhost(hostname: string) {
   return normalized === 'localhost' || normalized === '::1' || normalized === '[::1]' || normalized === '0.0.0.0' || normalized.startsWith('127.')
 }
 
-function dangChayTrongCapacitorWebView() {
+export function dangChayTrongCapacitorWebView() {
   if (typeof window === 'undefined') return false
-  return Boolean('Capacitor' in window) || (window.location.protocol === 'https:' && window.location.hostname === 'localhost' && !window.location.port)
+  const protocol = window.location.protocol
+  const hostname = window.location.hostname
+  const userAgent = typeof navigator !== 'undefined' ? navigator.userAgent : ''
+  const hasCapacitorRuntime = 'Capacitor' in window
+  const nativeProtocol = protocol === 'capacitor:' || protocol === 'file:'
+  const capacitorLocalhost =
+    (protocol === 'http:' || protocol === 'https:') &&
+    hostname === 'localhost' &&
+    !window.location.port &&
+    /(Android|iPhone|iPad|iPod|Capacitor|wv)/i.test(userAgent)
+
+  return hasCapacitorRuntime || nativeProtocol || capacitorLocalhost
 }
 
 function relayUrlTroVeLocalhost(relayUrl: string) {
@@ -73,6 +84,32 @@ function relayUrlTroVeLocalhost(relayUrl: string) {
     return laHostLocalhost(new URL(normalized).hostname)
   } catch {
     return false
+  }
+}
+
+function layHostTrangHienTaiChoRelay() {
+  if (typeof window === 'undefined') return ''
+  if (window.location.protocol !== 'http:' && window.location.protocol !== 'https:') return ''
+  const host = window.location.hostname
+  if (!host || laHostLocalhost(host)) return ''
+  return host
+}
+
+function suaRelayLocalhostTheoTrangHienTai(relayUrl: string) {
+  const normalized = chuanHoaRelayUrl(relayUrl)
+  if (!normalized) return ''
+
+  const pageHost = layHostTrangHienTaiChoRelay()
+  if (!pageHost) return normalized
+
+  try {
+    const url = new URL(normalized)
+    if (!laHostLocalhost(url.hostname)) return normalized
+    url.hostname = pageHost
+    url.port = DEFAULT_RELAY_PORT
+    return url.toString()
+  } catch {
+    return normalized
   }
 }
 
@@ -153,7 +190,7 @@ export function docRelayUrlDaLuu() {
   if (typeof window === 'undefined') return ''
   const saved = chuanHoaRelayUrl(window.localStorage.getItem(RELAY_URL_STORAGE_KEY) ?? '')
   if (dangChayTrongCapacitorWebView() && relayUrlTroVeLocalhost(saved)) return ''
-  return saved
+  return suaRelayLocalhostTheoTrangHienTai(saved)
 }
 
 export function luuRelayUrl(relayUrl: string) {
@@ -184,15 +221,15 @@ export function chuanHoaRelayUrl(input: string) {
 
 export function layRelayUrlMacDinh() {
   if (typeof window !== 'undefined') {
-    const relayFromUrl = chuanHoaRelayUrl(new URLSearchParams(window.location.search).get('relay') ?? '')
-    if (relayFromUrl) {
+    const relayFromUrl = suaRelayLocalhostTheoTrangHienTai(new URLSearchParams(window.location.search).get('relay') ?? '')
+    if (relayFromUrl && !(dangChayTrongCapacitorWebView() && relayUrlTroVeLocalhost(relayFromUrl))) {
       luuRelayUrl(relayFromUrl)
       return relayFromUrl
     }
   }
 
-  const envUrl = chuanHoaRelayUrl(import.meta.env.VITE_REMOTE_RELAY_URL ?? '')
-  if (envUrl) return envUrl
+  const envUrl = suaRelayLocalhostTheoTrangHienTai(import.meta.env.VITE_REMOTE_RELAY_URL ?? '')
+  if (envUrl && !(dangChayTrongCapacitorWebView() && relayUrlTroVeLocalhost(envUrl))) return envUrl
 
   const savedRelayUrl = docRelayUrlDaLuu()
   if (savedRelayUrl && !(dangChayTrongCapacitorWebView() && relayUrlTroVeLocalhost(savedRelayUrl))) return savedRelayUrl
@@ -203,11 +240,15 @@ export function layRelayUrlMacDinh() {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
   const host = window.location.hostname
 
+  if (dangChayTrongCapacitorWebView() && (!host || laHostLocalhost(host))) {
+    return ''
+  }
+
   if (!host || localAppProtocol) {
     return LOCAL_RELAY_URLS[0]
   }
 
-  if (laHostLocalhost(host) || VITE_DEV_SERVER_PORTS.has(window.location.port)) {
+  if (import.meta.env.DEV || laHostLocalhost(host) || VITE_DEV_SERVER_PORTS.has(window.location.port)) {
     const relayHost = host === '0.0.0.0' ? '127.0.0.1' : host
     return `ws://${relayHost}:${DEFAULT_RELAY_PORT}`
   }
@@ -223,18 +264,21 @@ function themRelayUrlNeuHopLe(candidates: string[], relayUrl: string) {
 
 export function taoDanhSachRelayUrlUngVien(primaryRelayUrl = '') {
   const candidates: string[] = []
-  themRelayUrlNeuHopLe(candidates, primaryRelayUrl)
+  const isPhoneApp = dangChayTrongCapacitorWebView()
+  themRelayUrlNeuHopLe(candidates, suaRelayLocalhostTheoTrangHienTai(primaryRelayUrl))
 
   if (typeof window !== 'undefined') {
     const host = window.location.hostname
-    if (host && (laHostLocalhost(host) || VITE_DEV_SERVER_PORTS.has(window.location.port))) {
+    if (!isPhoneApp && host && (import.meta.env.DEV || laHostLocalhost(host) || VITE_DEV_SERVER_PORTS.has(window.location.port))) {
       const relayHost = host === '0.0.0.0' ? '127.0.0.1' : host
       themRelayUrlNeuHopLe(candidates, `ws://${relayHost}:${DEFAULT_RELAY_PORT}`)
     }
   }
 
-  for (const relayUrl of LOCAL_RELAY_URLS) {
-    themRelayUrlNeuHopLe(candidates, relayUrl)
+  if (!isPhoneApp) {
+    for (const relayUrl of LOCAL_RELAY_URLS) {
+      themRelayUrlNeuHopLe(candidates, relayUrl)
+    }
   }
 
   return candidates
@@ -287,6 +331,23 @@ export function doiHostUrl(value: string, nextHostname: string) {
   const url = new URL(value)
   url.hostname = nextHostname
   return url.toString()
+}
+
+export function taoBaseUrlUngDungLan(lanAddress: string, fallbackBaseUrl?: string) {
+  const fallback = fallbackBaseUrl || `http://${lanAddress}:${DEFAULT_RELAY_PORT}/`
+
+  if (typeof window === 'undefined') return fallback
+
+  try {
+    const url = new URL(window.location.href)
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return fallback
+    url.hostname = lanAddress
+    url.search = ''
+    url.hash = ''
+    return url.toString()
+  } catch {
+    return fallback
+  }
 }
 
 function taoUrlUngDung(baseHref?: string) {
@@ -344,6 +405,7 @@ export function taoKetNoiRelay({
   const clientId = taoClientId()
   const normalizedRoom = chuanHoaMaPhongRemote(roomCode)
   const normalizedToken = chuanHoaTokenPhongRemote(roomToken ?? '')
+  const normalizedRelayUrl = chuanHoaRelayUrl(relayUrl)
   let socket: WebSocket | null = null
   let manuallyClosed = false
   let reconnectTimer: number | null = null
@@ -401,6 +463,15 @@ export function taoKetNoiRelay({
 
   function moKetNoi() {
     if (!normalizedRoom || manuallyClosed) return
+    if (!normalizedRelayUrl) {
+      thongBaoTrangThai(
+        'error',
+        dangChayTrongCapacitorWebView()
+          ? 'Chưa có Relay URL LAN. Hãy quét QR từ laptop hoặc nhập ws://IP-laptop:8787.'
+          : 'Relay URL không hợp lệ.',
+      )
+      return
+    }
     if (reconnectTimer) {
       window.clearTimeout(reconnectTimer)
       reconnectTimer = null
@@ -410,7 +481,7 @@ export function taoKetNoiRelay({
     let nextSocket: WebSocket
     try {
       thongBaoTrangThai('connecting')
-      nextSocket = new WebSocket(relayUrl)
+      nextSocket = new WebSocket(normalizedRelayUrl)
       socket = nextSocket
     } catch (error) {
       thongBaoTrangThai('error', error instanceof Error ? error.message : 'Không tạo được kết nối remote')
@@ -489,7 +560,7 @@ export function taoKetNoiRelay({
   moKetNoi()
 
   return {
-    relayUrl,
+    relayUrl: normalizedRelayUrl,
     sendState: (state) => {
       lastState = state
       gui({ type: 'ROOM_STATE', roomCode: normalizedRoom, state })

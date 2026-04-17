@@ -481,31 +481,34 @@ export function RemotePairingModal({
                 </div>
 
                 {onUseLanHost ? (
-                  <div className="field remoteManualLanField">
-                    <div className="label">Nếu QR chưa nối: nhập IP LAN laptop</div>
-                    <div className="remoteJoinRow">
-                      <input
-                        className="input"
-                        value={manualLanHost}
-                        onChange={(e) => setManualLanHost(e.target.value)}
-                        inputMode="decimal"
-                        placeholder="VD: 192.168.1.50"
-                      />
-                      <button
-                        className="ghost buttonWithIcon buttonToneAccent"
-                        onClick={() => onUseLanHost(manualLanHost)}
-                        type="button"
-                      >
-                        <AppIcon name="screen" className="buttonIcon" />
-                        <span className="buttonLabel">Dùng IP</span>
-                      </button>
+                  <details className="remoteAdvancedDetails">
+                    <summary>Không kết nối được?</summary>
+                    <div className="field remoteManualLanField">
+                      <div className="label">Nhập IP LAN laptop</div>
+                      <div className="remoteJoinRow">
+                        <input
+                          className="input"
+                          value={manualLanHost}
+                          onChange={(e) => setManualLanHost(e.target.value)}
+                          inputMode="decimal"
+                          placeholder="VD: 192.168.1.50"
+                        />
+                        <button
+                          className="ghost buttonWithIcon buttonToneAccent"
+                          onClick={() => onUseLanHost(manualLanHost)}
+                          type="button"
+                        >
+                          <AppIcon name="screen" className="buttonIcon" />
+                          <span className="buttonLabel">Dùng IP</span>
+                        </button>
+                      </div>
+                      <div className="hint">Dùng khi app không tự lấy được IP LAN. Sau khi áp dụng, quét lại QR mới.</div>
                     </div>
-                    <div className="hint">Dùng khi app không tự lấy được IP LAN. Sau khi áp dụng, quét lại QR mới.</div>
-                  </div>
+                  </details>
                 ) : null}
               </div>
 
-              <QrCodePanel value={remoteUrl} />
+              {!isPhoneViewport ? <QrCodePanel value={remoteUrl} /> : null}
             </div>
           ) : null}
 

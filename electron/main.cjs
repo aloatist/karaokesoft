@@ -14,6 +14,8 @@ app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
 
 let controlWindow = null
 let displayWindow = null
+let youtubeWindow = null
+let youtubeLoginWindow = null
 let rendererServer = null
 let rendererBaseUrl = null
 let remoteRelayStarted = false
@@ -195,6 +197,28 @@ function layDanhSachManHinh() {
   return screen.getAllDisplays().map((display, index) => taoThongTinManHinh(display, index))
 }
 
+function chuanHoaYoutubeVideoId(videoId) {
+  const cleaned = String(videoId || '')
+    .trim()
+    .replace(/[^A-Za-z0-9_-]/g, '')
+    .slice(0, 32)
+  if (!cleaned) {
+    throw new Error('Video ID không hợp lệ.')
+  }
+  return cleaned
+}
+
+function taoYoutubeWatchUrl(videoId) {
+  const url = new URL('https://www.youtube.com/watch')
+  url.searchParams.set('v', chuanHoaYoutubeVideoId(videoId))
+  url.searchParams.set('autoplay', '1')
+  return url.toString()
+}
+
+function taoYoutubeLoginUrl() {
+  return 'https://www.youtube.com/account'
+}
+
 function chonManHinh(preferredIndex) {
   const displays = screen.getAllDisplays()
   const fallbackIndex = displays.length > 1 ? 1 : 0
@@ -249,6 +273,99 @@ function apDungKhungCuaSoTrinhChieu(targetWindow, preferredIndex) {
   }
 
   return taoThongTinManHinh(display, index)
+}
+
+function dongCuaSoYoutubeTrucTiep() {
+  if (youtubeWindow && !youtubeWindow.isDestroyed()) {
+    youtubeWindow.close()
+  }
+  youtubeWindow = null
+}
+
+async function moDangNhapYoutube() {
+  if (!youtubeLoginWindow || youtubeLoginWindow.isDestroyed()) {
+    youtubeLoginWindow = new BrowserWindow({
+      title: 'Đăng nhập YouTube',
+      width: 1120,
+      height: 820,
+      minWidth: 860,
+      minHeight: 640,
+      autoHideMenuBar: true,
+      backgroundColor: '#0b0b10',
+      webPreferences: {
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true,
+      },
+    })
+    youtubeLoginWindow.webContents.setUserAgent(taoUserAgent())
+    youtubeLoginWindow.on('closed', () => {
+      youtubeLoginWindow = null
+    })
+  }
+
+  youtubeLoginWindow.show()
+  youtubeLoginWindow.focus()
+  await youtubeLoginWindow.loadURL(taoYoutubeLoginUrl())
+  return { success: true }
+}
+
+function layManHinhTrinhChieuTuSender(sender) {
+  if (displayWindow && !displayWindow.isDestroyed()) {
+    return screen.getDisplayMatching(displayWindow.getBounds())
+  }
+
+  const senderWindow = sender ? BrowserWindow.fromWebContents(sender) : null
+  if (senderWindow && !senderWindow.isDestroyed()) {
+    return screen.getDisplayMatching(senderWindow.getBounds())
+  }
+
+  const displays = screen.getAllDisplays()
+  return displays.length > 1 ? displays[1] : screen.getPrimaryDisplay()
+}
+
+async function moYoutubeTrucTiepTrenManHinhTrinhChieu(videoId, sender) {
+  const youtubeUrl = taoYoutubeWatchUrl(videoId)
+  const display = layManHinhTrinhChieuTuSender(sender)
+
+  if (!youtubeWindow || youtubeWindow.isDestroyed()) {
+    youtubeWindow = new BrowserWindow({
+      title: 'KaraokeYT YouTube',
+      x: display.bounds.x,
+      y: display.bounds.y,
+      width: display.bounds.width,
+      height: display.bounds.height,
+      show: false,
+      fullscreen: true,
+      autoHideMenuBar: true,
+      backgroundColor: '#000000',
+      webPreferences: {
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true,
+      },
+    })
+    youtubeWindow.webContents.setUserAgent(taoUserAgent())
+    youtubeWindow.on('closed', () => {
+      youtubeWindow = null
+    })
+  } else {
+    youtubeWindow.setBounds(display.bounds)
+  }
+
+  youtubeWindow.setFullScreen(true)
+  await youtubeWindow.loadURL(youtubeUrl)
+  youtubeWindow.show()
+  youtubeWindow.focus()
+
+  setTimeout(() => {
+    if (!youtubeWindow || youtubeWindow.isDestroyed()) return
+    youtubeWindow.focus()
+    youtubeWindow.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'f' })
+    youtubeWindow.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'f' })
+  }, 1800)
+
+  return { success: true }
 }
 
 async function taoCuaSoDieuKhien() {
@@ -320,6 +437,7 @@ async function taoCuaSoTrinhChieu(preferredIndex, roomCode, roomToken) {
 
   displayWindow.on('closed', () => {
     displayWindow = null
+    dongCuaSoYoutubeTrucTiep()
   })
 
   await taiRenderer(displayWindow, 'display', roomCode, roomToken)
@@ -333,7 +451,31 @@ function dangKyIpc() {
   ipcMain.handle('karaoke:get-displays', () => layDanhSachManHinh())
 
   ipcMain.handle('karaoke:open-display-window', async (_event, preferredIndex, roomCode, roomToken) => {
+    dongCuaSoYoutubeTrucTiep()
     return taoCuaSoTrinhChieu(preferredIndex, roomCode, roomToken)
+  })
+
+  ipcMain.handle('karaoke:open-youtube-on-display', async (event, videoId) => {
+    try {
+      return await moYoutubeTrucTiepTrenManHinhTrinhChieu(videoId, event.sender)
+    } catch (error) {
+      console.warn('Không mở được YouTube trực tiếp trên màn hình trình chiếu:', error)
+      return { success: false, error: error?.message || 'Không mở được YouTube trực tiếp.' }
+    }
+  })
+
+  ipcMain.handle('karaoke:close-youtube-on-display', () => {
+    dongCuaSoYoutubeTrucTiep()
+    return { success: true }
+  })
+
+  ipcMain.handle('karaoke:open-youtube-login', async () => {
+    try {
+      return await moDangNhapYoutube()
+    } catch (error) {
+      console.warn('Không mở được đăng nhập YouTube:', error)
+      return { success: false, error: error?.message || 'Không mở được đăng nhập YouTube.' }
+    }
   })
 
   ipcMain.on('karaoke:sync', (event, msg) => {

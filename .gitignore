@@ -11,6 +11,10 @@ node_modules
 dist
 dist-ssr
 release
+.env
+.env.*
+!.env.example
+!backend/.env.example
 .env.android-signing
 android/keystores
 *.jks

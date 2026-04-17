@@ -190,6 +190,9 @@ export type DesktopBridgeApi = {
   __ELECTRON__: true
   getDisplays: () => Promise<DesktopDisplayInfo[]>
   openDisplayWindow: (monitorIndex?: number, roomCode?: string, roomToken?: string) => Promise<OpenDisplayWindowResult>
+  openYoutubeOnDisplay: (videoId: string) => Promise<{ success: boolean; error?: string }>
+  closeYoutubeOnDisplay: () => Promise<{ success: boolean; error?: string }>
+  openYoutubeLogin: () => Promise<{ success: boolean; error?: string }>
   sendSyncMessage: (msg: SyncMessage) => void
   onSyncMessage: (listener: (msg: SyncMessage) => void) => () => void
   secureStorage: SecureStorageApi

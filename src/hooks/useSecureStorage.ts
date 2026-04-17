@@ -1,9 +1,22 @@
 import { useState, useEffect, useCallback } from 'react'
+import { dangChayTrongCapacitorWebView, laHostLocalhost } from '../services/remoteRelay'
 
 const isElectron = typeof window !== 'undefined' && 
   (window.karaokeDesktop?.isElectron || window.karaokeDesktop?.__ELECTRON__)
 
 const secureStorage = isElectron ? window.karaokeDesktop?.secureStorage : null
+
+function coProxyEnvDungDuoc() {
+  const proxyUrl = import.meta.env.VITE_YOUTUBE_SEARCH_PROXY_URL ? String(import.meta.env.VITE_YOUTUBE_SEARCH_PROXY_URL) : ''
+  if (!proxyUrl) return false
+  if (!dangChayTrongCapacitorWebView()) return true
+
+  try {
+    return !laHostLocalhost(new URL(proxyUrl, window.location.href).hostname)
+  } catch {
+    return false
+  }
+}
 
 export function useSecureStorage() {
   const [hasKey, setHasKey] = useState<boolean | null>(null)
@@ -79,7 +92,7 @@ export function useYouTubeApiKey() {
   const { isElectron, hasKey, loading, saveKey, deleteKey } = useSecureStorage()
 
   // For web app, use environment variable check
-  const webHasKey = !isElectron && !!import.meta.env.VITE_YOUTUBE_SEARCH_PROXY_URL
+  const webHasKey = !isElectron && coProxyEnvDungDuoc()
 
   return {
     hasKey: isElectron ? hasKey : webHasKey,

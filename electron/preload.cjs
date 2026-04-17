@@ -5,6 +5,9 @@ contextBridge.exposeInMainWorld('karaokeDesktop', {
   __ELECTRON__: true,
   getDisplays: () => ipcRenderer.invoke('karaoke:get-displays'),
   openDisplayWindow: (monitorIndex, roomCode, roomToken) => ipcRenderer.invoke('karaoke:open-display-window', monitorIndex, roomCode, roomToken),
+  openYoutubeOnDisplay: (videoId) => ipcRenderer.invoke('karaoke:open-youtube-on-display', videoId),
+  closeYoutubeOnDisplay: () => ipcRenderer.invoke('karaoke:close-youtube-on-display'),
+  openYoutubeLogin: () => ipcRenderer.invoke('karaoke:open-youtube-login'),
   sendSyncMessage: (msg) => ipcRenderer.send('karaoke:sync', msg),
   onSyncMessage: (listener) => {
     const wrapped = (_event, msg) => listener(msg)

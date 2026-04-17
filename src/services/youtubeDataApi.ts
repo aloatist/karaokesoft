@@ -68,6 +68,23 @@ async function fetchVideoDetails(videoIds: string[], apiKey: string) {
   return new Map(items.map((item) => [item.id, item]))
 }
 
+async function getYoutubeApiErrorMessage(res: Response) {
+  const json = await res.json().catch(() => null) as { error?: { message?: string; errors?: Array<{ reason?: string }> } } | null
+  const rawMessage = String(json?.error?.message || '').trim()
+  const reason = String(json?.error?.errors?.[0]?.reason || '').trim()
+  const normalized = `${rawMessage} ${reason}`.toLowerCase()
+
+  if (normalized.includes('api key not valid') || normalized.includes('keyinvalid')) {
+    return 'YouTube API key không hợp lệ. Hãy tạo key mới và bật YouTube Data API v3 trong Google Cloud.'
+  }
+
+  if (normalized.includes('quota') || normalized.includes('dailylimitexceeded')) {
+    return 'API_QUOTA_EXCEEDED'
+  }
+
+  return rawMessage ? `Lỗi YouTube API: ${res.status} - ${rawMessage}` : `Lỗi YouTube API: ${res.status}`
+}
+
 export async function searchSongs(
   query: string,
   apiKey: string,
@@ -92,8 +109,7 @@ export async function searchSongs(
   })
 
   const res = await fetch(`${BASE_URL}/search?${params}`)
-  if (res.status === 403) throw new Error('API_QUOTA_EXCEEDED')
-  if (!res.ok) throw new Error(`Lỗi YouTube API: ${res.status}`)
+  if (!res.ok) throw new Error(await getYoutubeApiErrorMessage(res))
 
   const json = (await res.json()) as SearchResponse
   const items = Array.isArray(json.items) ? json.items : []

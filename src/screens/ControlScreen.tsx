@@ -16,6 +16,7 @@ import { UserSwitcher } from '../components/UserSwitcher'
 import { WaveformIcon } from '../components/WaveformIcon'
 import { phatCaiDatTrinhChieu, phatLenhPlayer, useBroadcastReceiver, useBroadcastSender } from '../hooks/useBroadcastSync'
 import { AUTH_SESSION_LABEL, coQuyen, USER_ROLE_LABEL, type UserPermission } from '../lib/auth'
+import { chuanHoaMucHangCho } from '../lib/queue'
 import { saveToSearchHistory } from '../lib/searchHistory'
 import { useYouTubeSearch } from '../hooks/useYouTubeSearch'
 import {
@@ -31,6 +32,7 @@ import {
   luuMaPhongRemote,
   luuRelayUrl,
   luuTokenPhongRemote,
+  taoBaseUrlUngDungLan,
   taoDanhSachRelayUrlUngVien,
   taoDuongDanTrinhChieu,
   taoDuongDanRemote,
@@ -56,6 +58,7 @@ import type {
   RemoteAction,
   RemotePresence,
   RemoteRelayStatus,
+  RemoteRoomState,
   ReplayMode,
   SearchSong,
   SyncMessage,
@@ -69,6 +72,9 @@ const MIN_QUEUE_PERCENT = 24
 const CONTROL_LAYOUT_STORAGE_KEY = 'karaokeyt-control-layout-v2'
 const EMPTY_REMOTE_PRESENCE: RemotePresence = { hosts: 0, remotes: 0, displays: 0 }
 const GUEST_CONTROL_PERMISSIONS = new Set<UserPermission>(['search', 'queue', 'playback', 'display'])
+const REMOTE_STATE_SEND_DELAY_MS = 250
+const REMOTE_STATE_APPLY_DELAY_MS = 350
+const REMOTE_STATE_ECHO_MUTE_MS = 900
 
 type MobileControlTarget = 'laptop' | 'tv'
 
@@ -76,8 +82,35 @@ function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n))
 }
 
-function laLoiKhongPhatDuocTrongApp(code: number) {
-  return code === 100 || code === 101 || code === 150
+function laLoiVideoKhongTonTai(code: number) {
+  return code === 100
+}
+
+function laLoiYoutubeChanNhung(code: number) {
+  return code === 101 || code === 150
+}
+
+function taoKhoaDongBoRemote(state: RemoteRoomState) {
+  return JSON.stringify({
+    queue: state.queue.map((song) => ({
+      queueId: song.queueId,
+      videoId: song.videoId,
+      title: song.title,
+      channelTitle: song.channelTitle,
+      thumbnail: song.thumbnail,
+      duration: song.duration ?? '',
+      addedAt: song.addedAt,
+    })),
+    currentIndex: state.currentIndex,
+    volume: state.volume,
+    playerMode: state.playerMode,
+    replayMode: state.replayMode,
+    displayAd: state.displayAd,
+    displayMode: state.displayMode,
+    lastPlayerCommand: state.lastPlayerCommand,
+    commandNonce: state.commandNonce,
+    commandValue: state.commandValue ?? null,
+  })
 }
 
 function docThongSoKhung() {
@@ -220,7 +253,14 @@ export function ControlScreen() {
   const queuePanelRef = useRef<HTMLDivElement | null>(null)
   const remoteConnectionRef = useRef<ReturnType<typeof taoKetNoiRelay> | null>(null)
   const activeButtonTimerRef = useRef<number | null>(null)
-  const { status, results, errorMessage } = useYouTubeSearch(query)
+  const lastAppliedRemoteStateKeyRef = useRef('')
+  const lastSentRemoteStateKeyRef = useRef('')
+  const lastLocalControlAtRef = useRef(0)
+  const remoteEchoMuteUntilRef = useRef(0)
+  const pendingRemoteApplyRef = useRef<RemoteRoomState | null>(null)
+  const pendingRemoteApplyTimerRef = useRef<number | null>(null)
+  const pendingRemoteSendRef = useRef<{ state: RemoteRoomState; key: string } | null>(null)
+  const pendingRemoteSendTimerRef = useRef<number | null>(null)
 
   const baiDangPhat = queue[currentIndex]
   const baiTiepTheo = useMemo(() => queue[currentIndex + 1], [queue, currentIndex])
@@ -257,8 +297,6 @@ export function ControlScreen() {
   const canUseRemote = canQueueSongs || canPlayback
   const tongBai = queue.length
   const soBaiSapToi = baiDangPhat ? Math.max(queue.length - currentIndex - 1, 0) : queue.length
-  const nhanKetQua =
-    status === 'success' ? `${results.length} kết quả` : status === 'loading' ? 'Đang tìm…' : 'Sẵn sàng'
   const hienThiPlayerMode = baiDangPhat ? (playerMode === 'idle' ? 'playing' : playerMode) : 'idle'
   const nhanTaiKhoan = userDangDangNhap?.name ?? 'Khách dùng nhanh'
   const nhanDongBo = authServerOnline
@@ -285,6 +323,9 @@ export function ControlScreen() {
   }, [replayMode])
 
   const [remoteRelayUrl, setRemoteRelayUrl] = useState(() => layRelayUrlMacDinh())
+  const { status, results, errorMessage } = useYouTubeSearch(query, remoteRelayUrl)
+  const nhanKetQua =
+    status === 'success' ? `${results.length} kết quả` : status === 'loading' ? 'Đang tìm…' : 'Sẵn sàng'
   const phonePairingRelayUrl = remotePhoneRelayUrl || remoteRelayUrl
   const phonePairingBaseUrl = remotePhoneBaseUrl || undefined
   const displayJoinUrl = useMemo(
@@ -300,16 +341,62 @@ export function ControlScreen() {
   const remoteMobileReady = remoteRelayReady && remotePresence.remotes > 0
   const remoteReadyToUse = remoteDisplayReady && remoteMobileReady
   const remoteTotalConnected = remotePresence.displays + remotePresence.remotes
-  const mobileRemoteCurrentStep = !remoteDisplayReady ? 1 : !remoteMobileReady ? 2 : 3
   const mobileTargetTitle = mobileControlTarget === 'laptop' ? 'Điều khiển laptop' : 'Điều khiển TV'
   const mobileTargetDevice = mobileControlTarget === 'laptop' ? 'laptop' : 'TV/laptop'
   const mobileTargetHint =
     mobileControlTarget === 'laptop'
-      ? 'Laptop mở màn hình trình chiếu, điện thoại dùng để tìm bài, xếp lượt và điều khiển phát.'
-      : 'TV hoặc laptop mở màn hình trình chiếu, điện thoại dùng để tìm bài, xếp lượt và điều khiển phát.'
+      ? 'Laptop làm màn chiếu. Điện thoại tìm bài và bấm phát.'
+      : 'TV/laptop làm màn chiếu. Điện thoại tìm bài và bấm phát.'
+  const mobileRemoteStatusLabel = remoteReadyToUse
+    ? 'Đã nối'
+    : !remoteRelayReady
+      ? 'Đang nối relay'
+      : remoteDisplayReady
+        ? 'Chờ điện thoại'
+        : 'Chờ màn chiếu'
+  const mobileRemoteStatusHint = remoteReadyToUse
+    ? 'Có thể qua tab Tìm để chọn bài.'
+    : remoteDisplayReady
+      ? 'Màn chiếu đã mở. Quét lại QR nếu điện thoại chưa vào đúng phòng.'
+      : `Mở trình chiếu trên ${mobileTargetDevice}, rồi giữ điện thoại ở cùng Wi-Fi.`
+  const soMayDieuKhienKhac = Math.max(remotePresence.hosts - 1, 0)
+  const nhanDongBoHangCho =
+    remoteRelayStatus === 'connected'
+      ? `Đồng bộ ${tongBai} bài · ${soMayDieuKhienKhac ? `${soMayDieuKhienKhac} máy điều khiển khác` : `${remotePresence.displays} màn chiếu`}`
+      : 'Chưa đồng bộ relay với máy tính/TV'
+
+  const huyHenApDungRemote = useCallback(() => {
+    if (pendingRemoteApplyTimerRef.current !== null) {
+      window.clearTimeout(pendingRemoteApplyTimerRef.current)
+      pendingRemoteApplyTimerRef.current = null
+    }
+    pendingRemoteApplyRef.current = null
+  }, [])
+
+  const danhDauDieuKhienNoiBo = useCallback(() => {
+    lastLocalControlAtRef.current = Date.now()
+    remoteEchoMuteUntilRef.current = 0
+    huyHenApDungRemote()
+    if (pendingRemoteSendTimerRef.current !== null) {
+      window.clearTimeout(pendingRemoteSendTimerRef.current)
+      pendingRemoteSendTimerRef.current = null
+    }
+    pendingRemoteSendRef.current = null
+  }, [huyHenApDungRemote])
 
   const thongBao = useCallback((message: string) => {
     setToast(message)
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (pendingRemoteApplyTimerRef.current !== null) {
+        window.clearTimeout(pendingRemoteApplyTimerRef.current)
+      }
+      if (pendingRemoteSendTimerRef.current !== null) {
+        window.clearTimeout(pendingRemoteSendTimerRef.current)
+      }
+    }
   }, [])
 
   const chonCheDoDieuKhienMobile = useCallback((target: MobileControlTarget) => {
@@ -358,7 +445,11 @@ export function ControlScreen() {
           info?.addresses[0]
 
         if (candidate?.address) {
-          matched = { relayUrl: relayCandidateUrl, address: candidate.address, baseUrl: candidate.url || `http://${candidate.address}:8787/` }
+          matched = {
+            relayUrl: relayCandidateUrl,
+            address: candidate.address,
+            baseUrl: taoBaseUrlUngDungLan(candidate.address, candidate.url || `http://${candidate.address}:8787/`),
+          }
           break
         }
       }
@@ -385,7 +476,7 @@ export function ControlScreen() {
 
         setRemotePhoneBaseUrl(matched.baseUrl)
         setRemotePhoneRelayUrl(doiHostUrl(matched.relayUrl, matched.address))
-        setRemotePhoneLinkHint(`QR/link đang dùng relay LAN ${matched.baseUrl}. Điện thoại cần cùng Wi-Fi với laptop.`)
+        setRemotePhoneLinkHint(`QR/link đang dùng IP LAN ${matched.address}. Điện thoại cần cùng Wi-Fi với laptop.`)
       } catch {
         setRemotePhoneBaseUrl('')
         setRemotePhoneRelayUrl('')
@@ -418,13 +509,14 @@ export function ControlScreen() {
   }, [])
 
   const guiLenhTrinhChieu = useCallback((cmd: PlayerCommand, value?: number) => {
+    danhDauDieuKhienNoiBo()
     phatLenhPlayer(cmd, value)
     setRelayPlayerCommand((current) => ({
       cmd,
       value,
       nonce: current.nonce + 1,
     }))
-  }, [])
+  }, [danhDauDieuKhienNoiBo])
 
   const duaDenKhung = useCallback((panel: 'command' | 'queue') => {
     if (isMobileLayout) {
@@ -454,6 +546,7 @@ export function ControlScreen() {
         return
       }
 
+      danhDauDieuKhienNoiBo()
       nextSong()
       setPlayerMode('playing')
       thongBao(msg.reason === 'ad-long' ? 'Đã bỏ qua bài vì quảng cáo quá lâu' : 'Đã bỏ qua bài hiện tại')
@@ -464,8 +557,15 @@ export function ControlScreen() {
       if (!baiDangPhat) return
       if (msg.videoId && baiDangPhat.videoId !== msg.videoId) return
 
-      if (laLoiKhongPhatDuocTrongApp(msg.code)) {
+      if (laLoiYoutubeChanNhung(msg.code)) {
+        setPlayerMode('playing')
+        thongBao(`Video chặn nhúng, đã mở trực tiếp trên YouTube: ${baiDangPhat.title}`)
+        return
+      }
+
+      if (laLoiVideoKhongTonTai(msg.code)) {
         if (currentIndex < queue.length - 1) {
+          danhDauDieuKhienNoiBo()
           removeSong(baiDangPhat.queueId)
           setPlayerMode('playing')
           thongBao(`Đã bỏ qua bài không phát được trong app: ${baiDangPhat.title}`)
@@ -491,12 +591,14 @@ export function ControlScreen() {
 
       if (replayMode === 'repeat-all' && queue.length) {
         if (currentIndex >= queue.length - 1) {
+          danhDauDieuKhienNoiBo()
           setCurrentIndex(0)
           setPlayerMode('playing')
           thongBao('Đã quay lại đầu danh sách')
           return
         }
 
+        danhDauDieuKhienNoiBo()
         nextSong()
         setPlayerMode('playing')
         thongBao('Đã tự chuyển sang bài tiếp theo')
@@ -504,6 +606,7 @@ export function ControlScreen() {
       }
 
       if (autoplayNext) {
+        danhDauDieuKhienNoiBo()
         nextSong()
         setPlayerMode('playing')
         thongBao('Đã tự chuyển sang bài tiếp theo')
@@ -511,7 +614,7 @@ export function ControlScreen() {
         setPlayerMode('paused')
       }
     }
-  }, [autoplayNext, baiDangPhat, canPlayback, currentIndex, guiLenhTrinhChieu, nextSong, queue.length, removeSong, replayMode, setCurrentIndex, thongBao])
+  }, [autoplayNext, baiDangPhat, canPlayback, currentIndex, danhDauDieuKhienNoiBo, guiLenhTrinhChieu, nextSong, queue.length, removeSong, replayMode, setCurrentIndex, thongBao])
 
   useBroadcastReceiver(onMsg)
 
@@ -631,8 +734,14 @@ export function ControlScreen() {
     } else {
       url.searchParams.delete('token')
     }
+    const normalizedRelayUrl = chuanHoaRelayUrl(remoteRelayUrl)
+    if (normalizedRelayUrl) {
+      url.searchParams.set('relay', normalizedRelayUrl)
+    } else {
+      url.searchParams.delete('relay')
+    }
     window.history.replaceState({}, '', url.toString())
-  }, [remoteRoomCode, remoteRoomToken])
+  }, [remoteRelayUrl, remoteRoomCode, remoteRoomToken])
 
   useEffect(() => {
     if (!activeResizer || !isThreePane) return
@@ -863,24 +972,27 @@ export function ControlScreen() {
 
   const themCuoiHangCho = useCallback((song: SearchSong) => {
     if (!canQueueSongs) return
+    danhDauDieuKhienNoiBo()
     addSong(song)
     setRecentAction({ videoId: song.videoId, message: 'Đã thêm vào cuối hàng chờ' })
     setHighlightPanel('queue')
     duaDenKhung('queue')
     thongBao(`Đã thêm vào cuối hàng chờ`)
-  }, [addSong, canQueueSongs, duaDenKhung, thongBao])
+  }, [addSong, canQueueSongs, danhDauDieuKhienNoiBo, duaDenKhung, thongBao])
 
   const themKeTiep = useCallback((song: SearchSong) => {
     if (!canQueueSongs) return
+    danhDauDieuKhienNoiBo()
     addSongTiepTheo(song)
     setRecentAction({ videoId: song.videoId, message: 'Đã xếp vào lượt kế tiếp' })
     setHighlightPanel('queue')
     duaDenKhung('queue')
     thongBao('Đã xếp bài vào lượt kế tiếp')
-  }, [addSongTiepTheo, canQueueSongs, duaDenKhung, thongBao])
+  }, [addSongTiepTheo, canQueueSongs, danhDauDieuKhienNoiBo, duaDenKhung, thongBao])
 
   const phatNgay = useCallback((song: SearchSong) => {
     if (!canQueueSongs || !canPlayback) return
+    danhDauDieuKhienNoiBo()
     addSongVaPhatNgay(song)
     guiLenhTrinhChieu('play')
     setPlayerMode('playing')
@@ -888,7 +1000,7 @@ export function ControlScreen() {
     setHighlightPanel('command')
     duaDenKhung('command')
     thongBao('Đã chuyển sang bài vừa chọn')
-  }, [addSongVaPhatNgay, canPlayback, canQueueSongs, duaDenKhung, guiLenhTrinhChieu, thongBao])
+  }, [addSongVaPhatNgay, canPlayback, canQueueSongs, danhDauDieuKhienNoiBo, duaDenKhung, guiLenhTrinhChieu, thongBao])
 
   const phatTuHangCho = useCallback((queueId: string) => {
     if (!canPlayback) return
@@ -942,6 +1054,7 @@ export function ControlScreen() {
 
     if (action.type === 'REMOVE_QUEUE_ITEM') {
       if (!canQueueSongs) return
+      danhDauDieuKhienNoiBo()
       removeSong(action.queueId)
       thongBao('Remote đã xoá một bài khỏi hàng chờ')
     }
@@ -949,6 +1062,7 @@ export function ControlScreen() {
     batDauPhat,
     canPlayback,
     canQueueSongs,
+    danhDauDieuKhienNoiBo,
     phatLaiTuDau,
     phatTuHangCho,
     quaBaiTruoc,
@@ -962,10 +1076,68 @@ export function ControlScreen() {
   const xoaTatCa = useCallback(() => {
     if (!queue.length || !canQueueSongs) return
     if (!window.confirm('Xoá toàn bộ hàng chờ hiện tại?')) return
+    danhDauDieuKhienNoiBo()
     nhanNut('queue-clear')
     clearQueue()
     thongBao('Đã xoá toàn bộ hàng chờ')
-  }, [canQueueSongs, clearQueue, nhanNut, queue.length, thongBao])
+  }, [canQueueSongs, clearQueue, danhDauDieuKhienNoiBo, nhanNut, queue.length, thongBao])
+
+  const apDungTrangThaiRemote = useCallback((nextState: RemoteRoomState) => {
+    const stateKey = taoKhoaDongBoRemote(nextState)
+    if (stateKey === lastSentRemoteStateKeyRef.current || stateKey === lastAppliedRemoteStateKeyRef.current) {
+      return
+    }
+
+    const now = Date.now()
+    if (now - lastLocalControlAtRef.current < REMOTE_STATE_ECHO_MUTE_MS) {
+      return
+    }
+
+    pendingRemoteApplyRef.current = nextState
+    if (pendingRemoteApplyTimerRef.current !== null) {
+      window.clearTimeout(pendingRemoteApplyTimerRef.current)
+    }
+
+    pendingRemoteApplyTimerRef.current = window.setTimeout(() => {
+      pendingRemoteApplyTimerRef.current = null
+      const stateToApply = pendingRemoteApplyRef.current
+      pendingRemoteApplyRef.current = null
+      if (!stateToApply) return
+
+      const scheduledKey = taoKhoaDongBoRemote(stateToApply)
+      if (scheduledKey === lastSentRemoteStateKeyRef.current || scheduledKey === lastAppliedRemoteStateKeyRef.current) {
+        return
+      }
+      if (Date.now() - lastLocalControlAtRef.current < REMOTE_STATE_ECHO_MUTE_MS) {
+        return
+      }
+
+      const nextQueue = stateToApply.queue
+        .map((item, index) => chuanHoaMucHangCho(item, Date.now() + index))
+        .filter((item): item is NonNullable<ReturnType<typeof chuanHoaMucHangCho>> => item !== null)
+      const nextIndex = nextQueue.length ? clamp(stateToApply.currentIndex, 0, nextQueue.length - 1) : 0
+
+      lastAppliedRemoteStateKeyRef.current = scheduledKey
+      remoteEchoMuteUntilRef.current = Date.now() + REMOTE_STATE_ECHO_MUTE_MS
+
+      useQueueStore.setState({
+        queue: nextQueue,
+        currentIndex: nextIndex,
+      })
+      setVolume(clamp(Math.round(stateToApply.volume), 0, 100))
+      setPlayerMode(stateToApply.playerMode)
+      setDisplayMode(stateToApply.displayMode)
+      setRelayPlayerCommand({
+        cmd: stateToApply.lastPlayerCommand,
+        value: stateToApply.commandValue,
+        nonce: stateToApply.commandNonce,
+      })
+      capNhat({
+        replayMode: stateToApply.replayMode,
+        displayAd: stateToApply.displayAd,
+      })
+    }, REMOTE_STATE_APPLY_DELAY_MS)
+  }, [capNhat])
 
   const moDisplayThanhCong = useCallback((mode: 'desktop' | 'browser') => {
     setDisplayMode(mode)
@@ -1022,9 +1194,9 @@ export function ControlScreen() {
         setRemoteRelayUrl(localRelayUrl)
         luuRelayUrl(localRelayUrl)
       }
-      setRemotePhoneBaseUrl(`http://${host}:8787/`)
+      setRemotePhoneBaseUrl(taoBaseUrlUngDungLan(host, `http://${host}:8787/`))
       setRemotePhoneRelayUrl(doiHostUrl(relayForPhone, host))
-      setRemotePhoneLinkHint(`Đã dùng IP LAN ${host} qua relay http://${host}:8787/. Điện thoại cần cùng Wi-Fi và relay phải đang chạy trên laptop.`)
+      setRemotePhoneLinkHint(`Đã dùng IP LAN ${host}. Điện thoại cần cùng Wi-Fi và relay phải đang chạy trên laptop.`)
       thongBao(`Đã dùng IP LAN ${host} cho QR điện thoại`)
     } catch {
       thongBao('IP LAN không hợp lệ. Ví dụ đúng: 192.168.1.50')
@@ -1056,6 +1228,7 @@ export function ControlScreen() {
         setRemoteRelayMessage(message ?? null)
       },
       onPresenceChange: setRemotePresence,
+      onRoomState: apDungTrangThaiRemote,
       onRemoteAction: xuLyLenhRemote,
     })
 
@@ -1064,11 +1237,11 @@ export function ControlScreen() {
       connection.close()
       remoteConnectionRef.current = null
     }
-  }, [nguoiDungHienTai?.name, remoteRelayUrl, remoteRoomCode, remoteRoomToken, xuLyLenhRemote])
+  }, [apDungTrangThaiRemote, nguoiDungHienTai?.name, remoteRelayUrl, remoteRoomCode, remoteRoomToken, xuLyLenhRemote])
 
   const guiTrangThaiRemote = useCallback((nextDisplayAd = displayAd) => {
     if (!remoteConnectionRef.current || remoteRelayStatus !== 'connected') return false
-    remoteConnectionRef.current.sendState({
+    const nextState: RemoteRoomState = {
       roomCode: remoteRoomCode,
       hostName: nguoiDungHienTai?.name ?? 'Host',
       queue,
@@ -1082,7 +1255,30 @@ export function ControlScreen() {
       commandNonce: relayPlayerCommand.nonce,
       commandValue: relayPlayerCommand.value,
       updatedAt: Date.now(),
-    })
+    }
+    const stateKey = taoKhoaDongBoRemote(nextState)
+    if (stateKey === lastAppliedRemoteStateKeyRef.current) {
+      lastSentRemoteStateKeyRef.current = stateKey
+      return false
+    }
+    if (stateKey === lastSentRemoteStateKeyRef.current || Date.now() < remoteEchoMuteUntilRef.current) {
+      return false
+    }
+
+    pendingRemoteSendRef.current = { state: nextState, key: stateKey }
+    if (pendingRemoteSendTimerRef.current !== null) {
+      window.clearTimeout(pendingRemoteSendTimerRef.current)
+    }
+
+    pendingRemoteSendTimerRef.current = window.setTimeout(() => {
+      pendingRemoteSendTimerRef.current = null
+      const pending = pendingRemoteSendRef.current
+      pendingRemoteSendRef.current = null
+      if (!pending || !remoteConnectionRef.current || pending.key === lastAppliedRemoteStateKeyRef.current) return
+      if (Date.now() < remoteEchoMuteUntilRef.current) return
+      lastSentRemoteStateKeyRef.current = pending.key
+      remoteConnectionRef.current.sendState(pending.state)
+    }, REMOTE_STATE_SEND_DELAY_MS)
     return true
   }, [
     currentIndex,
@@ -1366,6 +1562,10 @@ export function ControlScreen() {
         </div>
       </div>
       <div className="sectionSub">Kéo để đổi thứ tự. Bấm Phát ở từng dòng để nhảy bài ngay.</div>
+      <div className={`queueSyncStatus ${remoteRelayStatus === 'connected' ? 'queueSyncStatusReady' : ''}`}>
+        <span className="queueSyncDot" />
+        <span>{nhanDongBoHangCho}</span>
+      </div>
       <div className={`panelScrollArea queueScrollArea ${isMobileLayout ? 'queueScrollAreaMobile' : ''}`}>
         {queue.length ? (
           <QueueList
@@ -1373,10 +1573,14 @@ export function ControlScreen() {
             currentIndex={currentIndex}
             activeActionKey={activeButtonKey}
             disabled={!(canQueueSongs && canPlayback)}
-            onMove={(from, to) => moveSong(from, to)}
+            onMove={(from, to) => {
+              danhDauDieuKhienNoiBo()
+              moveSong(from, to)
+            }}
             onPlayNow={phatTuHangCho}
             onRemove={(id) => {
               if (!canQueueSongs) return
+              danhDauDieuKhienNoiBo()
               nhanNut(`queue-remove:${id}`)
               removeSong(id)
             }}
@@ -1637,73 +1841,44 @@ export function ControlScreen() {
                 </section>
               )}
               {mobileTab === 'queue' && (
-                <section className="panel" style={{ minHeight: 'calc(100dvh - 200px)' }}>
+                <section className="panel mobileQueuePanel" style={{ minHeight: 'calc(100dvh - 200px)' }}>
                   {queueSectionContent}
                 </section>
               )}
               {mobileTab === 'remote' && (
-                <section className="panel mobileRemotePanel" style={{ minHeight: 'calc(100dvh - 200px)' }}>
-                  <div className="panelTitleRow">
-                    <div>
-                      <div className="panelEyebrow">Liên kết thiết bị</div>
-                      <div className="panelTitle">{mobileTargetTitle}</div>
-                    </div>
-                    <button
-                      className="ghost compactButton buttonToneMuted buttonWithIcon"
-                      onClick={() => setMobileControlTarget(null)}
-                      type="button"
-                    >
-                      <AppIcon name="menu" className="buttonIcon" />
-                      <span className="buttonLabel">Đổi chế độ</span>
-                    </button>
-                  </div>
-                  <div className="sectionSub">{mobileTargetHint}</div>
-                  <div className="mobileRemoteHero">
-                    <div>
-                      <div className="mobileRemoteHeroLabel">Mã kết nối</div>
-                      <div className="mobileRemoteHeroCode">{remoteRoomCode}</div>
-                    </div>
-                    <div className={`mobileRemoteHeroState ${remoteReadyToUse ? 'statusChipSuccess' : remoteRelayReady ? 'statusChipAccent' : 'statusChipWarning'}`}>
-                      {remoteReadyToUse ? 'Sẵn sàng' : remoteRelayReady ? 'Đang ghép' : 'Relay lỗi'}
-                    </div>
-                  </div>
-                  <div className="mobileRemoteSteps" aria-label={`3 bước ${mobileTargetTitle.toLowerCase()}`}>
-                    <div className={`mobileRemoteStep ${remoteDisplayReady ? 'mobileRemoteStepReady' : ''} ${mobileRemoteCurrentStep === 1 ? 'mobileRemoteStepActive' : ''}`}>
-                      <span className="mobileRemoteStepIcon">
-                        <AppIcon name="screen" className="buttonIcon" />
-                      </span>
+                <section className="panel mobileRemotePanel mobileRemotePanelCompact" style={{ minHeight: 'calc(100dvh - 200px)' }}>
+                  <div className="mobileRemoteCompactHero">
+                    <div className="mobileRemoteCompactTop">
                       <div>
-                        <div className="mobileRemoteStepTitle">1. Mở {mobileTargetDevice}</div>
-                        <div className="hint">
-                          {remoteDisplayReady
-                            ? 'Đã thấy màn hình trình chiếu.'
-                            : `Mở KaraokeYT trên ${mobileTargetDevice}, sau đó bấm Mở màn hình trình chiếu.`}
-                        </div>
+                        <div className="panelEyebrow">Kết nối</div>
+                        <div className="panelTitle">{mobileTargetTitle}</div>
                       </div>
-                      <span className={`miniBadge ${remoteDisplayReady ? 'miniBadgeSuccess' : ''}`}>{remoteDisplayReady ? 'Xong' : 'Chờ'}</span>
+                      <button
+                        className="ghost compactButton buttonToneMuted buttonWithIcon"
+                        onClick={() => setMobileControlTarget(null)}
+                        type="button"
+                      >
+                        <AppIcon name="menu" className="buttonIcon" />
+                        <span className="buttonLabel">Đổi</span>
+                      </button>
                     </div>
-                    <div className={`mobileRemoteStep ${remoteMobileReady ? 'mobileRemoteStepReady' : ''} ${mobileRemoteCurrentStep === 2 ? 'mobileRemoteStepActive' : ''}`}>
-                      <span className="mobileRemoteStepIcon">
-                        <AppIcon name="control" className="buttonIcon" />
-                      </span>
+
+                    <div className="mobileRemoteCodeRow">
                       <div>
-                        <div className="mobileRemoteStepTitle">2. Ghép điện thoại</div>
-                        <div className="hint">{remoteMobileReady ? 'Điện thoại đã vào đúng phòng.' : 'Bấm QR / mã kết nối nếu cần quét lại hoặc nhập mã thủ công.'}</div>
+                        <div className="mobileRemoteHeroLabel">Mã TV</div>
+                        <div className="mobileRemoteHeroCode">{remoteRoomCode}</div>
                       </div>
-                      <span className={`miniBadge ${remoteMobileReady ? 'miniBadgeSuccess' : ''}`}>{remoteMobileReady ? 'Xong' : 'Chờ'}</span>
+                      <div className={`mobileRemoteHeroState ${remoteReadyToUse ? 'statusChipSuccess' : remoteRelayReady ? 'statusChipAccent' : 'statusChipWarning'}`}>
+                        {mobileRemoteStatusLabel}
+                      </div>
                     </div>
-                    <div className={`mobileRemoteStep ${remoteReadyToUse ? 'mobileRemoteStepReady' : ''} ${mobileRemoteCurrentStep === 3 ? 'mobileRemoteStepActive' : ''}`}>
-                      <span className="mobileRemoteStepIcon">
-                        <AppIcon name="play" className="buttonIcon" />
-                      </span>
-                      <div>
-                        <div className="mobileRemoteStepTitle">3. Tìm bài và phát</div>
-                        <div className="hint">{remoteReadyToUse ? 'Có thể qua tab Tìm để chọn bài và điều khiển màn hình chiếu.' : 'Khi đủ màn chiếu và điện thoại, các nút phát sẽ điều khiển từ xa.'}</div>
-                      </div>
-                      <span className={`miniBadge ${remoteReadyToUse ? 'miniBadgeSuccess' : ''}`}>{remoteReadyToUse ? 'OK' : 'Chờ'}</span>
+
+                    <div className="mobileRemoteCompactHint">
+                      {mobileTargetHint} {mobileRemoteStatusHint}
                     </div>
                   </div>
-                  <div className="mobileRemoteActions">
+
+                  <div className="mobileRemoteActions mobileRemoteActionsCompact">
                     <button
                       className={`primary buttonToneAccent buttonWithIcon ${activeButtonKey === 'open-remote' ? 'buttonStateActive' : ''}`}
                       disabled={!canUseRemote}
@@ -1715,7 +1890,7 @@ export function ControlScreen() {
                       type="button"
                     >
                       <AppIcon name="camera" className="buttonIcon" />
-                      <span className="buttonLabel">Quét QR / mã TV</span>
+                      <span className="buttonLabel">Quét QR hoặc nhập mã</span>
                     </button>
                     <button
                       className="ghost compactButton buttonToneMuted buttonWithIcon"
@@ -1723,10 +1898,10 @@ export function ControlScreen() {
                       type="button"
                     >
                       <AppIcon name="search" className="buttonIcon" />
-                      <span className="buttonLabel">Tìm bài ngay</span>
+                      <span className="buttonLabel">Tìm bài</span>
                     </button>
                   </div>
-                  <div className="headerConnStatus mobileRemoteConnectionStatus">
+                  <div className="headerConnStatus mobileRemoteConnectionStatus mobileRemoteConnectionStatusCompact">
                     <span className={`headerConnDot ${remoteRelayStatus === 'connected' ? 'headerConnDot--connected' : remoteRelayStatus === 'error' ? 'headerConnDot--error' : ''}`} />
                     <span>
                       {remoteRelayStatus === 'connected' ? 'Relay đã kết nối' : remoteRelayStatus === 'connecting' ? 'Đang kết nối relay...' : 'Lỗi relay'}
@@ -1801,8 +1976,8 @@ export function ControlScreen() {
           <main className="mobileModePicker" aria-label="Chọn cách điều khiển">
             <section className="mobileModeHero">
               <div className="panelEyebrow">Bắt đầu</div>
-              <h1>Chọn màn hình muốn điều khiển</h1>
-              <p>Điện thoại sẽ dùng giao diện KaraokeYT đầy đủ: tìm bài, phát, quản lý lượt hát và kết nối màn chiếu.</p>
+              <h1>Chọn màn chiếu</h1>
+              <p>Điện thoại dùng để tìm bài, xếp lượt và bấm phát.</p>
             </section>
             <div className="mobileModeGrid">
               <button
@@ -1814,7 +1989,7 @@ export function ControlScreen() {
                   <AppIcon name="screen" className="buttonIcon" />
                 </span>
                 <span className="mobileModeTitle">Remote lên laptop</span>
-                <span className="mobileModeText">Laptop/Mac/Windows làm màn hình trình chiếu. Điện thoại tìm bài, xếp hàng và bấm phát.</span>
+                <span className="mobileModeText">Laptop làm màn trình chiếu.</span>
                 <span className="mobileModeAction">Chọn laptop</span>
               </button>
               <button
@@ -1826,7 +2001,7 @@ export function ControlScreen() {
                   <AppIcon name="control" className="buttonIcon" />
                 </span>
                 <span className="mobileModeTitle">Remote TV</span>
-                <span className="mobileModeText">TV hoặc trình duyệt trên TV mở màn hình trình chiếu. Điện thoại điều khiển và quản lý lượt hát.</span>
+                <span className="mobileModeText">TV hoặc trình duyệt TV làm màn chiếu.</span>
                 <span className="mobileModeAction">Chọn TV</span>
               </button>
             </div>

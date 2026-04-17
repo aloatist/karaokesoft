@@ -29,6 +29,7 @@ export function NowPlayingMini({ currentSong, isPlaying, onPlayPause, onClick, d
         )}
         <div className="nowPlayingMiniInfo">
           {isPlaying && <WaveformIcon isPlaying={isPlaying} size="sm" />}
+          <div className="nowPlayingMiniSource">{isPlaying ? 'Đang phát trên YouTube' : 'YouTube'}</div>
           <div className="nowPlayingMiniTitle">{currentSong.title}</div>
         </div>
       </div>
