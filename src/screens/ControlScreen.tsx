@@ -82,6 +82,7 @@ const DISPLAY_RUN_MODE_STORAGE_KEY = 'karaokeyt-display-run-mode'
 const DISPLAY_ACTIVE_TARGET_STORAGE_KEY = 'karaokeyt-display-active-target'
 
 type MobileControlTarget = 'laptop' | 'tv'
+type DisplayRunChoice = DisplayTarget | 'parallel'
 
 function chuanHoaCheDoChayManChieu(input: unknown): DisplayRunMode {
   return input === 'single' ? 'single' : 'parallel'
@@ -398,10 +399,10 @@ export function ControlScreen() {
       ? 'Chờ TV mở link'
       : 'Relay chưa sẵn sàng'
   const nhanCheDoChayManChieu = displayRunMode === 'parallel'
-    ? 'Song song'
+    ? 'Chạy song song'
     : activeDisplayTarget === 'tv'
-      ? 'Chỉ TV'
-      : 'Chỉ laptop'
+      ? 'Chỉ 1 màn hình tivi'
+      : 'Chỉ 1 màn hình laptop'
   const soMayDieuKhienKhac = Math.max(remotePresence.hosts - 1, 0)
   const nhanDongBoHangCho =
     remoteRelayStatus === 'connected'
@@ -451,14 +452,20 @@ export function ControlScreen() {
     window.open(displayJoinUrl, '_blank', 'noopener')
   }, [danhDauDieuKhienNoiBo, displayJoinUrl])
 
-  const chonCheDoChayManChieu = useCallback((mode: DisplayRunMode) => {
+  const chonCheDoChayManChieu = useCallback((choice: DisplayRunChoice) => {
     danhDauDieuKhienNoiBo()
-    setDisplayRunMode(mode)
-    if (mode === 'single') {
-      setActiveDisplayTarget(mobileControlTarget ?? 'laptop')
+    if (choice === 'parallel') {
+      setDisplayRunMode('parallel')
+      thongBao('Chạy song song laptop và tivi')
+      return
     }
-    thongBao(mode === 'parallel' ? 'Màn chiếu chạy song song' : 'Chỉ chạy màn chiếu đang chọn')
-  }, [danhDauDieuKhienNoiBo, mobileControlTarget, thongBao])
+
+    setDisplayRunMode('single')
+    setActiveDisplayTarget(choice)
+    setMobileControlTarget(choice)
+    setMobileTab('remote')
+    thongBao(choice === 'tv' ? 'Chỉ chạy màn hình tivi' : 'Chỉ chạy màn hình laptop')
+  }, [danhDauDieuKhienNoiBo, thongBao])
 
   useEffect(() => {
     if (remoteDisplayReady && displayMode === 'idle') {
@@ -1942,27 +1949,35 @@ export function ControlScreen() {
 
                     <div className="mobileDisplayRunMode" role="group" aria-label="Cách chạy màn chiếu">
                       <button
+                        className={`compactButton ${displayRunMode === 'single' && activeDisplayTarget === 'laptop' ? 'primary buttonToneAccent' : 'ghost buttonToneMuted'}`}
+                        data-pressed={displayRunMode === 'single' && activeDisplayTarget === 'laptop'}
+                        onClick={() => chonCheDoChayManChieu('laptop')}
+                        type="button"
+                      >
+                        Chỉ 1 màn hình laptop
+                      </button>
+                      <button
+                        className={`compactButton ${displayRunMode === 'single' && activeDisplayTarget === 'tv' ? 'primary buttonToneAccent' : 'ghost buttonToneMuted'}`}
+                        data-pressed={displayRunMode === 'single' && activeDisplayTarget === 'tv'}
+                        onClick={() => chonCheDoChayManChieu('tv')}
+                        type="button"
+                      >
+                        Chỉ 1 màn hình tivi
+                      </button>
+                      <button
                         className={`compactButton ${displayRunMode === 'parallel' ? 'primary buttonToneAccent' : 'ghost buttonToneMuted'}`}
                         data-pressed={displayRunMode === 'parallel'}
                         onClick={() => chonCheDoChayManChieu('parallel')}
                         type="button"
                       >
-                        Song song
-                      </button>
-                      <button
-                        className={`compactButton ${displayRunMode === 'single' ? 'primary buttonToneAccent' : 'ghost buttonToneMuted'}`}
-                        data-pressed={displayRunMode === 'single'}
-                        onClick={() => chonCheDoChayManChieu('single')}
-                        type="button"
-                      >
-                        Chỉ 1 màn
+                        Chạy song song
                       </button>
                     </div>
 
                     <div className="mobileDisplayRunHint">
                       {displayRunMode === 'parallel'
-                        ? 'Laptop và TV có thể cùng làm màn chiếu.'
-                        : `Chỉ phát trên ${activeDisplayTarget === 'tv' ? 'TV' : 'laptop'}, màn còn lại tự về chờ.`}
+                        ? 'Laptop và tivi cùng làm màn chiếu.'
+                        : `Chỉ phát trên ${activeDisplayTarget === 'tv' ? 'tivi' : 'laptop'}, màn còn lại tự về chờ.`}
                     </div>
                   </div>
 

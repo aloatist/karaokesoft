@@ -421,7 +421,7 @@ export function DisplayScreen() {
             <div className="displayStandbyEyebrow">Màn chiếu tạm chờ</div>
             <div className="displayStandbyTitle">{nhanManChieuHienTai} không phát trong chế độ chỉ 1 màn</div>
             <div className="displayStandbyText">
-              Đang ưu tiên {nhanManChieuDangChon}. Đổi sang Song song trên điện thoại nếu muốn cả hai màn cùng phát.
+              Đang ưu tiên {nhanManChieuDangChon}. Đổi sang Chạy song song trên điện thoại nếu muốn cả hai màn cùng phát.
             </div>
           </div>
         </div>

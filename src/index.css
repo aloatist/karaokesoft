@@ -2234,6 +2234,76 @@ button[data-pressed='true'] {
   margin-bottom: 6px;
 }
 
+.updateStatusCard {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.updateStatusMessage {
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  color: #ddd9e6;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.updateStatusMessageAccent {
+  border-color: rgba(255, 122, 40, 0.28);
+  background: rgba(255, 122, 40, 0.1);
+  color: #ffd4b9;
+}
+
+.updateStatusMessageError {
+  border-color: rgba(239, 68, 68, 0.28);
+  background: rgba(239, 68, 68, 0.1);
+  color: #ffc4c4;
+}
+
+.updateProgress {
+  display: grid;
+  gap: 6px;
+}
+
+.updateProgressTrack {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.updateProgressBar {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(135deg, var(--primary), var(--primary-strong));
+  transition: width 180ms ease;
+}
+
+.updateReleaseNotes {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.updateReleaseNotes summary {
+  cursor: pointer;
+  color: #ffd4b9;
+  font-weight: 800;
+}
+
+.updateReleaseNotes div {
+  margin-top: 8px;
+  white-space: pre-wrap;
+}
+
+.updateStatusActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .settingsBannerCard {
   padding: 14px;
   border-radius: 18px;
@@ -2784,7 +2854,7 @@ button[data-pressed='true'] {
 
 .mobileDisplayRunMode {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: 1fr;
   gap: 8px;
   padding: 5px;
   border-radius: 8px;
@@ -2796,6 +2866,8 @@ button[data-pressed='true'] {
   width: 100%;
   min-height: 40px;
   justify-content: center;
+  white-space: normal;
+  text-align: center;
 }
 
 .mobileDisplayRunHint {

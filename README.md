@@ -191,6 +191,13 @@ npm run build:linux
 - `build:win` nen chay tren Windows hoac CI Windows
 - `build:linux` nen chay tren Linux hoac CI Linux
 
+Cap nhat khi co phien ban moi:
+
+- Cau hinh `VITE_UPDATE_MANIFEST_URL` tro den file `version.json` public tren server/GitHub Pages/CDN.
+- Manifest co the dung mau `public/update-manifest.example.json`, gom `version`, `minimumVersion`, `releaseNotes` va link tai theo nen tang.
+- Trong app vao `Cai dat` -> `Cap nhat ung dung` -> `Kiem tra`.
+- Desktop ban da dong goi dung them `electron-updater` voi GitHub Release; APK/web se mo link tai tu manifest.
+
 Desktop chay ban chua dong goi:
 
 ```bash

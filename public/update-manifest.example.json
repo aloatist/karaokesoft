@@ -1,0 +1,12 @@
+{
+  "version": "0.1.1",
+  "minimumVersion": "0.1.0",
+  "releaseDate": "2026-04-18",
+  "releaseNotes": "Sua loi ket noi mobile va bo sung che do man chieu.",
+  "downloadUrl": "https://example.com/karaokeyt/latest",
+  "windowsDownloadUrl": "https://example.com/karaokeyt/KaraokeYT-0.1.1-win-x64.exe",
+  "macDownloadUrl": "https://example.com/karaokeyt/KaraokeYT-0.1.1-mac-arm64.dmg",
+  "linuxDownloadUrl": "https://example.com/karaokeyt/KaraokeYT-0.1.1-linux-arm64.AppImage",
+  "androidDownloadUrl": "https://example.com/karaokeyt/KaraokeYT-0.1.1.apk",
+  "webUrl": "https://example.com/karaokeyt"
+}

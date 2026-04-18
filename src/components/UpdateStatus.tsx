@@ -1,263 +1,243 @@
-import { useState, useEffect } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { APP_VERSION, kiemTraCapNhatUngDung, moLinkCapNhat, type AppUpdateCheckResult } from '../services/appUpdate'
+import {
+  caiDatCapNhatDesktop,
+  dangChayDesktop,
+  kiemTraCapNhatDesktop,
+  layTrangThaiCapNhatDesktop,
+  ngheCapNhatDesktop,
+  taiCapNhatDesktop,
+} from '../services/desktopBridge'
+import type { UpdateInfo, UpdateProgress, UpdateState } from '../types'
 
-type UpdateState = 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'error'
+function nhanTrangThai(state: UpdateState, manifestResult: AppUpdateCheckResult | null, error: string | null) {
+  if (error) return error
+  if (manifestResult?.required) return `Cần cập nhật tối thiểu ${manifestResult.minimumVersion}`
+  if (manifestResult?.hasUpdate) return `Có bản mới ${manifestResult.latestVersion}`
 
-interface UpdateInfo {
-  version: string
-  releaseDate?: string
-  releaseNotes?: string
+  switch (state) {
+    case 'checking':
+      return 'Đang kiểm tra bản mới...'
+    case 'available':
+      return 'Có bản mới cho bản desktop'
+    case 'not-available':
+      return 'Bạn đang dùng bản mới nhất'
+    case 'downloading':
+      return 'Đang tải bản cập nhật...'
+    case 'downloaded':
+      return 'Cập nhật đã tải xong'
+    case 'error':
+      return 'Không kiểm tra được cập nhật'
+    default:
+      return 'Bấm kiểm tra để xem có phiên bản mới hay không'
+  }
 }
 
-interface DownloadProgress {
-  percent: number
-  bytesPerSecond?: number
+function dinhDangNgay(input?: string | null) {
+  if (!input) return null
+  const date = new Date(input)
+  if (Number.isNaN(date.getTime())) return input
+  return new Intl.DateTimeFormat('vi-VN', {
+    hour12: false,
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  }).format(date)
 }
 
 export function UpdateStatus() {
+  const laDesktop = dangChayDesktop()
   const [state, setState] = useState<UpdateState>('idle')
   const [info, setInfo] = useState<UpdateInfo | null>(null)
-  const [progress, setProgress] = useState<DownloadProgress | null>(null)
+  const [progress, setProgress] = useState<UpdateProgress | null>(null)
+  const [manifestResult, setManifestResult] = useState<AppUpdateCheckResult | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [showDetails, setShowDetails] = useState(false)
-
-  const isElectron = typeof window !== 'undefined' && 
-    (window.karaokeDesktop?.isElectron || window.karaokeDesktop?.__ELECTRON__)
 
   useEffect(() => {
-    if (!isElectron) return
+    if (!laDesktop) return
 
-    // Listen for update events from main process via IPC
-    const handleMessage = (event: MessageEvent) => {
-      if (event.data?.type?.startsWith('update:')) {
-        const { type, payload } = event.data
-        switch (type) {
-          case 'update:checking':
-            setState('checking')
-            setError(null)
-            break
-          case 'update:available':
-            setState('available')
-            setInfo(payload)
-            setShowDetails(true)
-            break
-          case 'update:progress':
-            setState('downloading')
-            setProgress(payload)
-            break
-          case 'update:downloaded':
-            setState('downloaded')
-            setInfo(payload)
-            break
-          case 'update:error':
-            setState('error')
-            setError(String(payload))
-            break
-        }
+    let active = true
+    layTrangThaiCapNhatDesktop()
+      .then((result) => {
+        if (!active || !result) return
+        setState(result.state)
+        setInfo(result.info ?? null)
+      })
+      .catch(() => undefined)
+
+    const unsubscribe = ngheCapNhatDesktop((channel, data) => {
+      if (channel === 'update:checking') {
+        setState('checking')
+        setError(null)
+        setProgress(null)
+        return
+      }
+      if (channel === 'update:available') {
+        setState('available')
+        setInfo(typeof data === 'object' && data !== null ? data as UpdateInfo : null)
+        setError(null)
+        return
+      }
+      if (channel === 'update:not-available') {
+        setState('not-available')
+        setInfo(typeof data === 'object' && data !== null ? data as UpdateInfo : null)
+        setError(null)
+        return
+      }
+      if (channel === 'update:progress') {
+        setState('downloading')
+        setProgress(typeof data === 'object' && data !== null ? data as UpdateProgress : null)
+        setError(null)
+        return
+      }
+      if (channel === 'update:downloaded') {
+        setState('downloaded')
+        setInfo(typeof data === 'object' && data !== null ? data as UpdateInfo : null)
+        setError(null)
+        return
+      }
+      if (channel === 'update:error') {
+        setState('error')
+        setError(typeof data === 'string' ? data : 'Không kiểm tra được cập nhật')
+      }
+    })
+
+    return () => {
+      active = false
+      unsubscribe?.()
+    }
+  }, [laDesktop])
+
+  const latestVersion = info?.version ?? manifestResult?.latestVersion ?? null
+  const releaseDate = info?.releaseDate ?? manifestResult?.releaseDate ?? null
+  const releaseNotes = info?.releaseNotes ?? manifestResult?.releaseNotes ?? null
+  const statusLabel = useMemo(() => nhanTrangThai(state, manifestResult, error), [error, manifestResult, state])
+  const daCoBanMoiQuaManifest = Boolean(manifestResult?.hasUpdate || manifestResult?.required)
+  const coTheTaiBanMoi = state === 'available' || daCoBanMoiQuaManifest
+  const dangKiemTra = state === 'checking'
+  const dangTai = state === 'downloading'
+  const ngayPhatHanh = dinhDangNgay(releaseDate)
+
+  const kiemTraCapNhat = useCallback(async () => {
+    setError(null)
+    setManifestResult(null)
+    setProgress(null)
+    setState('checking')
+
+    if (laDesktop) {
+      const desktopResult = await kiemTraCapNhatDesktop()
+      if (desktopResult?.success) {
+        setState(desktopResult.state ?? 'idle')
+        setInfo(desktopResult.info ?? null)
+        return
+      }
+
+      if (desktopResult?.error) {
+        setError(desktopResult.error)
+        setState('error')
       }
     }
 
-    window.addEventListener('message', handleMessage)
-    return () => window.removeEventListener('message', handleMessage)
-  }, [isElectron])
-
-  const checkForUpdates = async () => {
-    if (!isElectron) return
-    setState('checking')
-    // IPC call will be handled by preload
-  }
-
-  const downloadUpdate = async () => {
-    if (!isElectron) return
-    setState('downloading')
-    // IPC call will be handled by preload
-  }
-
-  const installUpdate = () => {
-    if (!isElectron) return
-    // IPC call will be handled by preload
-  }
-
-  if (!isElectron) return null
-
-  // Compact status indicator for toolbar
-  const renderCompactStatus = () => {
-    switch (state) {
-      case 'checking':
-        return (
-          <button 
-            className="ghost compactButton buttonWithIcon" 
-            disabled
-            title="Đang kiểm tra cập nhật..."
-          >
-            <span className="buttonIcon spin">⟳</span>
-            <span className="buttonLabel">Đang kiểm tra...</span>
-          </button>
-        )
-      case 'available':
-        return (
-          <button 
-            className="primary compactButton buttonWithIcon"
-            onClick={() => setShowDetails(true)}
-            title={`Cập nhật ${info?.version} có sẵn`}
-          >
-            <span className="buttonIcon">⬆</span>
-            <span className="buttonLabel">Cập nhật mới</span>
-          </button>
-        )
-      case 'downloading':
-        return (
-          <button 
-            className="ghost compactButton buttonWithIcon"
-            disabled
-            title="Đang tải cập nhật..."
-          >
-            <span className="buttonIcon">⬇</span>
-            <span className="buttonLabel">
-              {progress ? `${Math.round(progress.percent)}%` : 'Đang tải...'}
-            </span>
-          </button>
-        )
-      case 'downloaded':
-        return (
-          <button 
-            className="accent compactButton buttonWithIcon"
-            onClick={installUpdate}
-            title="Khởi động lại để cài đặt"
-          >
-            <span className="buttonIcon">↻</span>
-            <span className="buttonLabel">Cài đặt ngay</span>
-          </button>
-        )
-      case 'error':
-        return (
-          <button 
-            className="ghost compactButton buttonWithIcon buttonToneDanger"
-            onClick={checkForUpdates}
-            title={error || 'Lỗi cập nhật'}
-          >
-            <span className="buttonIcon">⚠</span>
-            <span className="buttonLabel">Thử lại</span>
-          </button>
-        )
-      default:
-        return null
+    const manifest = await kiemTraCapNhatUngDung()
+    setManifestResult(manifest)
+    if (manifest.error) {
+      setError(manifest.error)
+      setState('error')
+      return
     }
-  }
+    setError(null)
+    setState(manifest.hasUpdate || manifest.required ? 'available' : 'not-available')
+  }, [laDesktop])
+
+  const taiBanCapNhat = useCallback(async () => {
+    setError(null)
+
+    if (manifestResult?.downloadUrl) {
+      moLinkCapNhat(manifestResult.downloadUrl)
+      return
+    }
+
+    if (laDesktop && state === 'available') {
+      setState('downloading')
+      const result = await taiCapNhatDesktop()
+      if (!result?.success) {
+        setState('error')
+        setError(result?.error ?? 'Không tải được cập nhật')
+      }
+      return
+    }
+
+    moLinkCapNhat(manifestResult?.downloadUrl ?? null)
+  }, [laDesktop, manifestResult, state])
+
+  const caiDatCapNhat = useCallback(() => {
+    if (laDesktop) {
+      caiDatCapNhatDesktop()
+    }
+  }, [laDesktop])
 
   return (
-    <>
-      {renderCompactStatus()}
-      
-      {/* Details Modal */}
-      {showDetails && info && (
-        <div className="modalBackdrop" onClick={() => setShowDetails(false)}>
-          <div className="modal" style={{ maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
-            <div className="modalHeader">
-              <div>
-                <div className="modalTitle">Cập nhật mới có sẵn</div>
-                <div className="modalSubtitle">Phiên bản {info.version}</div>
-              </div>
-              <button className="ghost compactButton" onClick={() => setShowDetails(false)}>✕</button>
-            </div>
-
-            <div className="modalBody">
-              {info.releaseDate && (
-                <div className="formHint">
-                  Ngày phát hành: {new Date(info.releaseDate).toLocaleDateString('vi-VN')}
-                </div>
-              )}
-              
-              {info.releaseNotes && (
-                <div className="releaseNotes" style={{ marginTop: 16 }}>
-                  <h4>Thay đổi trong phiên bản này:</h4>
-                  <pre style={{ 
-                    background: '#f9fafb', 
-                    padding: 12, 
-                    borderRadius: 8,
-                    fontSize: 14,
-                    maxHeight: 200,
-                    overflow: 'auto',
-                    whiteSpace: 'pre-wrap'
-                  }}>
-                    {info.releaseNotes}
-                  </pre>
-                </div>
-              )}
-
-              {state === 'downloading' && progress && (
-                <div style={{ marginTop: 16 }}>
-                  <div style={{ 
-                    height: 8, 
-                    background: '#e5e7eb', 
-                    borderRadius: 4,
-                    overflow: 'hidden'
-                  }}>
-                    <div style={{
-                      width: `${progress.percent}%`,
-                      height: '100%',
-                      background: '#3b82f6',
-                      transition: 'width 0.3s ease'
-                    }} />
-                  </div>
-                  <div className="formHint" style={{ marginTop: 8, textAlign: 'center' }}>
-                    {Math.round(progress.percent)}% • {progress.bytesPerSecond ? Math.round(progress.bytesPerSecond / 1024) : 0} KB/s
-                  </div>
-                </div>
-              )}
-
-              {state === 'downloaded' && (
-                <div className="hintCard" style={{ marginTop: 16, background: '#dcfce7', border: '1px solid #86efac' }}>
-                  ✅ Cập nhật đã sẵn sàng! Khởi động lại để cài đặt.
-                </div>
-              )}
-
-              {error && (
-                <div className="hintCard" style={{ marginTop: 16, background: '#fee2e2', border: '1px solid #fecaca' }}>
-                  ⚠️ {error}
-                </div>
-              )}
-            </div>
-
-            <div className="modalFooter">
-              {state === 'available' && (
-                <>
-                  <button className="ghost" onClick={() => setShowDetails(false)}>
-                    Để sau
-                  </button>
-                  <button className="primary" onClick={downloadUpdate}>
-                    Tải xuống ngay
-                  </button>
-                </>
-              )}
-              {state === 'downloading' && (
-                <button className="ghost" disabled>
-                  Đang tải...
-                </button>
-              )}
-              {state === 'downloaded' && (
-                <>
-                  <button className="ghost" onClick={() => setShowDetails(false)}>
-                    Cài đặt sau
-                  </button>
-                  <button className="primary" onClick={installUpdate}>
-                    Khởi động lại & Cài đặt
-                  </button>
-                </>
-              )}
-              {state === 'error' && (
-                <>
-                  <button className="ghost" onClick={() => setShowDetails(false)}>
-                    Đóng
-                  </button>
-                  <button className="primary" onClick={checkForUpdates}>
-                    Thử lại
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
+    <div className="field settingsInfoCard updateStatusCard">
+      <div className="settingsBannerHead">
+        <div>
+          <div className="settingsInfoTitle">Cập nhật ứng dụng</div>
+          <div className="hint">Phiên bản hiện tại: {APP_VERSION}</div>
         </div>
-      )}
-    </>
+        <button
+          className="ghost compactButton buttonToneMuted"
+          disabled={dangKiemTra || dangTai}
+          onClick={() => void kiemTraCapNhat()}
+          type="button"
+        >
+          {dangKiemTra ? 'Đang kiểm tra...' : 'Kiểm tra'}
+        </button>
+      </div>
+
+      <div className={`updateStatusMessage ${error ? 'updateStatusMessageError' : coTheTaiBanMoi ? 'updateStatusMessageAccent' : ''}`}>
+        {statusLabel}
+      </div>
+
+      {latestVersion ? (
+        <div className="hint">
+          Bản mới: {latestVersion}
+          {ngayPhatHanh ? ` · Ngày phát hành: ${ngayPhatHanh}` : ''}
+        </div>
+      ) : null}
+
+      {dangTai && progress ? (
+        <div className="updateProgress" aria-label="Tiến trình tải cập nhật">
+          <div className="updateProgressTrack">
+            <div className="updateProgressBar" style={{ width: `${Math.max(0, Math.min(100, progress.percent))}%` }} />
+          </div>
+          <div className="hint">{Math.round(progress.percent)}%</div>
+        </div>
+      ) : null}
+
+      {releaseNotes ? (
+        <details className="updateReleaseNotes">
+          <summary>Ghi chú phiên bản</summary>
+          <div>{releaseNotes}</div>
+        </details>
+      ) : null}
+
+      <div className="updateStatusActions">
+        {coTheTaiBanMoi ? (
+          <button className="primary compactButton buttonToneAccent" onClick={() => void taiBanCapNhat()} type="button">
+            {manifestResult?.downloadUrl ? 'Mở trang tải' : 'Tải cập nhật'}
+          </button>
+        ) : null}
+        {state === 'downloaded' ? (
+          <button className="primary compactButton buttonToneAccent" onClick={caiDatCapNhat} type="button">
+            Khởi động lại để cài
+          </button>
+        ) : null}
+      </div>
+
+      {!import.meta.env.VITE_UPDATE_MANIFEST_URL ? (
+        <div className="hint">
+          Muốn APK/web tự thấy bản mới, cấu hình `VITE_UPDATE_MANIFEST_URL` trỏ tới file manifest online.
+        </div>
+      ) : null}
+    </div>
   )
 }

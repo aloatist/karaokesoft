@@ -182,11 +182,41 @@ export interface SecureStorageApi {
   hasKey: () => Promise<{ success: boolean; hasKey?: boolean; error?: string }>
 }
 
+export type UpdateEventName =
+  | 'update:checking'
+  | 'update:available'
+  | 'update:not-available'
+  | 'update:progress'
+  | 'update:downloaded'
+  | 'update:error'
+
+export type UpdateState =
+  | 'idle'
+  | 'checking'
+  | 'available'
+  | 'not-available'
+  | 'downloading'
+  | 'downloaded'
+  | 'error'
+
+export type UpdateInfo = {
+  version?: string
+  releaseDate?: string
+  releaseNotes?: string
+}
+
+export type UpdateProgress = {
+  percent: number
+  bytesPerSecond?: number
+  transferred?: number
+  total?: number
+}
+
 export interface UpdateApi {
-  check: () => Promise<{ success: boolean; state?: string; info?: unknown; error?: string }>
+  check: () => Promise<{ success: boolean; state?: UpdateState; info?: UpdateInfo; error?: string }>
   download: () => Promise<{ success: boolean; error?: string }>
   install: () => void
-  getState: () => Promise<{ state: string; info?: unknown }>
+  getState: () => Promise<{ state: UpdateState; info?: UpdateInfo }>
 }
 
 export type DesktopBridgeApi = {
@@ -201,5 +231,5 @@ export type DesktopBridgeApi = {
   onSyncMessage: (listener: (msg: SyncMessage) => void) => () => void
   secureStorage: SecureStorageApi
   update: UpdateApi
-  onUpdateMessage?: (callback: (channel: string, data: unknown) => void) => () => void
+  onUpdateMessage?: (callback: (channel: UpdateEventName, data: UpdateInfo | UpdateProgress | string | null) => void) => () => void
 }

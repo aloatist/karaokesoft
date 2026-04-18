@@ -4,7 +4,7 @@
  */
 
 const { autoUpdater } = require('electron-updater')
-const { ipcMain, dialog, BrowserWindow } = require('electron')
+const { app, ipcMain, dialog, BrowserWindow } = require('electron')
 const log = require('electron-log')
 
 // Configure logging
@@ -137,13 +137,15 @@ function setupAutoUpdate(window) {
     return { state: currentState, info: updateInfo }
   })
 
-  // Start periodic checks
-  startPeriodicChecks()
+  if (app.isPackaged) {
+    // Start periodic checks
+    startPeriodicChecks()
 
-  // Check immediately on startup (after 5 seconds)
-  setTimeout(() => {
-    checkForUpdates()
-  }, 5000)
+    // Check immediately on startup (after 5 seconds)
+    setTimeout(() => {
+      checkForUpdates().catch(() => undefined)
+    }, 5000)
+  }
 }
 
 function notifyRenderer(channel, data) {
@@ -153,24 +155,34 @@ function notifyRenderer(channel, data) {
 }
 
 async function checkForUpdates() {
-  if (process.env.NODE_ENV === 'development') {
+  if (!app.isPackaged) {
     log.info('Skipping update check in development mode')
-    return
+    currentState = UpdateState.ERROR
+    const message = 'Cập nhật desktop chỉ hoạt động sau khi app đã được đóng gói.'
+    notifyRenderer('update:error', message)
+    throw new Error(message)
   }
 
   try {
-    await autoUpdater.checkForUpdates()
+    return await autoUpdater.checkForUpdates()
   } catch (error) {
+    currentState = UpdateState.ERROR
+    updateInfo = null
+    notifyRenderer('update:error', error.message)
     log.error('Failed to check for updates:', error)
+    throw error
   }
 }
 
 async function downloadUpdate() {
   try {
-    await autoUpdater.downloadUpdate()
+    return await autoUpdater.downloadUpdate()
   } catch (error) {
+    currentState = UpdateState.ERROR
+    notifyRenderer('update:error', error.message)
     log.error('Failed to download update:', error)
     dialog.showErrorBox('Lỗi cập nhật', `Không thể tải xuống: ${error.message}`)
+    throw error
   }
 }
 
@@ -179,7 +191,7 @@ function startPeriodicChecks() {
     clearInterval(updateInterval)
   }
   updateInterval = setInterval(() => {
-    checkForUpdates()
+    checkForUpdates().catch(() => undefined)
   }, UPDATE_CHECK_INTERVAL)
 }
 

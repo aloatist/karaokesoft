@@ -16,6 +16,7 @@ import {
 import { useAuthStore } from '../store/authStore'
 import { DISPLAY_AD_TEXT_MAX, DISPLAY_AD_TITLE_MAX, useSettingsStore } from '../store/settingsStore'
 import type { DesktopDisplayInfo, UserRole } from '../types'
+import { UpdateStatus } from './UpdateStatus'
 
 type Props = {
   open: boolean
@@ -321,6 +322,8 @@ export function SettingsModal({ open, onClose, canManageUsers, canManageDisplayA
               Đăng nhập YouTube
             </button>
           </div>
+
+          <UpdateStatus />
 
           <div className="field">
             <div className="label">Màn hình trình chiếu</div>

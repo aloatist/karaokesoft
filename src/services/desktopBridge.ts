@@ -1,4 +1,4 @@
-import type { DesktopDisplayInfo, OpenDisplayWindowResult, SyncMessage } from '../types'
+import type { DesktopDisplayInfo, OpenDisplayWindowResult, SyncMessage, UpdateEventName, UpdateInfo, UpdateProgress } from '../types'
 
 function layBridge() {
   if (typeof window === 'undefined') return null
@@ -37,6 +37,37 @@ export async function moDangNhapYoutubeDesktop() {
   const bridge = layBridge()
   if (!bridge?.openYoutubeLogin) return null
   return bridge.openYoutubeLogin()
+}
+
+export async function kiemTraCapNhatDesktop() {
+  const bridge = layBridge()
+  if (!bridge?.update) return null
+  return bridge.update.check()
+}
+
+export async function taiCapNhatDesktop() {
+  const bridge = layBridge()
+  if (!bridge?.update) return null
+  return bridge.update.download()
+}
+
+export function caiDatCapNhatDesktop() {
+  const bridge = layBridge()
+  if (!bridge?.update) return false
+  bridge.update.install()
+  return true
+}
+
+export async function layTrangThaiCapNhatDesktop() {
+  const bridge = layBridge()
+  if (!bridge?.update) return null
+  return bridge.update.getState()
+}
+
+export function ngheCapNhatDesktop(listener: (channel: UpdateEventName, data: UpdateInfo | UpdateProgress | string | null) => void) {
+  const bridge = layBridge()
+  if (!bridge?.onUpdateMessage) return null
+  return bridge.onUpdateMessage(listener)
 }
 
 export function guiDongBoDesktop(msg: SyncMessage) {

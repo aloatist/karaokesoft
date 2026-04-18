@@ -31,18 +31,21 @@ contextBridge.exposeInMainWorld('karaokeDesktop', {
     getState: () => ipcRenderer.invoke('update:get-state'),
   },
   onUpdateMessage: (callback) => {
-    const wrapped = (_event, channel, data) => callback(channel, data)
-    ipcRenderer.on('update:checking', () => wrapped(null, 'update:checking', null))
-    ipcRenderer.on('update:available', (_e, info) => wrapped(null, 'update:available', info))
-    ipcRenderer.on('update:progress', (_e, progress) => wrapped(null, 'update:progress', progress))
-    ipcRenderer.on('update:downloaded', (_e, info) => wrapped(null, 'update:downloaded', info))
-    ipcRenderer.on('update:error', (_e, err) => wrapped(null, 'update:error', err))
+    const listeners = [
+      ['update:checking', () => callback('update:checking', null)],
+      ['update:available', (_e, info) => callback('update:available', info)],
+      ['update:not-available', (_e, info) => callback('update:not-available', info)],
+      ['update:progress', (_e, progress) => callback('update:progress', progress)],
+      ['update:downloaded', (_e, info) => callback('update:downloaded', info)],
+      ['update:error', (_e, err) => callback('update:error', err)],
+    ]
+    listeners.forEach(([channel, listener]) => {
+      ipcRenderer.on(channel, listener)
+    })
     return () => {
-      ipcRenderer.removeAllListeners('update:checking')
-      ipcRenderer.removeAllListeners('update:available')
-      ipcRenderer.removeAllListeners('update:progress')
-      ipcRenderer.removeAllListeners('update:downloaded')
-      ipcRenderer.removeAllListeners('update:error')
+      listeners.forEach(([channel, listener]) => {
+        ipcRenderer.removeListener(channel, listener)
+      })
     }
   },
 })
