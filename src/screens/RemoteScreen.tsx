@@ -13,9 +13,21 @@ import {
   taoDuongDanTrinhChieu,
   taoKetNoiRelay,
 } from '../services/remoteRelay'
+import {
+  coTheDongBoAmLuongDienThoai,
+  datAmLuongDienThoai,
+  docAmLuongDienThoai,
+  langNgheAmLuongDienThoai,
+} from '../services/deviceVolume'
 import type { RemoteAction, RemotePresence, RemoteRelayStatus, RemoteRoomState } from '../types'
 
 const emptyPresence: RemotePresence = { hosts: 0, remotes: 0, displays: 0 }
+const DEFAULT_DISPLAY_VOLUME = 100
+
+function clampVolume(value: number) {
+  if (!Number.isFinite(value)) return DEFAULT_DISPLAY_VOLUME
+  return Math.max(0, Math.min(100, Math.round(value)))
+}
 
 function layIpTuRelayUrl(relayUrl: string) {
   try {
@@ -103,7 +115,25 @@ export function RemoteScreen() {
   const connectionRef = useRef<ReturnType<typeof taoKetNoiRelay> | null>(null)
   const scannerControlsRef = useRef<IScannerControls | null>(null)
   const scannerVideoRef = useRef<HTMLVideoElement | null>(null)
+  const relayStatusRef = useRef(relayStatus)
+  const hostCountRef = useRef(presence.hosts)
+  const roomVolumeRef = useRef(DEFAULT_DISPLAY_VOLUME)
+  const phoneVolumePercentRef = useRef<number | null>(null)
+  const syncingPhoneVolumeUntilRef = useRef(0)
   const canSendRemote = relayStatus === 'connected' && presence.hosts > 0
+  const currentRoomVolume = roomState?.volume
+
+  useEffect(() => {
+    relayStatusRef.current = relayStatus
+  }, [relayStatus])
+
+  useEffect(() => {
+    hostCountRef.current = presence.hosts
+  }, [presence.hosts])
+
+  useEffect(() => {
+    roomVolumeRef.current = clampVolume(currentRoomVolume ?? DEFAULT_DISPLAY_VOLUME)
+  }, [currentRoomVolume])
 
   useEffect(() => {
     if (!joinedRoom) return
@@ -371,6 +401,68 @@ export function RemoteScreen() {
     [presence.hosts, relayStatus],
   )
 
+  const guiAmLuong = useCallback((rawValue: number, options?: { syncPhone?: boolean }) => {
+    const nextValue = clampVolume(rawValue)
+    roomVolumeRef.current = nextValue
+    setRoomState((current) => (current ? { ...current, volume: nextValue } : current))
+
+    if (connectionRef.current && relayStatusRef.current === 'connected' && hostCountRef.current > 0) {
+      connectionRef.current.sendAction({ type: 'SET_VOLUME', value: nextValue })
+    }
+
+    if (options?.syncPhone && coTheDongBoAmLuongDienThoai()) {
+      syncingPhoneVolumeUntilRef.current = Date.now() + 700
+      void datAmLuongDienThoai(nextValue, false).then((state) => {
+        if (!state) return
+        phoneVolumePercentRef.current = clampVolume(state.percent)
+      })
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!coTheDongBoAmLuongDienThoai()) return
+
+    let cancelled = false
+    let listenerHandle: { remove: () => Promise<void> } | null = null
+
+    void docAmLuongDienThoai().then((state) => {
+      if (cancelled || !state) return
+      phoneVolumePercentRef.current = clampVolume(state.percent)
+    })
+
+    void langNgheAmLuongDienThoai((state) => {
+      const nextValue = clampVolume(state.percent)
+      phoneVolumePercentRef.current = nextValue
+      if (Date.now() < syncingPhoneVolumeUntilRef.current) return
+      if (nextValue === roomVolumeRef.current) return
+      guiAmLuong(nextValue)
+    }).then((handle) => {
+      if (cancelled) {
+        void handle?.remove()
+        return
+      }
+      listenerHandle = handle
+    })
+
+    return () => {
+      cancelled = true
+      void listenerHandle?.remove()
+    }
+  }, [guiAmLuong])
+
+  useEffect(() => {
+    if (typeof currentRoomVolume !== 'number' || !coTheDongBoAmLuongDienThoai()) return
+
+    const nextValue = clampVolume(currentRoomVolume)
+    if (phoneVolumePercentRef.current === nextValue) return
+
+    syncingPhoneVolumeUntilRef.current = Date.now() + 700
+    void datAmLuongDienThoai(nextValue, false).then((state) => {
+      if (!state) return
+      phoneVolumePercentRef.current = clampVolume(state.percent)
+    })
+  }, [currentRoomVolume])
+
   const queueLength = roomState?.queue.length ?? 0
   const connectionTone = relayStatus === 'connected' && presence.hosts > 0 ? 'statusChipSuccess' : relayStatus === 'error' ? 'statusChipWarning' : ''
   const connectionLabel = !joinedRoom
@@ -618,7 +710,7 @@ export function RemoteScreen() {
           <div className="remoteVolumeCard remoteVolumeCardMinimal">
             <div className="remoteVolumeHead">
               <div className="remoteMetaLabel">🔊 Âm lượng</div>
-              <div className="remoteMetaValue">{roomState?.volume ?? 0}%</div>
+              <div className="remoteMetaValue">{roomState?.volume ?? DEFAULT_DISPLAY_VOLUME}%</div>
             </div>
             <input
               className="range"
@@ -626,11 +718,9 @@ export function RemoteScreen() {
               min={0}
               max={100}
               disabled={!canSendRemote}
-              value={roomState?.volume ?? 0}
+              value={roomState?.volume ?? DEFAULT_DISPLAY_VOLUME}
               onChange={(e) => {
-                const nextValue = Number(e.target.value)
-                setRoomState((current) => (current ? { ...current, volume: nextValue } : current))
-                guiLenh(() => ({ type: 'SET_VOLUME', value: nextValue }))
+                guiAmLuong(Number(e.target.value), { syncPhone: true })
               }}
             />
           </div>
@@ -711,7 +801,9 @@ export function RemoteScreen() {
                   <div key={song.queueId} className={`remoteQueueRow ${index === roomState.currentIndex ? 'remoteQueueRowActive' : ''}`}>
                     <div className="remoteQueueMeta">
                       <div className="remoteQueueTitle">{song.title}</div>
-                      <div className="remoteQueueSub">Kênh: {song.channelTitle}</div>
+                      <div className="remoteQueueSub">
+                        {song.source === 'local-media' ? song.channelTitle : `Kênh: ${song.channelTitle}`}
+                      </div>
                     </div>
                     <div className="remoteQueueActions">
                       <button

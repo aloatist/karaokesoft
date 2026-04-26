@@ -1,6 +1,14 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { USER_ROLE_LABEL, moTaVaiTro } from '../lib/auth'
-import { dangChayDesktop, layDanhSachManHinh, moDangNhapYoutubeDesktop, moManHinhTrinhChieu } from '../services/desktopBridge'
+import { useYouTubeApiKey } from '../hooks/useSecureStorage'
+import { luuMediaDiaPhuong } from '../services/localMediaStore'
+import {
+  dangChayDesktop,
+  layDanhSachManHinh,
+  moDangNhapYoutubeDesktop,
+  moManHinhTrinhChieu,
+  nhapMediaDiaPhuongDesktop,
+} from '../services/desktopBridge'
 import {
   type AuditLogItem,
   createUserApi,
@@ -14,8 +22,15 @@ import {
   updateUserRoleApi,
 } from '../services/authApi'
 import { useAuthStore } from '../store/authStore'
-import { DISPLAY_AD_TEXT_MAX, DISPLAY_AD_TITLE_MAX, useSettingsStore } from '../store/settingsStore'
-import type { DesktopDisplayInfo, UserRole } from '../types'
+import {
+  DISPLAY_AD_MEDIA_INTERVAL_MAX,
+  DISPLAY_AD_MEDIA_INTERVAL_MIN,
+  DISPLAY_AD_MEDIA_MAX,
+  DISPLAY_AD_TEXT_MAX,
+  DISPLAY_AD_TITLE_MAX,
+  useSettingsStore,
+} from '../store/settingsStore'
+import type { DesktopDisplayInfo, DisplayAdMediaItem, UserRole } from '../types'
 import { UpdateStatus } from './UpdateStatus'
 
 type Props = {
@@ -98,6 +113,14 @@ export function SettingsModal({ open, onClose, canManageUsers, canManageDisplayA
   const currentUserId = useAuthStore((s) => s.currentUserId)
   const { themNguoiDung, capNhatThongTinNguoiDung, capNhatVaiTro, xoaNguoiDung } = useAuthStore((s) => s.actions)
   const laDesktop = dangChayDesktop()
+  const {
+    hasKey: hasYoutubeApiKey,
+    isElectron: supportsSecureYoutubeKey,
+    loading: youtubeKeyLoading,
+    saveKey: luuYoutubeApiKey,
+    deleteKey: xoaYoutubeApiKey,
+    checkKey: kiemTraYoutubeApiKey,
+  } = useYouTubeApiKey()
 
   const [displays, setDisplays] = useState<DesktopDisplayInfo[]>([])
   const [newUserName, setNewUserName] = useState('')
@@ -109,10 +132,16 @@ export function SettingsModal({ open, onClose, canManageUsers, canManageDisplayA
   const [savingUserId, setSavingUserId] = useState<string | null>(null)
   const [creatingUser, setCreatingUser] = useState(false)
   const [savingSettings, setSavingSettings] = useState(false)
+  const [importingDisplayMedia, setImportingDisplayMedia] = useState(false)
   const [settingsMessage, setSettingsMessage] = useState<string | null>(null)
   const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>([])
   const [auditLoading, setAuditLoading] = useState(false)
   const [auditMessage, setAuditMessage] = useState<string | null>(null)
+  const [youtubeApiKeyInput, setYoutubeApiKeyInput] = useState('')
+  const [showYoutubeApiKey, setShowYoutubeApiKey] = useState(false)
+  const [youtubeKeyMessage, setYoutubeKeyMessage] = useState<string | null>(null)
+  const [checkingYoutubeApiKey, setCheckingYoutubeApiKey] = useState(false)
+  const mediaFileInputRef = useRef<HTMLInputElement | null>(null)
 
   async function dongBoUsersTuServer() {
     const res = await listUsersApi()
@@ -137,6 +166,85 @@ export function SettingsModal({ open, onClose, canManageUsers, canManageDisplayA
     capNhat({ displayAd: { ...displayAd, ...next } })
   }
 
+  function themMediaVaoCauHinh(items: DisplayAdMediaItem[]) {
+    if (!items.length) return
+
+    const existingIds = new Set(displayAd.media.map((item) => item.id))
+    const nextMedia = [
+      ...displayAd.media,
+      ...items.filter((item) => !existingIds.has(item.id)),
+    ].slice(-DISPLAY_AD_MEDIA_MAX)
+
+    capNhatBannerTrinhChieu({
+      media: nextMedia,
+      mediaEnabled: true,
+      enabled: true,
+    })
+    setSettingsMessage(`Đã thêm ${items.length} ảnh/video. Nếu danh sách quá ${DISPLAY_AD_MEDIA_MAX} mục, app giữ các mục mới nhất.`)
+  }
+
+  async function themMediaTrinhChieu() {
+    if (!canManageDisplayAd) return
+
+    setSettingsMessage(null)
+    if (!laDesktop) {
+      mediaFileInputRef.current?.click()
+      return
+    }
+
+    setImportingDisplayMedia(true)
+    try {
+      const result = await nhapMediaDiaPhuongDesktop()
+      if (!result) {
+        mediaFileInputRef.current?.click()
+        return
+      }
+      if (!result.success) {
+        setSettingsMessage(result.error || 'Không thêm được ảnh/video từ máy tính.')
+        return
+      }
+
+      const items = result.items ?? []
+      if (!items.length) return
+      themMediaVaoCauHinh(items)
+    } catch (error) {
+      setSettingsMessage(error instanceof Error ? error.message : 'Không thêm được ảnh/video từ máy tính.')
+    } finally {
+      setImportingDisplayMedia(false)
+    }
+  }
+
+  async function xuLyChonMediaTrinhChieu(files: FileList | null) {
+    if (!canManageDisplayAd || !files?.length) return
+
+    setSettingsMessage(null)
+    setImportingDisplayMedia(true)
+    try {
+      const items = await luuMediaDiaPhuong(Array.from(files))
+      if (!items.length) {
+        setSettingsMessage('Chưa chọn được file ảnh/video hợp lệ.')
+        return
+      }
+      themMediaVaoCauHinh(items)
+    } catch (error) {
+      setSettingsMessage(error instanceof Error ? error.message : 'Không lưu được ảnh/video trong trình duyệt.')
+    } finally {
+      setImportingDisplayMedia(false)
+      if (mediaFileInputRef.current) {
+        mediaFileInputRef.current.value = ''
+      }
+    }
+  }
+
+  function xoaMediaTrinhChieu(target: DisplayAdMediaItem) {
+    if (!canManageDisplayAd) return
+    const nextMedia = displayAd.media.filter((item) => item.id !== target.id)
+    capNhatBannerTrinhChieu({
+      media: nextMedia,
+      mediaEnabled: nextMedia.length > 0 ? displayAd.mediaEnabled : false,
+    })
+  }
+
   async function moDangNhapYoutube() {
     setSettingsMessage(null)
 
@@ -159,6 +267,49 @@ export function SettingsModal({ open, onClose, canManageUsers, canManageDisplayA
         ? 'Đã mở YouTube trong tab mới. Sau khi đăng nhập xong, quay lại app và phát lại bài.'
         : 'Trình duyệt đang chặn cửa sổ đăng nhập YouTube. Hãy cho phép popup rồi bấm lại.',
     )
+  }
+
+  async function luuYoutubeApiKeyDesktop() {
+    const candidate = youtubeApiKeyInput.trim()
+    if (!candidate) {
+      setYoutubeKeyMessage('Bạn chưa nhập YouTube API key.')
+      return
+    }
+
+    setYoutubeKeyMessage(null)
+    const result = await luuYoutubeApiKey(candidate)
+    if (result.success) {
+      setYoutubeApiKeyInput('')
+      setYoutubeKeyMessage(result.message || 'Đã lưu YouTube API key trên laptop. App sẽ tải lại để áp dụng.')
+      return
+    }
+    setYoutubeKeyMessage(result.error || 'Không lưu được YouTube API key.')
+  }
+
+  async function kiemTraYoutubeApiKeyDesktop() {
+    setCheckingYoutubeApiKey(true)
+    setYoutubeKeyMessage(null)
+    try {
+      const result = await kiemTraYoutubeApiKey()
+      if (result.success) {
+        setYoutubeKeyMessage(result.message || (result.valid ? 'YouTube API key đang hoạt động bình thường.' : 'YouTube API key chưa sẵn sàng.'))
+        return
+      }
+      setYoutubeKeyMessage(result.error || 'Không kiểm tra được YouTube API key.')
+    } finally {
+      setCheckingYoutubeApiKey(false)
+    }
+  }
+
+  async function xoaYoutubeApiKeyDesktop() {
+    setYoutubeKeyMessage(null)
+    const result = await xoaYoutubeApiKey()
+    if (result.success) {
+      setYoutubeApiKeyInput('')
+      setYoutubeKeyMessage(result.message || 'Đã xoá YouTube API key khỏi laptop.')
+      return
+    }
+    setYoutubeKeyMessage(result.error || 'Không xoá được YouTube API key.')
   }
 
   const taiNhatKyHoatDong = useCallback(async () => {
@@ -242,6 +393,7 @@ export function SettingsModal({ open, onClose, canManageUsers, canManageDisplayA
     setSettingsMessage(null)
     setUserAdminMessage(null)
     setAuditMessage(null)
+    setYoutubeKeyMessage(null)
   }, [open])
 
   function capNhatBanNhapUser(userId: string, patch: Partial<UserEditDraft>) {
@@ -321,6 +473,80 @@ export function SettingsModal({ open, onClose, canManageUsers, canManageDisplayA
             <button className="primary compactButton" onClick={() => void moDangNhapYoutube()} type="button">
               Đăng nhập YouTube
             </button>
+          </div>
+
+          <div className="field settingsInfoCard">
+            <div className="settingsInfoTitle">YouTube Search API</div>
+            <div className="hint">
+              Tìm kiếm bài hát trên laptop/relay cần một YouTube Data API v3 key hợp lệ. Key được lưu cục bộ trên laptop này, không đồng bộ sang điện thoại.
+            </div>
+
+            {supportsSecureYoutubeKey ? (
+              <>
+                <div className="settingsYoutubeKeyStatusRow">
+                  <div className={`statusChip ${hasYoutubeApiKey ? 'statusChipSuccess' : 'statusChipWarning'}`}>
+                    {hasYoutubeApiKey === null
+                      ? 'Đang kiểm tra key...'
+                      : hasYoutubeApiKey
+                        ? 'Laptop đã có YouTube API key'
+                        : 'Laptop chưa có YouTube API key'}
+                  </div>
+                  <button
+                    className="ghost compactButton buttonToneMuted"
+                    disabled={checkingYoutubeApiKey || youtubeKeyLoading}
+                    onClick={() => void kiemTraYoutubeApiKeyDesktop()}
+                    type="button"
+                  >
+                    {checkingYoutubeApiKey ? 'Đang kiểm tra…' : 'Kiểm tra key'}
+                  </button>
+                  <button
+                    className="ghost compactButton buttonToneDanger"
+                    disabled={!hasYoutubeApiKey || youtubeKeyLoading}
+                    onClick={() => void xoaYoutubeApiKeyDesktop()}
+                    type="button"
+                  >
+                    Xoá key
+                  </button>
+                </div>
+
+                <div className="settingsYoutubeKeyForm">
+                  <input
+                    className="input"
+                    type={showYoutubeApiKey ? 'text' : 'password'}
+                    value={youtubeApiKeyInput}
+                    onChange={(e) => setYoutubeApiKeyInput(e.target.value)}
+                    placeholder={hasYoutubeApiKey ? 'Nhập key mới để thay thế' : 'AIza...'}
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
+                  />
+                  <button
+                    className="ghost compactButton buttonToneMuted"
+                    onClick={() => setShowYoutubeApiKey((current) => !current)}
+                    type="button"
+                  >
+                    {showYoutubeApiKey ? 'Ẩn' : 'Hiện'}
+                  </button>
+                  <button
+                    className="primary compactButton"
+                    disabled={!youtubeApiKeyInput.trim() || youtubeKeyLoading}
+                    onClick={() => void luuYoutubeApiKeyDesktop()}
+                    type="button"
+                  >
+                    {youtubeKeyLoading ? 'Đang lưu…' : hasYoutubeApiKey ? 'Lưu key mới' : 'Lưu key'}
+                  </button>
+                </div>
+
+                <div className="hint">
+                  Dùng key Server hoặc key không chặn domain/IP, nhưng nên giới hạn API sang <strong>YouTube Data API v3</strong>. Sau khi lưu, app sẽ tự tải lại để áp dụng.
+                </div>
+                {youtubeKeyMessage ? <div className="settingsInlineMessage">{youtubeKeyMessage}</div> : null}
+              </>
+            ) : (
+              <div className="hint">
+                Bản web không lưu key trực tiếp. Hãy cấu hình `YOUTUBE_API_KEY` hoặc proxy YouTube Search ở phía laptop/relay.
+              </div>
+            )}
           </div>
 
           <UpdateStatus />
@@ -432,11 +658,91 @@ export function SettingsModal({ open, onClose, canManageUsers, canManageDisplayA
               </div>
             </div>
 
+            <div className="settingsBannerMedia">
+              <div className="settingsBannerMediaHead">
+                <div>
+                  <div className="label">Ảnh/video trên máy tính</div>
+                  <div className="hint">
+                    File được lưu trong dữ liệu của app hoặc trình duyệt trên máy này. Có thể thêm ảnh PNG/JPG/WebP/GIF hoặc video MP4/WebM/MOV.
+                  </div>
+                </div>
+                <button
+                  className="primary compactButton"
+                  type="button"
+                  disabled={!canManageDisplayAd || importingDisplayMedia}
+                  onClick={() => void themMediaTrinhChieu()}
+                >
+                  {importingDisplayMedia ? 'Đang thêm…' : 'Thêm ảnh/video'}
+                </button>
+                <input
+                  ref={mediaFileInputRef}
+                  className="srOnly"
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm,video/quicktime,.m4v"
+                  multiple
+                  onChange={(e) => void xuLyChonMediaTrinhChieu(e.target.files)}
+                />
+              </div>
+
+              <div className="settingsBannerMediaControls">
+                <label className="check">
+                  <input
+                    type="checkbox"
+                    checked={displayAd.mediaEnabled}
+                    disabled={!canManageDisplayAd || !displayAd.enabled || displayAd.media.length === 0}
+                    onChange={(e) => capNhatBannerTrinhChieu({ mediaEnabled: e.target.checked })}
+                  />
+                  <span>Phát ảnh/video trên màn chiếu</span>
+                </label>
+                <label className="settingsBannerInterval">
+                  <span>Đổi sau</span>
+                  <input
+                    className="input"
+                    type="number"
+                    min={DISPLAY_AD_MEDIA_INTERVAL_MIN}
+                    max={DISPLAY_AD_MEDIA_INTERVAL_MAX}
+                    disabled={!canManageDisplayAd || !displayAd.enabled || !displayAd.mediaEnabled}
+                    value={displayAd.mediaIntervalSeconds}
+                    onChange={(e) => capNhatBannerTrinhChieu({ mediaIntervalSeconds: Number(e.target.value) })}
+                  />
+                  <span>giây</span>
+                </label>
+              </div>
+
+              {displayAd.media.length ? (
+                <div className="settingsBannerMediaList" aria-label="Danh sách ảnh/video màn chiếu">
+                  {displayAd.media.map((item) => (
+                    <div className="settingsBannerMediaRow" key={item.id}>
+                      <div className="settingsBannerMediaMeta">
+                        <span className="miniBadge">{item.type === 'video' ? 'Video' : 'Ảnh'}</span>
+                        <span title={item.name}>{item.name}</span>
+                      </div>
+                      <button
+                        className="danger compactButton"
+                        type="button"
+                        disabled={!canManageDisplayAd}
+                        onClick={() => xoaMediaTrinhChieu(item)}
+                      >
+                        Xoá
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="hint">Chưa có ảnh/video nào được thêm.</div>
+              )}
+            </div>
+
             <div className="settingsBannerPreview">
               <div className="settingsBannerPreviewTitle">{displayAd.title || 'Sản phẩm nổi bật'}</div>
               <div className="settingsBannerPreviewText">
                 {displayAd.text || 'Nhập nội dung để xem trước quảng cáo sản phẩm trên màn hình trình chiếu.'}
               </div>
+              {displayAd.media.length ? (
+                <div className="settingsBannerPreviewMedia">
+                  {displayAd.media.length} ảnh/video đã chọn
+                </div>
+              ) : null}
             </div>
           </div>
 

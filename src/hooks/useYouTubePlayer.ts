@@ -42,6 +42,10 @@ declare global {
 
 let ytApiPromise: Promise<YTGlobal> | null = null
 
+function clampVolume(value: number) {
+  return Math.max(0, Math.min(100, Math.round(Number.isFinite(value) ? value : 100)))
+}
+
 function loadYouTubeIframeApi(): Promise<YTGlobal> {
   if (window.YT?.Player) return Promise.resolve(window.YT)
   if (ytApiPromise) return ytApiPromise
@@ -196,8 +200,8 @@ export function useYouTubePlayer(opts: {
             setLastErrorState(null)
             setRequiresGestureVideoId(null)
             try {
-              player.mute()
-              player.setVolume(volumeRef.current)
+              player.setVolume(clampVolume(volumeRef.current))
+              player.unMute()
               player.playVideo()
               if (playbackProbeRef.current !== null) {
                 window.clearTimeout(playbackProbeRef.current)
@@ -252,7 +256,10 @@ export function useYouTubePlayer(opts: {
   useEffect(() => {
     if (!ready) return
     try {
-      playerRef.current?.setVolume(opts.volume)
+      playerRef.current?.setVolume(clampVolume(opts.volume))
+      if (clampVolume(opts.volume) > 0 && playerRef.current?.isMuted()) {
+        playerRef.current.unMute()
+      }
     } catch {
       // ignore
     }
@@ -312,7 +319,11 @@ export function useYouTubePlayer(opts: {
   }, [])
 
   const setPlayerVolume = useCallback((v: number) => {
-    playerRef.current?.setVolume(v)
+    const nextVolume = clampVolume(v)
+    playerRef.current?.setVolume(nextVolume)
+    if (nextVolume > 0 && playerRef.current?.isMuted()) {
+      playerRef.current.unMute()
+    }
   }, [])
 
   const getRawPlayerState = useCallback(() => {

@@ -39,7 +39,15 @@ loadEnvFile(path.join(projectRootPath, '.env.local'), { overrideFileValues: true
 
 const port = Number(process.env.PORT || process.env.RELAY_PORT || 8787)
 const host = process.env.RELAY_HOST || '0.0.0.0'
-const distRootPath = path.join(projectRootPath, 'dist')
+const distRootPath = [
+  process.env.KARAOKEYT_DIST_DIR,
+  path.join(projectRootPath, 'dist'),
+  process.resourcesPath ? path.join(process.resourcesPath, 'app.asar', 'dist') : '',
+  process.resourcesPath ? path.join(process.resourcesPath, 'dist') : '',
+  path.join(process.cwd(), 'dist'),
+].filter(Boolean).find((candidate) => fs.existsSync(path.join(candidate, 'index.html'))) || path.join(projectRootPath, 'dist')
+const localMediaRootPath = process.env.KARAOKEYT_MEDIA_DIR || ''
+const LOCAL_MEDIA_URL_PREFIX = '/local-media/'
 const YOUTUBE_BASE_URL = 'https://www.googleapis.com/youtube/v3'
 const SEARCH_RATE_WINDOW_MS = 10 * 60 * 1000
 const SEARCH_RATE_LIMIT = Number(process.env.YOUTUBE_SEARCH_RATE_LIMIT || 120)
@@ -60,8 +68,6 @@ function getYoutubeApiKey() {
   if (looksLikeYoutubeApiKey(devClientKey)) return devClientKey.trim()
   return String(serverKey || devClientKey || '').trim()
 }
-
-const YOUTUBE_API_KEY = getYoutubeApiKey()
 
 function writeJson(req, res, status, payload) {
   const origin = req.headers.origin || '*'
@@ -116,11 +122,59 @@ function getStaticContentType(extname) {
     case '.jpg':
     case '.jpeg':
       return 'image/jpeg'
+    case '.webp':
+      return 'image/webp'
+    case '.gif':
+      return 'image/gif'
+    case '.mp4':
+      return 'video/mp4'
+    case '.webm':
+      return 'video/webm'
+    case '.mov':
+      return 'video/quicktime'
+    case '.m4v':
+      return 'video/x-m4v'
     case '.ico':
       return 'image/x-icon'
     default:
       return 'application/octet-stream'
   }
+}
+
+function serveLocalMedia(req, res, url) {
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    writeJson(req, res, 404, { ok: false, message: 'Not found' })
+    return
+  }
+
+  if (!localMediaRootPath) {
+    writeJson(req, res, 404, { ok: false, message: 'Local media is not configured' })
+    return
+  }
+
+  const mediaRoot = path.resolve(localMediaRootPath)
+  const pathname = decodeURIComponent(url.pathname || '')
+  const safeFileName = path.basename(pathname.slice(LOCAL_MEDIA_URL_PREFIX.length))
+  const requestedPath = path.resolve(mediaRoot, safeFileName)
+  if (!safeFileName || (requestedPath !== mediaRoot && !requestedPath.startsWith(`${mediaRoot}${path.sep}`))) {
+    writeJson(req, res, 404, { ok: false, message: 'Not found' })
+    return
+  }
+
+  if (!fs.existsSync(requestedPath) || !fs.statSync(requestedPath).isFile()) {
+    writeJson(req, res, 404, { ok: false, message: 'Not found' })
+    return
+  }
+
+  res.writeHead(200, {
+    'content-type': getStaticContentType(path.extname(requestedPath).toLowerCase()),
+    'cache-control': 'public, max-age=31536000, immutable',
+  })
+  if (req.method === 'HEAD') {
+    res.end()
+    return
+  }
+  fs.createReadStream(requestedPath).pipe(res)
 }
 
 function serveStaticApp(req, res, url) {
@@ -158,11 +212,12 @@ function serveStaticApp(req, res, url) {
   fs.createReadStream(targetPath).pipe(res)
 }
 
-async function fetchVideoDetails(videoIds) {
+async function fetchVideoDetails(videoIds, apiKey) {
   if (!videoIds.length) return new Map()
+  if (!apiKey) return new Map()
 
   const params = new URLSearchParams({
-    key: YOUTUBE_API_KEY,
+    key: apiKey,
     id: videoIds.join(','),
     part: 'contentDetails,status',
     maxResults: String(videoIds.length),
@@ -197,7 +252,9 @@ async function getYoutubeApiErrorMessage(response) {
 }
 
 async function handleYoutubeSearch(req, res, url) {
-  if (!YOUTUBE_API_KEY) {
+  const youtubeApiKey = getYoutubeApiKey()
+
+  if (!youtubeApiKey) {
     writeJson(req, res, 500, { ok: false, message: 'Server chưa cấu hình YOUTUBE_API_KEY.' })
     return
   }
@@ -219,7 +276,7 @@ async function handleYoutubeSearch(req, res, url) {
   const q = karaokeFilterEnabled ? `${rawQuery} karaoke` : rawQuery
 
   const params = new URLSearchParams({
-    key: YOUTUBE_API_KEY,
+    key: youtubeApiKey,
     q,
     part: 'snippet',
     type: 'video',
@@ -242,7 +299,10 @@ async function handleYoutubeSearch(req, res, url) {
 
   const json = await response.json()
   const rawItems = Array.isArray(json.items) ? json.items : []
-  const detailsById = await fetchVideoDetails(rawItems.map((item) => item?.id?.videoId).filter(Boolean))
+  const detailsById = await fetchVideoDetails(
+    rawItems.map((item) => item?.id?.videoId).filter(Boolean),
+    youtubeApiKey,
+  )
   const items = rawItems
     .map((item) => {
       const videoId = item?.id?.videoId
@@ -384,6 +444,11 @@ const server = http.createServer((req, res) => {
 
   if (req.method === 'OPTIONS') {
     writeJson(req, res, 204, {})
+    return
+  }
+
+  if (url.pathname.startsWith(LOCAL_MEDIA_URL_PREFIX)) {
+    serveLocalMedia(req, res, url)
     return
   }
 

@@ -40,8 +40,10 @@ export function useSecureStorage() {
     checkHasKey()
   }, [checkHasKey])
 
-  const saveKey = useCallback(async (apiKey: string): Promise<boolean> => {
-    if (!secureStorage) return false
+  const saveKey = useCallback(async (apiKey: string): Promise<{ success: boolean; message?: string; error?: string }> => {
+    if (!secureStorage) {
+      return { success: false, error: 'Chỉ desktop app mới lưu được YouTube API key.' }
+    }
     
     setLoading(true)
     try {
@@ -50,31 +52,49 @@ export function useSecureStorage() {
         setHasKey(true)
         // Reload page to apply new API key
         window.location.reload()
-        return true
+        return { success: true, message: result.message }
       }
-      return false
-    } catch {
-      return false
+      return { success: false, error: result.error || 'Không lưu được YouTube API key.' }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Không lưu được YouTube API key.' }
     } finally {
       setLoading(false)
     }
   }, [])
 
-  const deleteKey = useCallback(async (): Promise<boolean> => {
-    if (!secureStorage) return false
+  const deleteKey = useCallback(async (): Promise<{ success: boolean; message?: string; error?: string }> => {
+    if (!secureStorage) {
+      return { success: false, error: 'Chỉ desktop app mới xoá được YouTube API key.' }
+    }
     
     setLoading(true)
     try {
       const result = await secureStorage.deleteKey()
       if (result.success) {
         setHasKey(false)
-        return true
+        return { success: true, message: result.message || 'Đã xoá YouTube API key khỏi laptop.' }
       }
-      return false
-    } catch {
-      return false
+      return { success: false, error: result.error || 'Không xoá được YouTube API key.' }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Không xoá được YouTube API key.' }
     } finally {
       setLoading(false)
+    }
+  }, [])
+
+  const checkKey = useCallback(async (): Promise<{ success: boolean; valid?: boolean; message?: string; error?: string }> => {
+    if (!secureStorage) {
+      return { success: false, error: 'Chỉ desktop app mới kiểm tra được YouTube API key.' }
+    }
+
+    try {
+      const result = await secureStorage.checkKey()
+      if (result.success) {
+        setHasKey(result.valid ?? false)
+      }
+      return result
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Không kiểm tra được YouTube API key.' }
     }
   }, [])
 
@@ -84,12 +104,13 @@ export function useSecureStorage() {
     loading,
     saveKey,
     deleteKey,
+    checkKey,
     refresh: checkHasKey,
   }
 }
 
 export function useYouTubeApiKey() {
-  const { isElectron, hasKey, loading, saveKey, deleteKey } = useSecureStorage()
+  const { isElectron, hasKey, loading, saveKey, deleteKey, checkKey } = useSecureStorage()
 
   // For web app, use environment variable check
   const webHasKey = !isElectron && coProxyEnvDungDuoc()
@@ -100,6 +121,7 @@ export function useYouTubeApiKey() {
     loading,
     saveKey,
     deleteKey,
+    checkKey,
     needsSetup: isElectron && hasKey === false,
   }
 }

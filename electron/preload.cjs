@@ -4,7 +4,10 @@ contextBridge.exposeInMainWorld('karaokeDesktop', {
   isElectron: true,
   __ELECTRON__: true,
   getDisplays: () => ipcRenderer.invoke('karaoke:get-displays'),
+  getNetworkInfo: () => ipcRenderer.invoke('karaoke:get-network-info'),
+  importLocalMedia: () => ipcRenderer.invoke('karaoke:import-local-media'),
   openDisplayWindow: (monitorIndex, roomCode, roomToken) => ipcRenderer.invoke('karaoke:open-display-window', monitorIndex, roomCode, roomToken),
+  closeDisplayWindow: () => ipcRenderer.invoke('karaoke:close-display-window'),
   openYoutubeOnDisplay: (videoId) => ipcRenderer.invoke('karaoke:open-youtube-on-display', videoId),
   closeYoutubeOnDisplay: () => ipcRenderer.invoke('karaoke:close-youtube-on-display'),
   openYoutubeLogin: () => ipcRenderer.invoke('karaoke:open-youtube-login'),
@@ -22,6 +25,7 @@ contextBridge.exposeInMainWorld('karaokeDesktop', {
     getKey: () => ipcRenderer.invoke('secure-storage:get-key'),
     deleteKey: () => ipcRenderer.invoke('secure-storage:delete-key'),
     hasKey: () => ipcRenderer.invoke('secure-storage:has-key'),
+    checkKey: () => ipcRenderer.invoke('secure-storage:check-key'),
   },
   // Auto-updater API
   update: {

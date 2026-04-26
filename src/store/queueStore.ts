@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import { chuanHoaMucHangCho, taoMucHangCho } from '../lib/queue'
-import type { SearchSong, SongItem } from '../types'
+import { chuanHoaMucHangCho, taoMucHangCho, taoMucMediaHangCho } from '../lib/queue'
+import type { LocalMediaItem, SearchSong, SongItem } from '../types'
 
 export type QueueState = {
   queue: SongItem[]
@@ -10,6 +10,9 @@ export type QueueState = {
     addSong: (song: SearchSong) => void
     addSongTiepTheo: (song: SearchSong) => void
     addSongVaPhatNgay: (song: SearchSong) => void
+    addMedia: (media: LocalMediaItem) => void
+    addMediaTiepTheo: (media: LocalMediaItem) => void
+    addMediaVaPhatNgay: (media: LocalMediaItem) => void
     removeSong: (queueId: string) => void
     moveSong: (from: number, to: number) => void
     nextSong: () => void
@@ -26,11 +29,9 @@ function clamp(n: number, min: number, max: number) {
 function chenBaiVaoHangCho(
   queue: SongItem[],
   currentIndex: number,
-  song: SearchSong,
+  entry: SongItem,
   mode: 'end' | 'next' | 'play-now',
 ) {
-  const entry = taoMucHangCho(song)
-
   if (mode === 'end') {
     return { queue: [...queue, entry], currentIndex }
   }
@@ -53,15 +54,27 @@ export const useQueueStore = create<QueueState>()(
       actions: {
         addSong: (song) =>
           set((s) => {
-            return chenBaiVaoHangCho(s.queue, s.currentIndex, song, 'end')
+            return chenBaiVaoHangCho(s.queue, s.currentIndex, taoMucHangCho(song), 'end')
           }),
         addSongTiepTheo: (song) =>
           set((s) => {
-            return chenBaiVaoHangCho(s.queue, s.currentIndex, song, 'next')
+            return chenBaiVaoHangCho(s.queue, s.currentIndex, taoMucHangCho(song), 'next')
           }),
         addSongVaPhatNgay: (song) =>
           set((s) => {
-            return chenBaiVaoHangCho(s.queue, s.currentIndex, song, 'play-now')
+            return chenBaiVaoHangCho(s.queue, s.currentIndex, taoMucHangCho(song), 'play-now')
+          }),
+        addMedia: (media) =>
+          set((s) => {
+            return chenBaiVaoHangCho(s.queue, s.currentIndex, taoMucMediaHangCho(media), 'end')
+          }),
+        addMediaTiepTheo: (media) =>
+          set((s) => {
+            return chenBaiVaoHangCho(s.queue, s.currentIndex, taoMucMediaHangCho(media), 'next')
+          }),
+        addMediaVaPhatNgay: (media) =>
+          set((s) => {
+            return chenBaiVaoHangCho(s.queue, s.currentIndex, taoMucMediaHangCho(media), 'play-now')
           }),
         removeSong: (queueId) =>
           set((s) => {

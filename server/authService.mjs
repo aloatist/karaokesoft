@@ -5,7 +5,6 @@ import crypto from 'node:crypto'
 import express from 'express'
 import cors from 'cors'
 import cookieParser from 'cookie-parser'
-import argon2 from 'argon2'
 import jwt from 'jsonwebtoken'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -24,6 +23,17 @@ const PASSWORD_MIN_LENGTH = 6
 const MAX_AUDIT_LOG = 2_000
 const DISPLAY_AD_TITLE_MAX = 60
 const DISPLAY_AD_TEXT_MAX = 220
+const DISPLAY_AD_MEDIA_MAX = 12
+const DISPLAY_AD_MEDIA_INTERVAL_MIN = 5
+const DISPLAY_AD_MEDIA_INTERVAL_MAX = 120
+const DEFAULT_DISPLAY_AD_MEDIA_INTERVAL = 12
+const PASSWORD_HASH_SCHEME = 'scrypt'
+const PASSWORD_HASH_VERSION = 1
+const PASSWORD_HASH_N = 1 << 14
+const PASSWORD_HASH_R = 8
+const PASSWORD_HASH_P = 1
+const PASSWORD_HASH_KEYLEN = 64
+const PASSWORD_HASH_MAXMEM = 64 * 1024 * 1024
 
 const ACCESS_COOKIE = 'karaokeyt_access'
 const REFRESH_COOKIE = 'karaokeyt_refresh'
@@ -48,6 +58,9 @@ const DEFAULT_DISPLAY_AD = {
   enabled: false,
   title: 'San pham noi bat',
   text: '',
+  media: [],
+  mediaEnabled: false,
+  mediaIntervalSeconds: DEFAULT_DISPLAY_AD_MEDIA_INTERVAL,
 }
 
 const allowedOrigins = String(process.env.AUTH_ALLOWED_ORIGINS || '')
@@ -56,9 +69,133 @@ const allowedOrigins = String(process.env.AUTH_ALLOWED_ORIGINS || '')
   .filter(Boolean)
 
 const loginAttempts = new Map()
+let legacyArgon2Module = undefined
 
 function now() {
   return Date.now()
+}
+
+function base64UrlEncode(buffer) {
+  return Buffer.from(buffer).toString('base64url')
+}
+
+function base64UrlDecode(value) {
+  return Buffer.from(String(value || ''), 'base64url')
+}
+
+function derivePasswordKey(password, salt, options = {}) {
+  const N = Number(options.N || PASSWORD_HASH_N)
+  const r = Number(options.r || PASSWORD_HASH_R)
+  const p = Number(options.p || PASSWORD_HASH_P)
+  const keylen = Number(options.keylen || PASSWORD_HASH_KEYLEN)
+  const maxmem = Math.max(PASSWORD_HASH_MAXMEM, 128 * N * r + 1024)
+
+  return new Promise((resolve, reject) => {
+    crypto.scrypt(password, salt, keylen, { N, r, p, maxmem }, (error, derivedKey) => {
+      if (error) {
+        reject(error)
+        return
+      }
+      resolve(Buffer.from(derivedKey))
+    })
+  })
+}
+
+async function hashPassword(password) {
+  const salt = crypto.randomBytes(16)
+  const derivedKey = await derivePasswordKey(password, salt)
+  return [
+    PASSWORD_HASH_SCHEME,
+    String(PASSWORD_HASH_VERSION),
+    String(PASSWORD_HASH_N),
+    String(PASSWORD_HASH_R),
+    String(PASSWORD_HASH_P),
+    base64UrlEncode(salt),
+    base64UrlEncode(derivedKey),
+  ].join('$')
+}
+
+function parseScryptPasswordHash(passwordHash) {
+  const parts = String(passwordHash || '').split('$')
+  if (parts.length !== 7) return null
+
+  const [scheme, versionText, nText, rText, pText, saltText, hashText] = parts
+  if (scheme !== PASSWORD_HASH_SCHEME) return null
+
+  const version = Number(versionText)
+  const N = Number(nText)
+  const r = Number(rText)
+  const p = Number(pText)
+  if (
+    !Number.isInteger(version) ||
+    version !== PASSWORD_HASH_VERSION ||
+    !Number.isInteger(N) ||
+    !Number.isInteger(r) ||
+    !Number.isInteger(p) ||
+    N <= 0 ||
+    r <= 0 ||
+    p <= 0
+  ) {
+    return null
+  }
+
+  try {
+    const salt = base64UrlDecode(saltText)
+    const hash = base64UrlDecode(hashText)
+    if (!salt.length || !hash.length) return null
+    return {
+      N,
+      r,
+      p,
+      salt,
+      hash,
+    }
+  } catch {
+    return null
+  }
+}
+
+async function loadLegacyArgon2() {
+  if (legacyArgon2Module !== undefined) {
+    return legacyArgon2Module
+  }
+
+  try {
+    const imported = await import('argon2')
+    legacyArgon2Module = imported?.default || imported
+  } catch {
+    legacyArgon2Module = null
+  }
+
+  return legacyArgon2Module
+}
+
+async function verifyPasswordHash(passwordHash, password) {
+  const parsedScrypt = parseScryptPasswordHash(passwordHash)
+  if (parsedScrypt) {
+    const derivedKey = await derivePasswordKey(password, parsedScrypt.salt, {
+      N: parsedScrypt.N,
+      r: parsedScrypt.r,
+      p: parsedScrypt.p,
+      keylen: parsedScrypt.hash.length,
+    })
+    return derivedKey.length === parsedScrypt.hash.length && crypto.timingSafeEqual(derivedKey, parsedScrypt.hash)
+  }
+
+  if (String(passwordHash || '').startsWith('$argon2')) {
+    const legacyArgon2 = await loadLegacyArgon2()
+    if (!legacyArgon2) {
+      console.warn('[auth-service] Legacy Argon2 hash detected but argon2 module is unavailable.')
+      return false
+    }
+    return legacyArgon2.verify(passwordHash, password)
+  }
+
+  return false
+}
+
+function shouldRehashPassword(passwordHash) {
+  return !parseScryptPasswordHash(passwordHash)
 }
 
 function randomId(prefix) {
@@ -90,13 +227,48 @@ function sanitizeText(value, maxLength) {
     .replace(/[\u0000-\u001F\u007F]/g, ' ')
 }
 
+function normalizeDisplayAdMediaItem(input, index) {
+  const raw = input && typeof input === 'object' ? input : {}
+  const type = raw.type === 'video' ? 'video' : raw.type === 'image' ? 'image' : ''
+  const url = sanitizeText(raw.url, 600).trim()
+  if (!type || !url) return null
+
+  const name = sanitizeText(raw.name, 120).trim()
+  const id = sanitizeText(raw.id, 120).trim()
+  const addedAt = typeof raw.addedAt === 'number' && Number.isFinite(raw.addedAt) ? raw.addedAt : now() + index
+
+  return {
+    id: id || `${type}-${addedAt}-${index}`,
+    type,
+    name: name || (type === 'video' ? 'Video tren may tinh' : 'Anh tren may tinh'),
+    url,
+    addedAt,
+  }
+}
+
+function normalizeDisplayAdMediaInterval(value) {
+  const interval = Number(value)
+  if (!Number.isFinite(interval)) return DEFAULT_DISPLAY_AD_MEDIA_INTERVAL
+  return Math.max(DISPLAY_AD_MEDIA_INTERVAL_MIN, Math.min(DISPLAY_AD_MEDIA_INTERVAL_MAX, Math.round(interval)))
+}
+
 function normalizeDisplayAd(input) {
   const raw = input && typeof input === 'object' ? input : {}
   const title = sanitizeText(raw.title, DISPLAY_AD_TITLE_MAX).trim()
+  const media = Array.isArray(raw.media)
+    ? raw.media
+        .map((item, index) => normalizeDisplayAdMediaItem(item, index))
+        .filter(Boolean)
+        .slice(0, DISPLAY_AD_MEDIA_MAX)
+    : []
+
   return {
     enabled: Boolean(raw.enabled),
     title: title || DEFAULT_DISPLAY_AD.title,
     text: sanitizeText(raw.text, DISPLAY_AD_TEXT_MAX),
+    media,
+    mediaEnabled: typeof raw.mediaEnabled === 'boolean' ? raw.mediaEnabled : media.length > 0,
+    mediaIntervalSeconds: normalizeDisplayAdMediaInterval(raw.mediaIntervalSeconds),
   }
 }
 
@@ -494,12 +666,7 @@ app.post('/api/auth/bootstrap-owner', async (req, res) => {
     return
   }
 
-  const passwordHash = await argon2.hash(password, {
-    type: argon2.argon2id,
-    memoryCost: 64 * 1024,
-    timeCost: 3,
-    parallelism: 1,
-  })
+  const passwordHash = await hashPassword(password)
 
   const ts = now()
   let owner = db.users.find((user) => user.isOwner) || null
@@ -564,7 +731,7 @@ app.post('/api/auth/login', async (req, res) => {
     return
   }
 
-  const matched = await argon2.verify(user.passwordHash, password)
+  const matched = await verifyPasswordHash(user.passwordHash, password)
   if (!matched) {
     increaseRateLimit(limiterKey)
     res.status(401).json({ ok: false, message: 'Thong tin dang nhap khong dung.' })
@@ -573,6 +740,9 @@ app.post('/api/auth/login', async (req, res) => {
 
   clearExpiredSessions()
   user.lastLoginAt = now()
+  if (shouldRehashPassword(user.passwordHash)) {
+    user.passwordHash = await hashPassword(password)
+  }
   const tokens = issueSession(user, remember, getContext(req))
   appendAudit('login', user.id, { userId: user.id, remember })
   saveDb(db)
@@ -679,12 +849,7 @@ app.post('/api/users', authRequired, requireCapability('manage-users'), async (r
     return
   }
 
-  const passwordHash = await argon2.hash(password, {
-    type: argon2.argon2id,
-    memoryCost: 64 * 1024,
-    timeCost: 3,
-    parallelism: 1,
-  })
+  const passwordHash = await hashPassword(password)
 
   const user = {
     id: randomId('user'),
@@ -736,12 +901,7 @@ app.patch('/api/users/:userId/profile', authRequired, requireCapability('manage-
       res.status(400).json({ ok: false, message: `Mat khau toi thieu ${PASSWORD_MIN_LENGTH} ky tu.` })
       return
     }
-    target.passwordHash = await argon2.hash(password, {
-      type: argon2.argon2id,
-      memoryCost: 64 * 1024,
-      timeCost: 3,
-      parallelism: 1,
-    })
+    target.passwordHash = await hashPassword(password)
   }
 
   appendAudit('update-user-profile', req.auth.user.id, { userId: target.id })

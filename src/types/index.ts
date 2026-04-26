@@ -1,3 +1,13 @@
+export type LocalMediaItem = {
+  id: string
+  type: 'image' | 'video'
+  name: string
+  url: string
+  addedAt: number
+}
+
+export type QueueItemSource = 'youtube' | 'local-media'
+
 export type SongItem = {
   queueId: string
   videoId: string
@@ -6,6 +16,10 @@ export type SongItem = {
   thumbnail: string
   duration?: string
   addedAt: number
+  source: QueueItemSource
+  mediaType?: LocalMediaItem['type']
+  mediaUrl?: string
+  localMediaId?: string
 }
 
 export type SearchSong = Pick<SongItem, 'videoId' | 'title' | 'channelTitle' | 'thumbnail' | 'duration'> & {
@@ -24,10 +38,15 @@ export type PlayerState = {
 export type AppTheme = 'dark' | 'light'
 export type ReplayMode = 'normal' | 'repeat-one' | 'repeat-all'
 
+export type DisplayAdMediaItem = LocalMediaItem
+
 export type DisplayAdSettings = {
   enabled: boolean
   title: string
   text: string
+  media: DisplayAdMediaItem[]
+  mediaEnabled: boolean
+  mediaIntervalSeconds: number
 }
 
 export type UserRole = 'admin' | 'operator' | 'viewer'
@@ -175,11 +194,40 @@ export type OpenDisplayWindowResult = {
   reused: boolean
 }
 
+export type CloseDisplayWindowResult = {
+  success: boolean
+  closed?: boolean
+  error?: string
+}
+
+export type DesktopNetworkAddress = {
+  address: string
+  family: string
+  url: string
+  rendererUrl?: string
+  relayUrl: string
+}
+
+export type DesktopNetworkInfo = {
+  ok: boolean
+  rendererBaseUrl: string
+  rendererPort: number
+  relayPort: number
+  addresses: DesktopNetworkAddress[]
+}
+
+export type ImportLocalMediaResult = {
+  success: boolean
+  items?: DisplayAdMediaItem[]
+  error?: string
+}
+
 export interface SecureStorageApi {
-  saveKey: (apiKey: string) => Promise<{ success: boolean; error?: string }>
+  saveKey: (apiKey: string) => Promise<{ success: boolean; message?: string; error?: string }>
   getKey: () => Promise<{ success: boolean; key?: string; error?: string }>
-  deleteKey: () => Promise<{ success: boolean; error?: string }>
+  deleteKey: () => Promise<{ success: boolean; message?: string; error?: string }>
   hasKey: () => Promise<{ success: boolean; hasKey?: boolean; error?: string }>
+  checkKey: () => Promise<{ success: boolean; valid?: boolean; message?: string; error?: string }>
 }
 
 export type UpdateEventName =
@@ -223,7 +271,10 @@ export type DesktopBridgeApi = {
   isElectron: true
   __ELECTRON__: true
   getDisplays: () => Promise<DesktopDisplayInfo[]>
+  getNetworkInfo?: () => Promise<DesktopNetworkInfo>
+  importLocalMedia?: () => Promise<ImportLocalMediaResult>
   openDisplayWindow: (monitorIndex?: number, roomCode?: string, roomToken?: string) => Promise<OpenDisplayWindowResult>
+  closeDisplayWindow: () => Promise<CloseDisplayWindowResult>
   openYoutubeOnDisplay: (videoId: string) => Promise<{ success: boolean; error?: string }>
   closeYoutubeOnDisplay: () => Promise<{ success: boolean; error?: string }>
   openYoutubeLogin: () => Promise<{ success: boolean; error?: string }>

@@ -45,14 +45,12 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@zxing/browser": "^0.1.5",
-    "argon2": "^0.44.0",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "electron-log": "^5.4.3",
     "electron-updater": "^6.8.3",
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.3",
-    "keytar": "^7.9.0",
     "qrcode": "^1.5.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
@@ -132,9 +130,14 @@
       ]
     },
     "nsis": {
+      "artifactName": "${productName}-${version}-${os}-${arch}-setup.${ext}",
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": "always"
+      "createDesktopShortcut": "always",
+      "include": "build/installer.nsh"
+    },
+    "portable": {
+      "artifactName": "${productName}-${version}-${os}-${arch}-portable.${ext}"
     },
     "extraResources": [
       {
@@ -142,6 +145,13 @@
         "to": "server",
         "filter": [
           "*.mjs"
+        ]
+      },
+      {
+        "from": "dist",
+        "to": "dist",
+        "filter": [
+          "**/*"
         ]
       }
     ],

@@ -18,17 +18,24 @@ type State = {
 
 const CACHE_TTL_MS = 5 * 60 * 1000
 const cache = new Map<string, { ts: number; data: SearchSong[] }>()
+const DEFAULT_DESKTOP_PROXIES = [
+  'http://127.0.0.1:8787/api/youtube/search',
+  'http://localhost:8787/api/youtube/search',
+]
 
 function normalizeKey(q: string, karaokeFilter: boolean, lang: string) {
   return `${q.trim().toLowerCase()}|${karaokeFilter ? 'karaoke' : 'all'}|${lang}`
 }
 
-// Detect if running in Electron desktop app
-const isElectron = typeof window !== 'undefined' && (window as { __ELECTRON__?: boolean }).__ELECTRON__ === true
-const isDesktopApp = isElectron || (typeof navigator !== 'undefined' && navigator.userAgent?.includes('Electron'))
-
-// Default proxy URL for desktop app (localhost relay)
-const DEFAULT_DESKTOP_PROXY = 'http://localhost:8787/api/youtube/search'
+function dangChayDesktopElectron() {
+  if (typeof window === 'undefined') return false
+  return Boolean(
+    window.karaokeDesktop?.isElectron ||
+      window.karaokeDesktop?.__ELECTRON__ ||
+      (window as { __ELECTRON__?: boolean }).__ELECTRON__ ||
+      navigator.userAgent?.includes('Electron'),
+  )
+}
 
 function addUnique(candidates: string[], value: string) {
   const trimmed = value.trim()
@@ -88,6 +95,7 @@ function youtubeProxyTuRelayUrl(relayUrl: string) {
 function taoDanhSachYoutubeProxy(envProxyUrl: string, relayUrlDangKetNoi = '') {
   const candidates: string[] = []
   const isPhoneApp = dangChayTrongCapacitorWebView()
+  const isDesktopApp = dangChayDesktopElectron()
   const envProxyTheoTrangHienTai = suaProxyLocalhostTheoTrangHienTai(envProxyUrl)
 
   if (!(isPhoneApp && isLocalhostUrl(envProxyTheoTrangHienTai))) {
@@ -95,6 +103,10 @@ function taoDanhSachYoutubeProxy(envProxyUrl: string, relayUrlDangKetNoi = '') {
   }
 
   if (typeof window !== 'undefined') {
+    if (isDesktopApp && (window.location.protocol === 'http:' || window.location.protocol === 'https:')) {
+      addUnique(candidates, new URL('/api/youtube/search', window.location.href).toString())
+    }
+
     const relayFromUrl = new URLSearchParams(window.location.search).get('relay') ?? ''
     addUnique(candidates, youtubeProxyTuRelayUrl(relayUrlDangKetNoi))
     addUnique(candidates, youtubeProxyTuRelayUrl(relayFromUrl))
@@ -106,8 +118,10 @@ function taoDanhSachYoutubeProxy(envProxyUrl: string, relayUrlDangKetNoi = '') {
     }
   }
 
-  if (isDesktopApp) {
-    addUnique(candidates, DEFAULT_DESKTOP_PROXY)
+  if (!isPhoneApp) {
+    for (const proxyUrl of DEFAULT_DESKTOP_PROXIES) {
+      addUnique(candidates, proxyUrl)
+    }
   }
 
   return candidates
@@ -116,6 +130,10 @@ function taoDanhSachYoutubeProxy(envProxyUrl: string, relayUrlDangKetNoi = '') {
 function formatSearchError(message: string) {
   if (message === 'API_QUOTA_EXCEEDED') {
     return 'Hết quota YouTube API trong ngày. Vui lòng thử lại sau.'
+  }
+
+  if (message.includes('YOUTUBE_API_KEY') || message.toLowerCase().includes('api key')) {
+    return 'Relay/desktop chưa có YouTube API key hợp lệ. Hãy mở Menu > Cài đặt trên laptop, nhập YouTube API key rồi thử lại.'
   }
 
   if (message === 'Failed to fetch' || message.includes('fetch')) {
@@ -144,6 +162,7 @@ export function useYouTubeSearch(query: string, relayUrlDangKetNoi = '') {
   }, [query])
 
   const fallbackState = useMemo<State | null>(() => {
+    const isDesktopApp = dangChayDesktopElectron()
     if (!canSearch) {
       return { status: 'idle', results: [] }
     }
@@ -187,6 +206,7 @@ export function useYouTubeSearch(query: string, relayUrlDangKetNoi = '') {
 
       try {
         let lastError: unknown = null
+        let preferredError: Error | null = null
         let data: SearchSong[] | null = null
 
         for (const proxyUrl of proxyUrls) {
@@ -202,6 +222,13 @@ export function useYouTubeSearch(query: string, relayUrlDangKetNoi = '') {
             if (error instanceof Error && error.message === 'API_QUOTA_EXCEEDED') {
               throw error
             }
+            if (
+              error instanceof Error &&
+              !preferredError &&
+              (error.message.includes('YOUTUBE_API_KEY') || error.message.toLowerCase().includes('api key'))
+            ) {
+              preferredError = error
+            }
           }
         }
 
@@ -214,7 +241,7 @@ export function useYouTubeSearch(query: string, relayUrlDangKetNoi = '') {
         }
 
         if (!data) {
-          throw lastError instanceof Error ? lastError : new Error('Chưa có nguồn tìm kiếm YouTube khả dụng.')
+          throw preferredError ?? (lastError instanceof Error ? lastError : new Error('Chưa có nguồn tìm kiếm YouTube khả dụng.'))
         }
 
         if (cancelled) return

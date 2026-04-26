@@ -7,6 +7,7 @@ import { YouTubePlayer } from '../components/YouTubePlayer'
 import { phatBaoHetBai, phatBaoLoiPlayer, phatYeuCauBoQuaBai, useBroadcastReceiver } from '../hooks/useBroadcastSync'
 import { chuanHoaMucHangCho } from '../lib/queue'
 import { dongYoutubeTrenManHinhTrinhChieu, moYoutubeTrenManHinhTrinhChieu } from '../services/desktopBridge'
+import { laLocalIndexedMediaUrl, layBlobMediaDiaPhuong, layIdLocalIndexedMedia } from '../services/localMediaStore'
 import {
   chuanHoaRelayUrl,
   chuanHoaMaPhongRemote,
@@ -35,6 +36,7 @@ type ViewState = {
 const EMPTY_REMOTE_PRESENCE: RemotePresence = { hosts: 0, remotes: 0, displays: 0 }
 const DISPLAY_AD_POLL_MS = 20_000
 const MOBILE_DISPLAY_BREAKPOINT = 720
+const DEFAULT_DISPLAY_VOLUME = 100
 
 function chuanHoaCheDoChayManChieu(input: unknown): DisplayRunMode {
   return input === 'single' ? 'single' : 'parallel'
@@ -53,6 +55,16 @@ function taoYoutubeWatchUrl(videoId: string) {
   url.searchParams.set('v', videoId)
   url.searchParams.set('autoplay', '1')
   return url.toString()
+}
+
+function taoHttpUrlTuRelay(relayUrl: string) {
+  try {
+    const url = new URL(relayUrl)
+    url.protocol = url.protocol === 'wss:' ? 'https:' : 'http:'
+    return url.toString()
+  } catch {
+    return ''
+  }
 }
 
 function docQueueTuLocalStorage(): ViewState | null {
@@ -91,13 +103,16 @@ function docManChieuHienTai(): DisplayTarget {
 export function DisplayScreen() {
   const localDisplayAd = useSettingsStore((s) => s.displayAd)
   const [state, setState] = useState<ViewState>(() => docQueueTuLocalStorage() ?? { queue: [], currentIndex: 0 })
-  const [volume, setVolume] = useState(80)
+  const [volume, setVolume] = useState(DEFAULT_DISPLAY_VOLUME)
   const [cmd, setCmd] = useState<{ type: 'play' | 'pause' | 'volume' | 'restart'; value?: number; nonce: number }>()
   const [tvCode] = useState(() => docMaTVBanDau())
   const [tvToken] = useState(() => docTokenTVBanDau())
   const [relayStatus, setRelayStatus] = useState<RemoteRelayStatus>(tvCode ? 'connecting' : 'idle')
   const [presence, setPresence] = useState<RemotePresence>(EMPTY_REMOTE_PRESENCE)
   const [syncedDisplayAd, setSyncedDisplayAd] = useState<DisplayAdSettings | null>(null)
+  const [displayAdMediaIndex, setDisplayAdMediaIndex] = useState(0)
+  const [displayAdMediaBlob, setDisplayAdMediaBlob] = useState<{ sourceUrl: string; blobUrl: string } | null>(null)
+  const [queueMediaBlob, setQueueMediaBlob] = useState<{ sourceUrl: string; blobUrl: string } | null>(null)
   const [displayTarget] = useState<DisplayTarget>(() => docManChieuHienTai())
   const [displayRunMode, setDisplayRunMode] = useState<DisplayRunMode>('parallel')
   const [activeDisplayTarget, setActiveDisplayTarget] = useState<DisplayTarget>('laptop')
@@ -108,6 +123,7 @@ export function DisplayScreen() {
   const displayAdUpdatedAtRef = useRef(0)
   const relayCommandNonceRef = useRef<number | null>(null)
   const youtubeTrucTiepVideoIdRef = useRef<string | null>(null)
+  const mediaVideoRef = useRef<HTMLVideoElement | null>(null)
   const [relayUrl, setRelayUrl] = useState(() => layRelayUrlMacDinh())
   const qrRelayUrl = remoteQrRelayUrl || relayUrl
   const controlUrl = useMemo(() => taoDuongDanRemote(tvCode, tvToken, qrRelayUrl, remoteQrBaseUrl || undefined), [qrRelayUrl, remoteQrBaseUrl, tvCode, tvToken])
@@ -219,7 +235,11 @@ export function DisplayScreen() {
 
   const onMsg = useCallback((msg: SyncMessage) => {
     if (msg.type === 'QUEUE_UPDATE') {
-      setState({ queue: msg.queue, currentIndex: msg.currentIndex })
+      const nextQueue = msg.queue
+        .map((item, index) => chuanHoaMucHangCho(item, Date.now() + index))
+        .filter((item): item is SongItem => item !== null)
+      const nextIndex = nextQueue.length ? Math.min(Math.max(msg.currentIndex, 0), nextQueue.length - 1) : 0
+      setState({ queue: nextQueue, currentIndex: nextIndex })
     }
     if (msg.type === 'SETTINGS_UPDATE' && msg.settings.displayAd) {
       apDungDisplayAd(msg.settings.displayAd)
@@ -232,7 +252,7 @@ export function DisplayScreen() {
         // Control sẽ tự nextSong; Display chỉ cần nhận QUEUE_UPDATE kế tiếp
       }
       if (msg.cmd === 'volume') {
-        const v = typeof msg.value === 'number' ? msg.value : 80
+        const v = typeof msg.value === 'number' ? msg.value : DEFAULT_DISPLAY_VOLUME
         setVolume(v)
         setCmd({ type: 'volume', value: v, nonce: nonceRef.current++ })
       }
@@ -333,7 +353,22 @@ export function DisplayScreen() {
   }, [apDungDisplayAd, displayTarget, relayUrl, tvCode, tvToken])
 
   const baiDangPhat = state.queue[state.currentIndex]
-  const baiDangPhatVideoId = baiDangPhat?.videoId ?? null
+  const baiDangPhatLaMedia = baiDangPhat?.source === 'local-media' && Boolean(baiDangPhat.mediaUrl)
+  const baiDangPhatVideoId = baiDangPhat && !baiDangPhatLaMedia ? baiDangPhat.videoId : null
+  const mediaDangPhatRawUrl = baiDangPhatLaMedia ? baiDangPhat?.mediaUrl ?? '' : ''
+  const mediaDangPhatUrl = useMemo(() => {
+    if (!mediaDangPhatRawUrl) return ''
+    if (laLocalIndexedMediaUrl(mediaDangPhatRawUrl)) {
+      return queueMediaBlob?.sourceUrl === mediaDangPhatRawUrl ? queueMediaBlob.blobUrl : ''
+    }
+    if (!mediaDangPhatRawUrl.startsWith('/local-media/')) return mediaDangPhatRawUrl
+
+    const currentPort = window.location.port
+    if (currentPort && currentPort !== '5173') return mediaDangPhatRawUrl
+
+    const relayHttpUrl = taoHttpUrlTuRelay(relayUrl)
+    return relayHttpUrl ? new URL(mediaDangPhatRawUrl, relayHttpUrl).toString() : mediaDangPhatRawUrl
+  }, [mediaDangPhatRawUrl, queueMediaBlob, relayUrl])
   const baiTiepTheo = useMemo(() => state.queue[state.currentIndex + 1], [state.queue, state.currentIndex])
   const manChieuDangHoatDong = displayRunMode === 'parallel' || activeDisplayTarget === displayTarget
   const nhanManChieuHienTai = displayTarget === 'tv' ? 'TV' : 'laptop'
@@ -341,7 +376,106 @@ export function DisplayScreen() {
   const displayAd = syncedDisplayAd ?? localDisplayAd
   const displayAdText = displayAd.text
   const displayAdTitle = displayAd.title.trim()
-  const hienThiDisplayAd = manChieuDangHoatDong && displayAd.enabled && displayAdText.trim()
+  const displayAdMedia = displayAd.media.filter((item) => item.url && (item.type === 'image' || item.type === 'video'))
+  const displayAdMediaItem = displayAdMedia.length ? displayAdMedia[displayAdMediaIndex % displayAdMedia.length] : null
+  const displayAdMediaUrl = useMemo(() => {
+    if (!displayAdMediaItem) return ''
+    if (laLocalIndexedMediaUrl(displayAdMediaItem.url)) {
+      return displayAdMediaBlob?.sourceUrl === displayAdMediaItem.url ? displayAdMediaBlob.blobUrl : ''
+    }
+    if (!displayAdMediaItem.url.startsWith('/local-media/')) return displayAdMediaItem.url
+
+    const currentPort = window.location.port
+    if (currentPort && currentPort !== '5173') return displayAdMediaItem.url
+
+    const relayHttpUrl = taoHttpUrlTuRelay(relayUrl)
+    return relayHttpUrl ? new URL(displayAdMediaItem.url, relayHttpUrl).toString() : displayAdMediaItem.url
+  }, [displayAdMediaBlob, displayAdMediaItem, relayUrl])
+  const hienThiDisplayAdMedia =
+    !baiDangPhatLaMedia && manChieuDangHoatDong && displayAd.enabled && displayAd.mediaEnabled && Boolean(displayAdMediaUrl)
+  const hienThiDisplayAd =
+    !baiDangPhatLaMedia &&
+    manChieuDangHoatDong &&
+    displayAd.enabled &&
+    Boolean(displayAdText.trim() || displayAdTitle || hienThiDisplayAdMedia)
+
+  useEffect(() => {
+    if (!displayAd.mediaEnabled || displayAdMedia.length < 2) return
+
+    const timer = window.setInterval(() => {
+      setDisplayAdMediaIndex((current) => (current + 1) % displayAdMedia.length)
+    }, displayAd.mediaIntervalSeconds * 1000)
+
+    return () => window.clearInterval(timer)
+  }, [displayAd.mediaEnabled, displayAd.mediaIntervalSeconds, displayAdMedia.length])
+
+  useEffect(() => {
+    const sourceUrl = displayAdMediaItem?.url ?? ''
+    if (!sourceUrl || !laLocalIndexedMediaUrl(sourceUrl)) return
+
+    let cancelled = false
+    let objectUrl = ''
+
+    void (async () => {
+      const blob = await layBlobMediaDiaPhuong(layIdLocalIndexedMedia(sourceUrl))
+      if (!blob || cancelled) return
+
+      objectUrl = URL.createObjectURL(blob)
+      setDisplayAdMediaBlob({ sourceUrl, blobUrl: objectUrl })
+    })()
+
+    return () => {
+      cancelled = true
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [displayAdMediaItem?.url])
+
+  useEffect(() => {
+    const sourceUrl = mediaDangPhatRawUrl
+    if (!sourceUrl || !laLocalIndexedMediaUrl(sourceUrl)) return
+
+    let cancelled = false
+    let objectUrl = ''
+
+    void (async () => {
+      const blob = await layBlobMediaDiaPhuong(layIdLocalIndexedMedia(sourceUrl))
+      if (!blob || cancelled) return
+
+      objectUrl = URL.createObjectURL(blob)
+      setQueueMediaBlob({ sourceUrl, blobUrl: objectUrl })
+    })()
+
+    return () => {
+      cancelled = true
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [mediaDangPhatRawUrl])
+
+  useEffect(() => {
+    const video = mediaVideoRef.current
+    if (!video || !baiDangPhatLaMedia || baiDangPhat?.mediaType !== 'video') return
+
+    video.volume = Math.max(0, Math.min(1, volume / 100))
+  }, [baiDangPhat?.mediaType, baiDangPhatLaMedia, mediaDangPhatUrl, volume])
+
+  useEffect(() => {
+    const video = mediaVideoRef.current
+    if (!video || !baiDangPhatLaMedia || baiDangPhat?.mediaType !== 'video' || !cmd) return
+
+    if (cmd.type === 'play') {
+      void video.play().catch(() => undefined)
+    }
+    if (cmd.type === 'pause') {
+      video.pause()
+    }
+    if (cmd.type === 'restart') {
+      video.currentTime = 0
+      void video.play().catch(() => undefined)
+    }
+    if (cmd.type === 'volume' && typeof cmd.value === 'number') {
+      video.volume = Math.max(0, Math.min(1, cmd.value / 100))
+    }
+  }, [baiDangPhat?.mediaType, baiDangPhatLaMedia, cmd, mediaDangPhatUrl])
 
   useEffect(() => {
     if (!youtubeTrucTiepVideoIdRef.current || youtubeTrucTiepVideoIdRef.current === baiDangPhatVideoId) return
@@ -395,7 +529,7 @@ export function DisplayScreen() {
       <div className="displayAura displayAuraWarm" />
       <div className="displayAura displayAuraCool" />
       <div className="displayVideo">
-        {baiDangPhat && manChieuDangHoatDong ? (
+        {baiDangPhat && !baiDangPhatLaMedia && manChieuDangHoatDong ? (
           <YouTubePlayer
             videoId={baiDangPhat.videoId}
             volume={volume}
@@ -406,12 +540,46 @@ export function DisplayScreen() {
             hideAdAssist={Boolean(hienThiDisplayAd)}
           />
         ) : null}
+        {baiDangPhatLaMedia && manChieuDangHoatDong && mediaDangPhatUrl ? (
+          <div className="displayMediaStage" aria-label="Phông nền hội nghị">
+            {baiDangPhat?.mediaType === 'video' ? (
+              <video
+                ref={mediaVideoRef}
+                key={`${baiDangPhat.queueId}:${mediaDangPhatUrl}`}
+                src={mediaDangPhatUrl}
+                autoPlay
+                playsInline
+                preload="auto"
+                onEnded={() => phatBaoHetBai()}
+              />
+            ) : (
+              <img src={mediaDangPhatUrl} alt="" />
+            )}
+          </div>
+        ) : null}
       </div>
 
       {hienThiDisplayAd ? (
         <div className="displayAdBanner" aria-label="Quảng cáo sản phẩm">
+          {hienThiDisplayAdMedia && displayAdMediaItem ? (
+            <div className="displayAdMediaFrame">
+              {displayAdMediaItem.type === 'video' ? (
+                <video
+                  key={displayAdMediaItem.id}
+                  src={displayAdMediaUrl}
+                  autoPlay
+                  muted
+                  loop
+                  playsInline
+                  preload="metadata"
+                />
+              ) : (
+                <img src={displayAdMediaUrl} alt="" />
+              )}
+            </div>
+          ) : null}
           {displayAdTitle ? <div className="displayAdBannerTitle">{displayAdTitle}</div> : null}
-          <div className="displayAdBannerText">{displayAdText}</div>
+          {displayAdText.trim() ? <div className="displayAdBannerText">{displayAdText}</div> : null}
         </div>
       ) : null}
 
@@ -425,11 +593,13 @@ export function DisplayScreen() {
             </div>
           </div>
         </div>
-      ) : baiDangPhat ? (
+      ) : baiDangPhat && !baiDangPhatLaMedia ? (
         <>
           <SongOverlay title={baiDangPhat.title} channelTitle={baiDangPhat.channelTitle} />
           <NextSongTicker nextTitle={baiTiepTheo?.title} />
         </>
+      ) : baiDangPhat ? (
+        null
       ) : isPhoneViewport ? (
         <div className="displayPhoneRedirectRoot">
           <div className="displayPhoneRedirectCard">

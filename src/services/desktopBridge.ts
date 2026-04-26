@@ -1,4 +1,14 @@
-import type { DesktopDisplayInfo, OpenDisplayWindowResult, SyncMessage, UpdateEventName, UpdateInfo, UpdateProgress } from '../types'
+import type {
+  CloseDisplayWindowResult,
+  DesktopDisplayInfo,
+  DesktopNetworkInfo,
+  ImportLocalMediaResult,
+  OpenDisplayWindowResult,
+  SyncMessage,
+  UpdateEventName,
+  UpdateInfo,
+  UpdateProgress,
+} from '../types'
 
 function layBridge() {
   if (typeof window === 'undefined') return null
@@ -15,10 +25,28 @@ export async function layDanhSachManHinh(): Promise<DesktopDisplayInfo[]> {
   return bridge.getDisplays()
 }
 
+export async function layThongTinMangDesktop(): Promise<DesktopNetworkInfo | null> {
+  const bridge = layBridge()
+  if (!bridge?.getNetworkInfo) return null
+  return bridge.getNetworkInfo()
+}
+
+export async function nhapMediaDiaPhuongDesktop(): Promise<ImportLocalMediaResult | null> {
+  const bridge = layBridge()
+  if (!bridge?.importLocalMedia) return null
+  return bridge.importLocalMedia()
+}
+
 export async function moManHinhTrinhChieu(monitorIndex?: number, roomCode?: string, roomToken?: string): Promise<OpenDisplayWindowResult | null> {
   const bridge = layBridge()
   if (!bridge) return null
   return bridge.openDisplayWindow(monitorIndex, roomCode, roomToken)
+}
+
+export async function dongManHinhTrinhChieu(): Promise<CloseDisplayWindowResult | null> {
+  const bridge = layBridge()
+  if (!bridge?.closeDisplayWindow) return null
+  return bridge.closeDisplayWindow()
 }
 
 export async function moYoutubeTrenManHinhTrinhChieu(videoId: string) {

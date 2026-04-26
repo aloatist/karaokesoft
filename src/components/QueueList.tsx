@@ -12,6 +12,8 @@ function QueueRow({
   title,
   channelTitle,
   thumbnail,
+  source,
+  mediaType,
   active,
   activeActionKey,
   disabled,
@@ -23,6 +25,8 @@ function QueueRow({
   title: string
   channelTitle: string
   thumbnail?: string
+  source?: SongItem['source']
+  mediaType?: SongItem['mediaType']
   active: boolean
   activeActionKey?: string | null
   disabled?: boolean
@@ -37,6 +41,10 @@ function QueueRow({
     transition,
     opacity: isDragging ? 0.7 : 1,
   }
+  const isLocalMedia = source === 'local-media'
+  const sourceLabel = isLocalMedia ? (mediaType === 'video' ? 'Video máy tính' : 'Ảnh máy tính') : 'YouTube'
+  const activeLabel = isLocalMedia ? 'Đang phát nền' : 'Đang phát trên YouTube'
+  const canRenderThumbnail = Boolean(thumbnail && !thumbnail.startsWith('idb-media:'))
 
   return (
     <div ref={setNodeRef} style={style} className={`row ${active ? 'rowActive' : ''}`}>
@@ -45,18 +53,20 @@ function QueueRow({
       </button>
       <button className="rowMain" onClick={onPlayNow} type="button" disabled={disabled}>
         <div className="queueRowContent">
-          {thumbnail ? (
+          {canRenderThumbnail ? (
             <img className="queueThumb" src={thumbnail} alt="" aria-hidden="true" />
           ) : (
-            <div className="queueThumb queueThumbPh" aria-hidden="true" />
+            <div className="queueThumb queueThumbPh" aria-hidden="true">
+              {isLocalMedia ? <AppIcon name="camera" className="buttonIcon" /> : null}
+            </div>
           )}
           <div className="rowHead rowHeadStack">
             <div className="title">{title}</div>
-            <div className="sub">Kênh: {channelTitle}</div>
+            <div className="sub">{isLocalMedia ? channelTitle : `Kênh: ${channelTitle}`}</div>
             <div className="rowBadgeLine">
-              <span className="sourceBadge">YouTube</span>
-              <span className="sourceBadge sourceBadgeMuted">ID {videoId}</span>
-              {active ? <span className="liveBadge">Đang phát trên YouTube</span> : null}
+              <span className="sourceBadge">{sourceLabel}</span>
+              {!isLocalMedia ? <span className="sourceBadge sourceBadgeMuted">ID {videoId}</span> : null}
+              {active ? <span className="liveBadge">{activeLabel}</span> : null}
             </div>
           </div>
         </div>
@@ -140,6 +150,8 @@ export function QueueList({
               title={it.title}
               channelTitle={it.channelTitle}
               thumbnail={it.thumbnail}
+              source={it.source}
+              mediaType={it.mediaType}
               active={idx === currentIndex}
               activeActionKey={activeActionKey}
               disabled={disabled}

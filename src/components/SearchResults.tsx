@@ -11,6 +11,8 @@ export function SearchResults({
   recentAction,
   activeButtonKey,
   disabled = false,
+  errorActionLabel,
+  onErrorAction,
 }: {
   status: 'idle' | 'loading' | 'error' | 'success'
   errorMessage?: string
@@ -24,6 +26,8 @@ export function SearchResults({
   } | null
   activeButtonKey?: string | null
   disabled?: boolean
+  errorActionLabel?: string
+  onErrorAction?: () => void
 }) {
   if (status === 'idle') {
     return <div className="empty">Nhập tên bài để tìm kiếm.</div>
@@ -32,7 +36,18 @@ export function SearchResults({
     return <div className="empty">Đang tìm kiếm…</div>
   }
   if (status === 'error') {
-    return <div className="errorBox">{errorMessage ?? 'Có lỗi xảy ra.'}</div>
+    return (
+      <div className="errorBox">
+        <div className="errorBoxText">{errorMessage ?? 'Có lỗi xảy ra.'}</div>
+        {onErrorAction ? (
+          <div className="errorBoxActions">
+            <button className="ghost compactButton buttonToneMuted" onClick={onErrorAction} type="button">
+              {errorActionLabel || 'Mở cài đặt'}
+            </button>
+          </div>
+        ) : null}
+      </div>
+    )
   }
   if (!results.length) {
     return <div className="empty">Không có kết quả phù hợp.</div>

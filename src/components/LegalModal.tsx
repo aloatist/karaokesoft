@@ -27,7 +27,7 @@ export function LegalModal({ open, onClose }: Props) {
             </p>
             <p>
               Khi tìm bài, từ khoá tìm kiếm có thể được gửi tới máy chủ proxy của KaraokeYT hoặc YouTube Data API để lấy kết
-              quả video. Không nhập YouTube API key trong giao diện người dùng.
+              quả video. Nếu bạn dùng desktop app, có thể nhập YouTube API key trong phần Cài đặt; key chỉ được lưu cục bộ trên laptop đó.
             </p>
           </section>
 

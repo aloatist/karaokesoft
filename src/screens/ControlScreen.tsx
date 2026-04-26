@@ -3,8 +3,9 @@ import { AccountModal } from '../components/AccountModal'
 import { AppIcon } from '../components/AppIcon'
 import { FakeProgressBar } from '../components/FakeProgressBar'
 import { LegalModal } from '../components/LegalModal'
+import { MediaLibraryPanel } from '../components/MediaLibraryPanel'
 import { NowPlayingMini } from '../components/NowPlayingMini'
-import { OpenDisplayButton } from '../components/OpenDisplayButton'
+import { CloseDisplayButton, OpenDisplayButton } from '../components/OpenDisplayButton'
 import { QueueList } from '../components/QueueList'
 import { RemotePairingModal } from '../components/RemotePairingModal'
 import { SearchBar } from '../components/SearchBar'
@@ -12,13 +13,20 @@ import { SearchHistoryDropdown } from '../components/SearchHistoryDropdown'
 import { SearchModeToggle } from '../components/SearchModeToggle'
 import { SearchResults } from '../components/SearchResults'
 import { SettingsModal } from '../components/SettingsModal'
-import { UserSwitcher } from '../components/UserSwitcher'
 import { WaveformIcon } from '../components/WaveformIcon'
 import { phatCaiDatTrinhChieu, phatLenhPlayer, useBroadcastReceiver, useBroadcastSender } from '../hooks/useBroadcastSync'
 import { AUTH_SESSION_LABEL, coQuyen, USER_ROLE_LABEL, type UserPermission } from '../lib/auth'
 import { chuanHoaMucHangCho } from '../lib/queue'
 import { saveToSearchHistory } from '../lib/searchHistory'
 import { useYouTubeSearch } from '../hooks/useYouTubeSearch'
+import { luuMediaDiaPhuong } from '../services/localMediaStore'
+import {
+  coTheDongBoAmLuongDienThoai,
+  datAmLuongDienThoai,
+  docAmLuongDienThoai,
+  langNgheAmLuongDienThoai,
+  langNghePhimAmLuongCung,
+} from '../services/deviceVolume'
 import {
   chuanHoaRelayUrl,
   chuanHoaMaPhongRemote,
@@ -50,7 +58,9 @@ import {
   authRefresh,
   mapApiUserToAppUser,
 } from '../services/authApi'
+import { dangChayDesktop, layThongTinMangDesktop, nhapMediaDiaPhuongDesktop } from '../services/desktopBridge'
 import { useAuthStore } from '../store/authStore'
+import { useMediaLibraryStore } from '../store/mediaLibraryStore'
 import { useQueueStore } from '../store/queueStore'
 import { useSettingsStore } from '../store/settingsStore'
 import type {
@@ -65,14 +75,15 @@ import type {
   ReplayMode,
   SearchSong,
   SyncMessage,
+  LocalMediaItem,
 } from '../types'
 
-const BREAKPOINT_3_PANE = 1280
+const BREAKPOINT_3_PANE = 1180
 const MOBILE_BREAKPOINT = 720
-const MIN_SEARCH_PERCENT = 22
-const MIN_COMMAND_PERCENT = 28
+const MIN_SEARCH_PERCENT = 30
+const MIN_COMMAND_PERCENT = 20
 const MIN_QUEUE_PERCENT = 24
-const CONTROL_LAYOUT_STORAGE_KEY = 'karaokeyt-control-layout-v2'
+const CONTROL_LAYOUT_STORAGE_KEY = 'karaokeyt-control-layout-v3'
 const EMPTY_REMOTE_PRESENCE: RemotePresence = { hosts: 0, remotes: 0, displays: 0 }
 const GUEST_CONTROL_PERMISSIONS = new Set<UserPermission>(['search', 'queue', 'playback', 'display'])
 const REMOTE_STATE_SEND_DELAY_MS = 250
@@ -80,9 +91,11 @@ const REMOTE_STATE_APPLY_DELAY_MS = 350
 const REMOTE_STATE_ECHO_MUTE_MS = 900
 const DISPLAY_RUN_MODE_STORAGE_KEY = 'karaokeyt-display-run-mode'
 const DISPLAY_ACTIVE_TARGET_STORAGE_KEY = 'karaokeyt-display-active-target'
+const DEFAULT_DISPLAY_VOLUME = 100
 
 type MobileControlTarget = 'laptop' | 'tv'
 type DisplayRunChoice = DisplayTarget | 'parallel'
+type QueueFilter = 'all' | 'youtube' | 'image' | 'video'
 
 function chuanHoaCheDoChayManChieu(input: unknown): DisplayRunMode {
   return input === 'single' ? 'single' : 'parallel'
@@ -94,6 +107,11 @@ function chuanHoaManChieuDangChon(input: unknown): DisplayTarget {
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n))
+}
+
+function clampVolume(value: number) {
+  if (!Number.isFinite(value)) return DEFAULT_DISPLAY_VOLUME
+  return clamp(Math.round(value), 0, 100)
 }
 
 function laLoiVideoKhongTonTai(code: number) {
@@ -114,6 +132,10 @@ function taoKhoaDongBoRemote(state: RemoteRoomState) {
       thumbnail: song.thumbnail,
       duration: song.duration ?? '',
       addedAt: song.addedAt,
+      source: song.source,
+      mediaType: song.mediaType ?? '',
+      mediaUrl: song.mediaUrl ?? '',
+      localMediaId: song.localMediaId ?? '',
     })),
     currentIndex: state.currentIndex,
     volume: state.volume,
@@ -131,12 +153,12 @@ function taoKhoaDongBoRemote(state: RemoteRoomState) {
 
 function docThongSoKhung() {
   if (typeof window === 'undefined') {
-    return { search: 28, command: 39 }
+    return { search: 40, command: 24 }
   }
 
   try {
     const raw = window.localStorage.getItem(CONTROL_LAYOUT_STORAGE_KEY)
-    if (!raw) return { search: 28, command: 39 }
+    if (!raw) return { search: 40, command: 24 }
     const parsed = JSON.parse(raw) as { search?: number; command?: number }
     const search = typeof parsed.search === 'number' ? parsed.search : 28
     const command = typeof parsed.command === 'number' ? parsed.command : 39
@@ -209,13 +231,26 @@ function layHostnameLanTuInput(input: string) {
   }
 }
 
+function taoHttpUrlTuRelay(relayUrl: string) {
+  try {
+    const url = new URL(relayUrl)
+    url.protocol = url.protocol === 'wss:' ? 'https:' : 'http:'
+    return url.toString()
+  } catch {
+    return ''
+  }
+}
+
 export function ControlScreen() {
   useBroadcastSender()
+  const laDesktop = dangChayDesktop()
 
   const queue = useQueueStore((s) => s.queue)
   const currentIndex = useQueueStore((s) => s.currentIndex)
-  const { addSong, addSongTiepTheo, addSongVaPhatNgay, moveSong, removeSong, nextSong, prevSong, clearQueue, setCurrentIndex } =
+  const { addSong, addSongTiepTheo, addSongVaPhatNgay, addMedia, addMediaTiepTheo, addMediaVaPhatNgay, moveSong, removeSong, nextSong, prevSong, clearQueue, setCurrentIndex } =
     useQueueStore((s) => s.actions)
+  const mediaLibraryItems = useMediaLibraryStore((s) => s.items)
+  const { addItems: addMediaLibraryItems, removeItem: removeMediaLibraryItem } = useMediaLibraryStore((s) => s.actions)
   const autoplayNext = useSettingsStore((s) => s.autoplayNext)
   const replayMode = useSettingsStore((s) => s.replayMode)
   const displayAd = useSettingsStore((s) => s.displayAd)
@@ -236,9 +271,13 @@ export function ControlScreen() {
   const [openMobileMenu, setOpenMobileMenu] = useState(false)
   const [settingsSyncNonce, setSettingsSyncNonce] = useState(0)
   const [query, setQuery] = useState('')
-  const [volume, setVolume] = useState(80)
+  const [sourceTab, setSourceTab] = useState<'youtube' | 'media'>('youtube')
+  const [queueFilter, setQueueFilter] = useState<QueueFilter>('all')
+  const [importingMedia, setImportingMedia] = useState(false)
+  const [volume, setVolume] = useState(DEFAULT_DISPLAY_VOLUME)
   const [toast, setToast] = useState<string | null>(null)
   const [recentAction, setRecentAction] = useState<{ videoId: string; message: string } | null>(null)
+  const [recentMediaAction, setRecentMediaAction] = useState<{ id: string; message: string } | null>(null)
   const [highlightPanel, setHighlightPanel] = useState<'command' | 'queue' | null>(null)
   const [activeButtonKey, setActiveButtonKey] = useState<string | null>(null)
   const [activeResizer, setActiveResizer] = useState<'search' | 'command' | null>(null)
@@ -259,6 +298,7 @@ export function ControlScreen() {
   const [remotePhoneBaseUrl, setRemotePhoneBaseUrl] = useState('')
   const [remotePhoneRelayUrl, setRemotePhoneRelayUrl] = useState('')
   const [remotePhoneLinkHint, setRemotePhoneLinkHint] = useState<string | null>(null)
+  const [mobileLanHostInput, setMobileLanHostInput] = useState('')
   const [remotePresence, setRemotePresence] = useState<RemotePresence>(EMPTY_REMOTE_PRESENCE)
   const [paneSizes, setPaneSizes] = useState(() => docThongSoKhung())
   const [isThreePane, setIsThreePane] = useState(() => window.innerWidth >= BREAKPOINT_3_PANE)
@@ -277,6 +317,7 @@ export function ControlScreen() {
   const [serverCapabilities, setServerCapabilities] = useState<string[]>([])
   const layoutRef = useRef<HTMLDivElement | null>(null)
   const searchInputRef = useRef<HTMLInputElement | null>(null)
+  const mediaFileInputRef = useRef<HTMLInputElement | null>(null)
   const commandPanelRef = useRef<HTMLDivElement | null>(null)
   const queuePanelRef = useRef<HTMLDivElement | null>(null)
   const remoteConnectionRef = useRef<ReturnType<typeof taoKetNoiRelay> | null>(null)
@@ -289,9 +330,20 @@ export function ControlScreen() {
   const pendingRemoteApplyTimerRef = useRef<number | null>(null)
   const pendingRemoteSendRef = useRef<{ state: RemoteRoomState; key: string } | null>(null)
   const pendingRemoteSendTimerRef = useRef<number | null>(null)
+  const volumeRef = useRef(DEFAULT_DISPLAY_VOLUME)
+  const phoneVolumePercentRef = useRef<number | null>(null)
+  const phoneVolumeReadyRef = useRef(false)
+  const syncingPhoneVolumeUntilRef = useRef(0)
 
   const baiDangPhat = queue[currentIndex]
   const baiTiepTheo = useMemo(() => queue[currentIndex + 1], [queue, currentIndex])
+  const baiDangPhatLaMedia = baiDangPhat?.source === 'local-media'
+  const nhanNguonDangPhat = baiDangPhatLaMedia
+    ? baiDangPhat?.mediaType === 'video'
+      ? 'Video máy tính'
+      : 'Ảnh máy tính'
+    : 'YouTube'
+  const coAnhDaiDienDangPhat = Boolean(baiDangPhat?.thumbnail && !baiDangPhat.thumbnail.startsWith('idb-media:'))
   const nguoiDungHienTai = useMemo(
     () => users.find((user) => user.id === currentUserId) ?? users[0],
     [currentUserId, users],
@@ -327,18 +379,6 @@ export function ControlScreen() {
   const soBaiSapToi = baiDangPhat ? Math.max(queue.length - currentIndex - 1, 0) : queue.length
   const hienThiPlayerMode = baiDangPhat ? (playerMode === 'idle' ? 'playing' : playerMode) : 'idle'
   const nhanTaiKhoan = userDangDangNhap?.name ?? 'Khách dùng nhanh'
-  const nhanDongBo = authServerOnline
-    ? sessionMode === 'authenticated'
-      ? 'Auth server + Cookie'
-      : 'Auth server'
-    : authProbeDone
-      ? sessionMode === 'authenticated'
-        ? 'Cookie/local'
-        : 'Dữ liệu cục bộ'
-      : 'Đang kiểm tra auth...'
-  const nhanTaiKhoanDayDu = userDangDangNhap
-    ? `${userDangDangNhap.username} · ${USER_ROLE_LABEL[userDangDangNhap.role]}${userDangDangNhap.isOwner ? ' · Quản trị chính' : ''}`
-    : 'Chưa đăng nhập'
   const hienThiModalTaiKhoan = openAccountModal || (canThietLapQuanTri && !isMobileLayout)
 
   const nhanCheDoLapLai = useMemo(() => {
@@ -352,6 +392,8 @@ export function ControlScreen() {
 
   const [remoteRelayUrl, setRemoteRelayUrl] = useState(() => layRelayUrlMacDinh())
   const { status, results, errorMessage } = useYouTubeSearch(query, remoteRelayUrl)
+  const canMoCaiDatYoutubeApiKey =
+    laDesktop && status === 'error' && Boolean(errorMessage?.toLowerCase().includes('api key'))
   const nhanKetQua =
     status === 'success' ? `${results.length} kết quả` : status === 'loading' ? 'Đang tìm…' : 'Sẵn sàng'
   const phonePairingRelayUrl = remotePhoneRelayUrl || remoteRelayUrl
@@ -398,11 +440,6 @@ export function ControlScreen() {
     : remoteRelayReady
       ? 'Chờ TV mở link'
       : 'Relay chưa sẵn sàng'
-  const nhanCheDoChayManChieu = displayRunMode === 'parallel'
-    ? 'Chạy song song'
-    : activeDisplayTarget === 'tv'
-      ? 'Chỉ 1 màn hình tivi'
-      : 'Chỉ 1 màn hình laptop'
   const soMayDieuKhienKhac = Math.max(remotePresence.hosts - 1, 0)
   const nhanDongBoHangCho =
     remoteRelayStatus === 'connected'
@@ -528,21 +565,38 @@ export function ControlScreen() {
       setRemotePhoneLinkHint('Đang tìm IP LAN của laptop để điện thoại có thể kết nối.')
       let matched: { relayUrl: string; address: string; baseUrl: string } | null = null
 
-      for (const relayCandidateUrl of taoDanhSachRelayUrlUngVien(remoteRelayUrl)) {
-        const info = await layThongTinMangRelay(relayCandidateUrl)
-        if (cancelled) return
-        const candidate =
-          info?.addresses.find((item) => item.family === 'IPv4' && !item.address.startsWith('169.254.')) ??
-          info?.addresses.find((item) => item.family === 'IPv4') ??
-          info?.addresses[0]
+      const desktopNetworkInfo = await layThongTinMangDesktop()
+      if (cancelled) return
+      const desktopAddress =
+        desktopNetworkInfo?.addresses.find((item) => item.family === 'IPv4' && !item.address.startsWith('169.254.')) ??
+        desktopNetworkInfo?.addresses.find((item) => item.family === 'IPv4') ??
+        desktopNetworkInfo?.addresses[0]
 
-        if (candidate?.address) {
-          matched = {
-            relayUrl: relayCandidateUrl,
-            address: candidate.address,
-            baseUrl: taoBaseUrlUngDungLan(candidate.address, candidate.url || `http://${candidate.address}:8787/`),
+      if (desktopAddress?.address && desktopAddress.url && desktopAddress.relayUrl) {
+        matched = {
+          relayUrl: desktopAddress.relayUrl,
+          address: desktopAddress.address,
+          baseUrl: desktopAddress.url,
+        }
+      }
+
+      if (!matched) {
+        for (const relayCandidateUrl of taoDanhSachRelayUrlUngVien(remoteRelayUrl)) {
+          const info = await layThongTinMangRelay(relayCandidateUrl)
+          if (cancelled) return
+          const candidate =
+            info?.addresses.find((item) => item.family === 'IPv4' && !item.address.startsWith('169.254.')) ??
+            info?.addresses.find((item) => item.family === 'IPv4') ??
+            info?.addresses[0]
+
+          if (candidate?.address) {
+            matched = {
+              relayUrl: relayCandidateUrl,
+              address: candidate.address,
+              baseUrl: taoBaseUrlUngDungLan(candidate.address, candidate.url || `http://${candidate.address}:8787/`),
+            }
+            break
           }
-          break
         }
       }
 
@@ -609,6 +663,94 @@ export function ControlScreen() {
       nonce: current.nonce + 1,
     }))
   }, [danhDauDieuKhienNoiBo])
+
+  useEffect(() => {
+    volumeRef.current = clampVolume(volume)
+  }, [volume])
+
+  const datAmLuongTrinhChieu = useCallback((rawValue: number, options?: { syncPhone?: boolean }) => {
+    if (!canPlayback) return
+
+    const nextVolume = clampVolume(rawValue)
+    volumeRef.current = nextVolume
+    setVolume(nextVolume)
+    guiLenhTrinhChieu('volume', nextVolume)
+
+    if (options?.syncPhone && coTheDongBoAmLuongDienThoai()) {
+      syncingPhoneVolumeUntilRef.current = Date.now() + 700
+      void datAmLuongDienThoai(nextVolume, false).then((state) => {
+        if (!state) return
+        phoneVolumePercentRef.current = clampVolume(state.percent)
+      })
+    }
+  }, [canPlayback, guiLenhTrinhChieu])
+
+  const dongBoTuAmLuongDienThoai = useCallback(() => {
+    void docAmLuongDienThoai().then((state) => {
+      if (!state) return
+      const nextVolume = clampVolume(state.percent)
+      phoneVolumePercentRef.current = nextVolume
+      phoneVolumeReadyRef.current = true
+      if (Date.now() < syncingPhoneVolumeUntilRef.current) return
+      if (nextVolume === volumeRef.current) return
+      datAmLuongTrinhChieu(nextVolume)
+    })
+  }, [datAmLuongTrinhChieu])
+
+  useEffect(() => {
+    if (!coTheDongBoAmLuongDienThoai()) return
+
+    let cancelled = false
+    let volumeHandle: { remove: () => Promise<void> } | null = null
+    const keyHandle = langNghePhimAmLuongCung(() => {
+      window.setTimeout(dongBoTuAmLuongDienThoai, 80)
+    })
+
+    void docAmLuongDienThoai().then((state) => {
+      if (cancelled || !state) return
+      const nextVolume = clampVolume(state.percent)
+      phoneVolumePercentRef.current = nextVolume
+      phoneVolumeReadyRef.current = true
+      if (nextVolume !== volumeRef.current) {
+        datAmLuongTrinhChieu(nextVolume)
+      }
+    })
+
+    void langNgheAmLuongDienThoai((state) => {
+      const nextVolume = clampVolume(state.percent)
+      phoneVolumePercentRef.current = nextVolume
+      phoneVolumeReadyRef.current = true
+      if (Date.now() < syncingPhoneVolumeUntilRef.current) return
+      if (nextVolume === volumeRef.current) return
+      datAmLuongTrinhChieu(nextVolume)
+    }).then((handle) => {
+      if (cancelled) {
+        void handle?.remove()
+        return
+      }
+      volumeHandle = handle
+    })
+
+    return () => {
+      cancelled = true
+      void volumeHandle?.remove()
+      void keyHandle?.remove()
+    }
+  }, [datAmLuongTrinhChieu, dongBoTuAmLuongDienThoai])
+
+  useEffect(() => {
+    if (!coTheDongBoAmLuongDienThoai()) return
+    if (!phoneVolumeReadyRef.current) return
+
+    const nextVolume = clampVolume(volume)
+    if (phoneVolumePercentRef.current === nextVolume) return
+
+    syncingPhoneVolumeUntilRef.current = Date.now() + 700
+    void datAmLuongDienThoai(nextVolume, false).then((state) => {
+      if (!state) return
+      phoneVolumePercentRef.current = clampVolume(state.percent)
+    })
+  }, [volume])
 
   const duaDenKhung = useCallback((panel: 'command' | 'queue') => {
     if (isMobileLayout) {
@@ -786,6 +928,12 @@ export function ControlScreen() {
     const timer = window.setTimeout(() => setRecentAction(null), 1800)
     return () => window.clearTimeout(timer)
   }, [recentAction])
+
+  useEffect(() => {
+    if (!recentMediaAction) return
+    const timer = window.setTimeout(() => setRecentMediaAction(null), 1800)
+    return () => window.clearTimeout(timer)
+  }, [recentMediaAction])
 
   useEffect(() => {
     if (!highlightPanel) return
@@ -1094,6 +1242,102 @@ export function ControlScreen() {
     thongBao('Đã chuyển sang bài vừa chọn')
   }, [addSongVaPhatNgay, canPlayback, canQueueSongs, danhDauDieuKhienNoiBo, duaDenKhung, guiLenhTrinhChieu, thongBao])
 
+  const resolveMediaPreviewUrl = useCallback((url: string) => {
+    if (!url.startsWith('/local-media/')) return url
+    const currentPort = window.location.port
+    if (currentPort && currentPort !== '5173') return url
+
+    const relayHttpUrl = taoHttpUrlTuRelay(remoteRelayUrl)
+    return relayHttpUrl ? new URL(url, relayHttpUrl).toString() : url
+  }, [remoteRelayUrl])
+
+  const themMediaVaoThuVien = useCallback((items: LocalMediaItem[]) => {
+    if (!items.length) return
+    addMediaLibraryItems(items)
+    setSourceTab('media')
+    thongBao(`Đã thêm ${items.length} ảnh/video vào thư viện`)
+  }, [addMediaLibraryItems, thongBao])
+
+  const moChonMediaMayTinh = useCallback(async () => {
+    if (!canQueueSongs) return
+    setImportingMedia(true)
+    try {
+      const desktopResult = await nhapMediaDiaPhuongDesktop()
+      if (desktopResult) {
+        if (!desktopResult.success) {
+          thongBao(desktopResult.error || 'Không thêm được ảnh/video từ máy tính')
+          return
+        }
+        themMediaVaoThuVien(desktopResult.items ?? [])
+        return
+      }
+
+      mediaFileInputRef.current?.click()
+    } catch (error) {
+      thongBao(error instanceof Error ? error.message : 'Không thêm được ảnh/video từ máy tính')
+    } finally {
+      setImportingMedia(false)
+    }
+  }, [canQueueSongs, themMediaVaoThuVien, thongBao])
+
+  const xuLyChonMediaMayTinh = useCallback(async (files: FileList | null) => {
+    if (!canQueueSongs || !files?.length) return
+    setImportingMedia(true)
+    try {
+      const items = await luuMediaDiaPhuong(Array.from(files))
+      if (!items.length) {
+        thongBao('Chưa chọn được file ảnh/video hợp lệ')
+        return
+      }
+      themMediaVaoThuVien(items)
+    } catch (error) {
+      thongBao(error instanceof Error ? error.message : 'Không lưu được ảnh/video trên máy tính')
+    } finally {
+      setImportingMedia(false)
+      if (mediaFileInputRef.current) {
+        mediaFileInputRef.current.value = ''
+      }
+    }
+  }, [canQueueSongs, themMediaVaoThuVien, thongBao])
+
+  const themMediaCuoiHangCho = useCallback((media: LocalMediaItem) => {
+    if (!canQueueSongs) return
+    danhDauDieuKhienNoiBo()
+    addMedia(media)
+    setRecentMediaAction({ id: media.id, message: 'Đã thêm vào cuối hàng chờ' })
+    setHighlightPanel('queue')
+    duaDenKhung('queue')
+    thongBao('Đã thêm ảnh/video vào cuối hàng chờ')
+  }, [addMedia, canQueueSongs, danhDauDieuKhienNoiBo, duaDenKhung, thongBao])
+
+  const themMediaKeTiep = useCallback((media: LocalMediaItem) => {
+    if (!canQueueSongs) return
+    danhDauDieuKhienNoiBo()
+    addMediaTiepTheo(media)
+    setRecentMediaAction({ id: media.id, message: 'Đã xếp vào lượt kế tiếp' })
+    setHighlightPanel('queue')
+    duaDenKhung('queue')
+    thongBao('Đã xếp ảnh/video vào lượt kế tiếp')
+  }, [addMediaTiepTheo, canQueueSongs, danhDauDieuKhienNoiBo, duaDenKhung, thongBao])
+
+  const phatMediaNgay = useCallback((media: LocalMediaItem) => {
+    if (!canQueueSongs || !canPlayback) return
+    danhDauDieuKhienNoiBo()
+    addMediaVaPhatNgay(media)
+    guiLenhTrinhChieu('play')
+    setPlayerMode('playing')
+    setRecentMediaAction({ id: media.id, message: 'Đã chuyển lên màn chiếu' })
+    setHighlightPanel('command')
+    duaDenKhung('command')
+    thongBao('Đã phát ảnh/video trên màn hình mở rộng')
+  }, [addMediaVaPhatNgay, canPlayback, canQueueSongs, danhDauDieuKhienNoiBo, duaDenKhung, guiLenhTrinhChieu, thongBao])
+
+  const xoaMediaThuVien = useCallback((media: LocalMediaItem) => {
+    if (!canQueueSongs) return
+    removeMediaLibraryItem(media.id)
+    thongBao('Đã xoá khỏi thư viện ảnh/video')
+  }, [canQueueSongs, removeMediaLibraryItem, thongBao])
+
   const phatTuHangCho = useCallback((queueId: string) => {
     if (!canPlayback) return
     const targetIndex = queue.findIndex((song) => song.queueId === queueId)
@@ -1131,9 +1375,8 @@ export function ControlScreen() {
 
     if (action.type === 'SET_VOLUME') {
       if (!canPlayback) return
-      const nextVolume = clamp(Math.round(action.value), 0, 100)
-      setVolume(nextVolume)
-      guiLenhTrinhChieu('volume', nextVolume)
+      const nextVolume = clampVolume(action.value)
+      datAmLuongTrinhChieu(nextVolume, { syncPhone: true })
       thongBao(`Remote đặt âm lượng ${nextVolume}%`)
       return
     }
@@ -1155,6 +1398,7 @@ export function ControlScreen() {
     canPlayback,
     canQueueSongs,
     danhDauDieuKhienNoiBo,
+    datAmLuongTrinhChieu,
     phatLaiTuDau,
     phatTuHangCho,
     quaBaiTruoc,
@@ -1162,7 +1406,6 @@ export function ControlScreen() {
     sangBaiTiepTheo,
     tamDungPhat,
     thongBao,
-    guiLenhTrinhChieu,
   ])
 
   const xoaTatCa = useCallback(() => {
@@ -1216,7 +1459,7 @@ export function ControlScreen() {
         queue: nextQueue,
         currentIndex: nextIndex,
       })
-      setVolume(clamp(Math.round(stateToApply.volume), 0, 100))
+      setVolume(clampVolume(stateToApply.volume))
       setPlayerMode(stateToApply.playerMode)
       setDisplayMode(stateToApply.displayMode)
       setDisplayRunMode(chuanHoaCheDoChayManChieu(stateToApply.displayRunMode))
@@ -1237,7 +1480,15 @@ export function ControlScreen() {
     danhDauDieuKhienNoiBo()
     setActiveDisplayTarget('laptop')
     setDisplayMode(mode)
+    setVolume(DEFAULT_DISPLAY_VOLUME)
+    guiLenhTrinhChieu('volume', DEFAULT_DISPLAY_VOLUME)
     thongBao(mode === 'desktop' ? 'Đã mở màn hình trình chiếu trên desktop' : 'Đã mở màn hình trình chiếu bằng trình duyệt')
+  }, [danhDauDieuKhienNoiBo, guiLenhTrinhChieu, thongBao])
+
+  const dongDisplayThanhCong = useCallback((mode: 'desktop' | 'browser') => {
+    danhDauDieuKhienNoiBo()
+    setDisplayMode('idle')
+    thongBao(mode === 'desktop' ? 'Đã tắt màn hình trình chiếu trên desktop' : 'Đã tắt màn hình trình chiếu trong trình duyệt')
   }, [danhDauDieuKhienNoiBo, thongBao])
 
   const dungMaTV = useCallback((roomCode: string) => {
@@ -1277,27 +1528,18 @@ export function ControlScreen() {
     }
 
     try {
-      const localRelayUrl = 'ws://127.0.0.1:8787'
-      const relayBase = chuanHoaRelayUrl(remoteRelayUrl) || localRelayUrl
-      let relayHostIsLocal = false
-      try {
-        relayHostIsLocal = laHostLocalhost(new URL(relayBase).hostname)
-      } catch {
-        relayHostIsLocal = false
-      }
-      const relayForPhone = relayHostIsLocal || remoteRelayStatus === 'connected' ? relayBase : localRelayUrl
-      if (relayForPhone !== relayBase) {
-        setRemoteRelayUrl(localRelayUrl)
-        luuRelayUrl(localRelayUrl)
-      }
+      const lanRelayUrl = `ws://${host}:8787/`
+      setRemoteRelayUrl(lanRelayUrl)
+      luuRelayUrl(lanRelayUrl)
       setRemotePhoneBaseUrl(taoBaseUrlUngDungLan(host, `http://${host}:8787/`))
-      setRemotePhoneRelayUrl(doiHostUrl(relayForPhone, host))
+      setRemotePhoneRelayUrl(lanRelayUrl)
       setRemotePhoneLinkHint(`Đã dùng IP LAN ${host}. Điện thoại cần cùng Wi-Fi và relay phải đang chạy trên laptop.`)
+      setMobileLanHostInput(host)
       thongBao(`Đã dùng IP LAN ${host} cho QR điện thoại`)
     } catch {
       thongBao('IP LAN không hợp lệ. Ví dụ đúng: 192.168.1.50')
     }
-  }, [remoteRelayStatus, remoteRelayUrl, thongBao])
+  }, [thongBao])
 
   const taoPhongRemoteMoi = useCallback(() => {
     const nextRoomCode = taoMaPhongRemote()
@@ -1416,69 +1658,153 @@ export function ControlScreen() {
       }) as CSSProperties,
     [paneSizes.command, paneSizes.search],
   )
+  const queueCounts = useMemo(() => {
+    const image = queue.filter((item) => item.source === 'local-media' && item.mediaType === 'image').length
+    const video = queue.filter((item) => item.source === 'local-media' && item.mediaType === 'video').length
+    return {
+      all: queue.length,
+      youtube: queue.filter((item) => item.source !== 'local-media').length,
+      image,
+      video,
+    }
+  }, [queue])
+  const filteredQueue = useMemo(() => {
+    if (queueFilter === 'youtube') return queue.filter((item) => item.source !== 'local-media')
+    if (queueFilter === 'image') return queue.filter((item) => item.source === 'local-media' && item.mediaType === 'image')
+    if (queueFilter === 'video') return queue.filter((item) => item.source === 'local-media' && item.mediaType === 'video')
+    return queue
+  }, [queue, queueFilter])
+  const filteredCurrentIndex = baiDangPhat
+    ? filteredQueue.findIndex((item) => item.queueId === baiDangPhat.queueId)
+    : -1
+  const queueFilterEmptyText: Record<QueueFilter, string> = {
+    all: 'Hàng chờ đang trống.',
+    youtube: 'Chưa có bài YouTube trong hàng chờ.',
+    image: 'Chưa có ảnh trong hàng chờ.',
+    video: 'Chưa có video trong hàng chờ.',
+  }
 
   const searchSection = (
     <section className={`panel searchPanel controlPane controlPaneSearch ${isMobileLayout ? 'searchPanelMobile' : ''}`}>
       <div className="panelTitleRow">
         <div>
-          <div className="panelEyebrow">Tìm và xếp bài</div>
-          <div className="panelTitle">Tìm kiếm</div>
+          {isMobileLayout ? <div className="panelEyebrow">Nguồn phát</div> : null}
+          <div className="panelTitle">{sourceTab === 'youtube' ? (isMobileLayout ? 'YouTube' : 'Tìm bài') : 'Ảnh/video'}</div>
         </div>
-        <div className="sectionSub">{nhanKetQua}</div>
+        <div className="panelTitleActions">
+          <div className="seg sourceTabs" role="tablist" aria-label="Nguồn phát">
+            <button
+              className={`segBtn ${sourceTab === 'youtube' ? 'segBtnActive' : ''}`}
+              onClick={() => setSourceTab('youtube')}
+              type="button"
+            >
+              YouTube
+            </button>
+            <button
+              className={`segBtn ${sourceTab === 'media' ? 'segBtnActive' : ''}`}
+              onClick={() => setSourceTab('media')}
+              type="button"
+            >
+              Ảnh/video
+            </button>
+          </div>
+          <div className="sectionSub">{sourceTab === 'youtube' ? nhanKetQua : `${mediaLibraryItems.length} media`}</div>
+        </div>
       </div>
-      <div className="searchBarWrap">
-        <SearchBar
-          ref={searchInputRef}
-          value={query}
-          onChange={(val) => {
-            setQuery(val)
-            setShowSearchHistory(false)
-          }}
-          onClear={() => { setQuery(''); setShowSearchHistory(false) }}
-          disabled={!canSearch}
-          onFocus={() => { if (!query) setShowSearchHistory(true) }}
-        />
-        {showSearchHistory && !query && (
-          <SearchHistoryDropdown
-            onSelect={(q) => {
-              setQuery(q)
-              setShowSearchHistory(false)
-              searchInputRef.current?.focus()
-            }}
-            onClose={() => setShowSearchHistory(false)}
+      {sourceTab === 'youtube' ? (
+        <>
+          <div className="searchBarWrap">
+            <SearchBar
+              ref={searchInputRef}
+              value={query}
+              onChange={(val) => {
+                setQuery(val)
+                setShowSearchHistory(false)
+              }}
+              onClear={() => { setQuery(''); setShowSearchHistory(false) }}
+              disabled={!canSearch}
+              onFocus={() => { if (!query) setShowSearchHistory(true) }}
+            />
+            {showSearchHistory && !query && (
+              <SearchHistoryDropdown
+                onSelect={(q) => {
+                  setQuery(q)
+                  setShowSearchHistory(false)
+                  searchInputRef.current?.focus()
+                }}
+                onClose={() => setShowSearchHistory(false)}
+              />
+            )}
+          </div>
+          <div className="spacer12" />
+          <div className="searchUtilityRow">
+            <SearchModeToggle disabled={!canSearch} />
+            {isMobileLayout ? <div className="shortcutHint">/ hoặc Ctrl/Cmd + K để focus</div> : null}
+          </div>
+          <div className={`panelScrollArea searchResultsArea ${isMobileLayout ? 'searchResultsAreaMobile' : ''}`}>
+            <SearchResults
+              status={status}
+              errorMessage={errorMessage}
+              results={results}
+              onAdd={(song) => {
+                nhanNut(`search-end:${song.videoId}`)
+                saveToSearchHistory(query)
+                themCuoiHangCho(song)
+              }}
+              onAddNext={(song) => {
+                nhanNut(`search-next:${song.videoId}`)
+                saveToSearchHistory(query)
+                themKeTiep(song)
+              }}
+              onPlayNow={(song) => {
+                nhanNut(`search-play:${song.videoId}`)
+                saveToSearchHistory(query)
+                phatNgay(song)
+              }}
+              recentAction={recentAction}
+              activeButtonKey={activeButtonKey}
+              disabled={!canQueueSongs}
+              errorActionLabel={canMoCaiDatYoutubeApiKey ? 'Nhập API key trên laptop' : undefined}
+              onErrorAction={canMoCaiDatYoutubeApiKey ? () => setOpenSettings(true) : undefined}
+            />
+          </div>
+        </>
+      ) : (
+        <>
+          <input
+            ref={mediaFileInputRef}
+            className="srOnly"
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm,video/quicktime,.m4v"
+            multiple
+            onChange={(event) => void xuLyChonMediaMayTinh(event.target.files)}
           />
-        )}
-      </div>
-      <div className="spacer12" />
-      <div className="searchUtilityRow">
-        <SearchModeToggle disabled={!canSearch} />
-        <div className="shortcutHint">/ hoặc Ctrl/Cmd + K để focus</div>
-      </div>
-      <div className={`panelScrollArea searchResultsArea ${isMobileLayout ? 'searchResultsAreaMobile' : ''}`}>
-        <SearchResults
-          status={status}
-          errorMessage={errorMessage}
-          results={results}
-          onAdd={(song) => {
-            nhanNut(`search-end:${song.videoId}`)
-            saveToSearchHistory(query)
-            themCuoiHangCho(song)
-          }}
-          onAddNext={(song) => {
-            nhanNut(`search-next:${song.videoId}`)
-            saveToSearchHistory(query)
-            themKeTiep(song)
-          }}
-          onPlayNow={(song) => {
-            nhanNut(`search-play:${song.videoId}`)
-            saveToSearchHistory(query)
-            phatNgay(song)
-          }}
-          recentAction={recentAction}
-          activeButtonKey={activeButtonKey}
-          disabled={!canQueueSongs}
-        />
-      </div>
+          <div className={`panelScrollArea searchResultsArea ${isMobileLayout ? 'searchResultsAreaMobile' : ''}`}>
+            <MediaLibraryPanel
+              items={mediaLibraryItems}
+              importing={importingMedia}
+              disabled={!canQueueSongs}
+              activeButtonKey={activeButtonKey}
+              recentAction={recentMediaAction}
+              resolveMediaUrl={resolveMediaPreviewUrl}
+              onImport={() => void moChonMediaMayTinh()}
+              onAdd={(media) => {
+                nhanNut(`media-end:${media.id}`)
+                themMediaCuoiHangCho(media)
+              }}
+              onAddNext={(media) => {
+                nhanNut(`media-next:${media.id}`)
+                themMediaKeTiep(media)
+              }}
+              onPlayNow={(media) => {
+                nhanNut(`media-play:${media.id}`)
+                phatMediaNgay(media)
+              }}
+              onRemove={xoaMediaThuVien}
+            />
+          </div>
+        </>
+      )}
     </section>
   )
 
@@ -1486,7 +1812,7 @@ export function ControlScreen() {
     <>
       <div className="panelTitleRow">
         <div>
-          <div className="panelEyebrow">Trung tâm điều khiển</div>
+          {isMobileLayout ? <div className="panelEyebrow">Trung tâm điều khiển</div> : null}
           <div className="panelTitle">Đang phát</div>
         </div>
         <div className="panelTitleActions">
@@ -1500,7 +1826,9 @@ export function ControlScreen() {
             <AppIcon name="repeat" className="buttonIcon" />
             <span className="buttonLabel">{isMobileLayout ? 'Lặp' : 'Phát lại'}: {nhanCheDoLapLai}</span>
           </button>
-          <div className="sectionSub">{baiDangPhat ? `${soBaiSapToi} bài chờ sau bài hiện tại` : 'Sẵn sàng nhận bài mới'}</div>
+          {isMobileLayout ? (
+            <div className="sectionSub">{baiDangPhat ? `${soBaiSapToi} bài chờ sau bài hiện tại` : 'Sẵn sàng nhận bài mới'}</div>
+          ) : null}
         </div>
       </div>
 
@@ -1509,9 +1837,15 @@ export function ControlScreen() {
           <div className={`commandCard ${isMobileLayout ? 'commandCardMobile' : ''}`}>
             <div className={`nowPlaying ${isMobileLayout ? 'nowPlayingCompact' : ''}`}>
               {/* Thumbnail 16:9 với waveform overlay */}
-              {!isMobileLayout && baiDangPhat.thumbnail && (
+              {!isMobileLayout && !isThreePane && (coAnhDaiDienDangPhat || baiDangPhatLaMedia) && (
                 <div className="npThumbnailWrap npEntering">
-                  <img src={baiDangPhat.thumbnail} alt="" aria-hidden="true" />
+                  {coAnhDaiDienDangPhat ? (
+                    <img src={baiDangPhat.thumbnail} alt="" aria-hidden="true" />
+                  ) : (
+                    <div className="npThumbnailPh">
+                      <AppIcon name="camera" className="buttonIcon" />
+                    </div>
+                  )}
                   <div className="npThumbnailGradient" />
                   <div className="npThumbnailOverlay">
                     <div className="npThumbnailTitle">{baiDangPhat.title}</div>
@@ -1521,17 +1855,15 @@ export function ControlScreen() {
               )}
               <div className="nowPlayingHeading">
                 <div className="nowPlayingLabel" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  Bài hiện tại
+                  {baiDangPhatLaMedia ? 'Nội dung hiện tại' : 'Bài hiện tại'}
                   {isMobileLayout && <WaveformIcon isPlaying={hienThiPlayerMode === 'playing'} size="sm" />}
                 </div>
               </div>
-              {(isMobileLayout || !baiDangPhat.thumbnail) && (
-                <div className="npTitle">{baiDangPhat.title}</div>
-              )}
+              <div className="npTitle">{baiDangPhat.title}</div>
               <div className="npMetaList">
                 <div className="npMetaItem">
-                  <div className="npMetaKey">Kênh</div>
-                  <div className="npMetaValue">{baiDangPhat.channelTitle}</div>
+                  <div className="npMetaKey">Nguồn</div>
+                  <div className="npMetaValue">{nhanNguonDangPhat}</div>
                 </div>
                 <div className="npMetaItem">
                   <div className="npMetaKey">Tiếp theo</div>
@@ -1621,9 +1953,7 @@ export function ControlScreen() {
                   disabled={!canPlayback}
                   value={volume}
                   onChange={(e) => {
-                    const nextVolume = Number(e.target.value)
-                    setVolume(nextVolume)
-                    guiLenhTrinhChieu('volume', nextVolume)
+                    datAmLuongTrinhChieu(Number(e.target.value), { syncPhone: true })
                   }}
                 />
               </div>
@@ -1645,7 +1975,7 @@ export function ControlScreen() {
     <>
       <div className="panelTitleRow">
         <div>
-          <div className="panelEyebrow">Quản lý lượt hát</div>
+          {isMobileLayout ? <div className="panelEyebrow">Quản lý lượt hát</div> : null}
           <div className="panelTitle">Hàng chờ</div>
         </div>
         <div className="queueActions">
@@ -1661,21 +1991,59 @@ export function ControlScreen() {
           </button>
         </div>
       </div>
-      <div className="sectionSub">Kéo để đổi thứ tự. Bấm Phát ở từng dòng để nhảy bài ngay.</div>
+      {isMobileLayout ? <div className="sectionSub">Kéo để đổi thứ tự. Bấm Phát ở từng dòng để nhảy bài ngay.</div> : null}
+      <div className="queueFilterRow">
+        <div className="seg queueFilterTabs" role="tablist" aria-label="Lọc hàng chờ">
+          <button
+            className={`segBtn ${queueFilter === 'all' ? 'segBtnActive' : ''}`}
+            onClick={() => setQueueFilter('all')}
+            type="button"
+          >
+            Tất cả ({queueCounts.all})
+          </button>
+          <button
+            className={`segBtn ${queueFilter === 'youtube' ? 'segBtnActive' : ''}`}
+            onClick={() => setQueueFilter('youtube')}
+            type="button"
+          >
+            YouTube ({queueCounts.youtube})
+          </button>
+          <button
+            className={`segBtn ${queueFilter === 'image' ? 'segBtnActive' : ''}`}
+            onClick={() => setQueueFilter('image')}
+            type="button"
+          >
+            Ảnh ({queueCounts.image})
+          </button>
+          <button
+            className={`segBtn ${queueFilter === 'video' ? 'segBtnActive' : ''}`}
+            onClick={() => setQueueFilter('video')}
+            type="button"
+          >
+            Video ({queueCounts.video})
+          </button>
+        </div>
+      </div>
       <div className={`queueSyncStatus ${remoteRelayStatus === 'connected' ? 'queueSyncStatusReady' : ''}`}>
         <span className="queueSyncDot" />
         <span>{nhanDongBoHangCho}</span>
       </div>
       <div className={`panelScrollArea queueScrollArea ${isMobileLayout ? 'queueScrollAreaMobile' : ''}`}>
-        {queue.length ? (
+        {filteredQueue.length ? (
           <QueueList
-            queue={queue}
-            currentIndex={currentIndex}
+            queue={filteredQueue}
+            currentIndex={filteredCurrentIndex}
             activeActionKey={activeButtonKey}
             disabled={!(canQueueSongs && canPlayback)}
             onMove={(from, to) => {
+              const fromItem = filteredQueue[from]
+              const toItem = filteredQueue[to]
+              if (!fromItem || !toItem) return
+              const originalFrom = queue.findIndex((item) => item.queueId === fromItem.queueId)
+              const originalTo = queue.findIndex((item) => item.queueId === toItem.queueId)
+              if (originalFrom < 0 || originalTo < 0) return
               danhDauDieuKhienNoiBo()
-              moveSong(from, to)
+              moveSong(originalFrom, originalTo)
             }}
             onPlayNow={phatTuHangCho}
             onRemove={(id) => {
@@ -1686,7 +2054,7 @@ export function ControlScreen() {
             }}
           />
         ) : (
-          <div className="empty">Hàng chờ đang trống.</div>
+          <div className="empty">{queueFilterEmptyText[queueFilter]}</div>
         )}
       </div>
     </>
@@ -1697,10 +2065,8 @@ export function ControlScreen() {
       <header className="header">
         <div className="headerBrand">
           <div className="appTitle">KaraokeYT</div>
-          {!isMobileLayout && <div className="appSub">Màn hình điều khiển</div>}
         </div>
 
-        {/* Inline now-playing indicator — desktop only */}
         {!isMobileLayout && baiDangPhat && (
           <div className="headerNowPlaying">
             <WaveformIcon isPlaying={hienThiPlayerMode === 'playing'} size="sm" />
@@ -1816,14 +2182,14 @@ export function ControlScreen() {
             </div>
           ) : (
             <>
-              <UserSwitcher
-                currentUser={userDangDangNhap}
-                sessionMode={sessionMode}
-                onOpenAccount={moModalTaiKhoan}
-                onLogout={() => {
-                  void dangXuatTaiKhoan()
-                }}
-              />
+              <button
+                className="ghost compactButton buttonToneMuted buttonWithIcon desktopAccountButton"
+                onClick={moModalTaiKhoan}
+                type="button"
+              >
+                <AppIcon name={userDangDangNhap ? 'user' : 'login'} className="buttonIcon" />
+                <span className="buttonLabel">{userDangDangNhap ? userDangDangNhap.name : 'Khách'}</span>
+              </button>
               <OpenDisplayButton
                 className={`primary buttonToneAccent ${activeButtonKey === 'open-display' ? 'buttonStateActive' : ''}`}
                 disabled={!canOpenDisplay}
@@ -1831,6 +2197,12 @@ export function ControlScreen() {
                 roomToken={remoteRoomToken}
                 onBeforeOpen={() => nhanNut('open-display')}
                 onOpened={moDisplayThanhCong}
+              />
+              <CloseDisplayButton
+                className={`ghost compactButton buttonToneDanger ${activeButtonKey === 'close-display' ? 'buttonStateActive' : ''}`}
+                disabled={!canOpenDisplay || displayMode === 'idle'}
+                onBeforeClose={() => nhanNut('close-display')}
+                onClosed={dongDisplayThanhCong}
               />
               <button
                 className={`primary buttonToneMuted buttonWithIcon ${activeButtonKey === 'open-remote' ? 'buttonStateActive' : ''}`}
@@ -1860,47 +2232,20 @@ export function ControlScreen() {
                 <AppIcon name="settings" className="buttonIcon" />
                 <span className="buttonLabel">Cài đặt</span>
               </button>
-              <button
-                className={`primary buttonToneMuted buttonWithIcon ${activeButtonKey === 'open-legal' ? 'buttonStateActive' : ''}`}
-                data-pressed={activeButtonKey === 'open-legal'}
-                onClick={() => {
-                  nhanNut('open-legal')
-                  setOpenLegal(true)
-                }}
-                type="button"
-              >
-                <AppIcon name="shield" className="buttonIcon" />
-                <span className="buttonLabel">Pháp lý</span>
-              </button>
             </>
           )}
         </div>
       </header>
 
       <div className="statusStrip">
-        <div className={`statusChip ${sessionMode === 'authenticated' ? 'statusChipSuccess' : ''}`}>
-          Tài khoản: {AUTH_SESSION_LABEL[sessionMode]} · {nhanTaiKhoan}
+        <div className={`statusChip ${remoteRelayStatus === 'connected' ? 'statusChipSuccess' : remoteRelayStatus === 'error' ? 'statusChipWarning' : ''}`}>
+          Remote: {remoteRelayStatus === 'connected' ? `${remotePresence.displays + remotePresence.remotes} kết nối` : remoteRelayStatus === 'error' ? 'Lỗi' : 'Đang nối'}
         </div>
-        <div className="statusChip statusChipMeta">Hồ sơ: {nhanTaiKhoanDayDu}</div>
-        <div className="statusChip statusChipMeta">Đồng bộ: {nhanDongBo}</div>
-        <div className={`statusChip ${authServerOnline ? 'statusChipSuccess' : 'statusChipWarning'}`}>
-          Auth: {authServerOnline ? 'Server' : 'Local fallback'}
-        </div>
-        {authServerOnline ? (
-          <div className="statusChip statusChipMeta">
-            Owner: {authOwnerReady === false ? 'Chưa thiết lập' : 'Sẵn sàng'}
-          </div>
-        ) : null}
-        <div className="statusChip">Mã TV: {remoteRoomCode}</div>
-        <div className="statusChip">TV/laptop: {remotePresence.displays}</div>
         <div className="statusChip statusChipAccent">
           Trình chiếu: {displayMode === 'desktop' ? 'Desktop' : displayMode === 'browser' ? 'Trình duyệt' : 'Chưa mở'}
         </div>
-        <div className="statusChip">Chạy màn: {nhanCheDoChayManChieu}</div>
-        <div className="statusChip">Autoplay: {autoplayNext ? 'Bật' : 'Tắt'}</div>
-        <div className="statusChip">Hàng chờ: {tongBai} bài</div>
-        <div className="statusChip statusChipMeta">Vai trò: {userDangDangNhap?.name ?? 'Khách'} · {USER_ROLE_LABEL[vaiTroHienTai]}</div>
-        <div className="statusChip statusChipHint">Phím tắt: Ctrl/Cmd + K, Alt + ←, Alt + →</div>
+        <div className="statusChip">Hàng chờ: {tongBai}</div>
+        {!authServerOnline && authProbeDone ? <div className="statusChip statusChipWarning">Local</div> : null}
         {!canPlayback ? <div className="statusChip statusChipWarning">Chế độ xem: thao tác phát và hàng chờ đang bị khoá</div> : null}
       </div>
 
@@ -2060,6 +2405,42 @@ export function ControlScreen() {
                       </span>
                     )}
                   </div>
+                  {remoteRelayStatus !== 'connected' ? (
+                    <div className="mobileLanConnectBox">
+                      <div className="mobileLanConnectTitle">Nhập IP laptop</div>
+                      <div className="mobileLanConnectRow">
+                        <input
+                          className="input mobileLanConnectInput"
+                          value={mobileLanHostInput}
+                          onChange={(event) => setMobileLanHostInput(event.target.value)}
+                          inputMode="decimal"
+                          autoCapitalize="none"
+                          autoCorrect="off"
+                          placeholder="VD: 192.168.99.44"
+                        />
+                        <button
+                          className="primary compactButton buttonToneAccent buttonWithIcon"
+                          onClick={() => apDungIpLanThuCong(mobileLanHostInput)}
+                          type="button"
+                        >
+                          <AppIcon name="control" className="buttonIcon" />
+                          <span className="buttonLabel">Kết nối</span>
+                        </button>
+                      </div>
+                      <div className="mobileLanConnectHint">
+                        Trên laptop mở Menu kết nối và dùng IP LAN, không dùng 127.0.0.1 hoặc localhost.
+                      </div>
+                      <button
+                        className="ghost compactButton buttonToneMuted buttonWithIcon mobileLanQrButton"
+                        onClick={() => setOpenRemoteModal(true)}
+                        type="button"
+                      >
+                        <AppIcon name="camera" className="buttonIcon" />
+                        <span className="buttonLabel">Quét QR từ laptop</span>
+                      </button>
+                      {remoteRelayMessage ? <div className="mobileLanConnectError">{remoteRelayMessage}</div> : null}
+                    </div>
+                  ) : null}
                 </section>
               )}
             </main>

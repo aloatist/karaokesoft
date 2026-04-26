@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { AppSettings, AppTheme, DisplayAdSettings } from '../types'
+import type { AppSettings, AppTheme, DisplayAdMediaItem, DisplayAdSettings } from '../types'
 
 type SettingsState = AppSettings & {
   actions: {
@@ -12,11 +12,18 @@ type SettingsState = AppSettings & {
 const SETTINGS_STORAGE_KEY = 'karaokeyt-settings'
 export const DISPLAY_AD_TITLE_MAX = 60
 export const DISPLAY_AD_TEXT_MAX = 160
+export const DISPLAY_AD_MEDIA_MAX = 12
+export const DISPLAY_AD_MEDIA_INTERVAL_MIN = 5
+export const DISPLAY_AD_MEDIA_INTERVAL_MAX = 120
+export const DEFAULT_DISPLAY_AD_MEDIA_INTERVAL = 12
 
 export const DEFAULT_DISPLAY_AD: DisplayAdSettings = {
   enabled: false,
   title: 'Sản phẩm nổi bật',
   text: '',
+  media: [],
+  mediaEnabled: false,
+  mediaIntervalSeconds: DEFAULT_DISPLAY_AD_MEDIA_INTERVAL,
 }
 
 function catChuoiCauHinh(input: unknown, maxLength: number) {
@@ -30,16 +37,58 @@ function catChuoiCauHinh(input: unknown, maxLength: number) {
     .slice(0, maxLength)
 }
 
+function gioiHanSo(input: unknown, min: number, max: number, fallback: number) {
+  const value = typeof input === 'number' ? input : Number(input)
+  if (!Number.isFinite(value)) return fallback
+  return Math.max(min, Math.min(max, Math.round(value)))
+}
+
+function chuanHoaDisplayAdMediaItem(input: unknown, index: number): DisplayAdMediaItem | null {
+  if (!input || typeof input !== 'object') return null
+
+  const raw = input as Record<string, unknown>
+  const type = raw.type === 'video' ? 'video' : raw.type === 'image' ? 'image' : null
+  const url = typeof raw.url === 'string' ? raw.url.trim() : ''
+
+  if (!type || !url) return null
+
+  const name = catChuoiCauHinh(raw.name, 96).trim()
+  const id = catChuoiCauHinh(raw.id, 96).trim()
+  const addedAt = typeof raw.addedAt === 'number' && Number.isFinite(raw.addedAt) ? raw.addedAt : Date.now() + index
+
+  return {
+    id: id || `${type}-${addedAt}-${index}`,
+    type,
+    name: name || (type === 'video' ? 'Video trên máy tính' : 'Ảnh trên máy tính'),
+    url,
+    addedAt,
+  }
+}
+
 export function chuanHoaDisplayAd(input: unknown): DisplayAdSettings {
   if (!input || typeof input !== 'object') return DEFAULT_DISPLAY_AD
 
   const raw = input as Record<string, unknown>
   const title = catChuoiCauHinh(raw.title, DISPLAY_AD_TITLE_MAX)
+  const media = Array.isArray(raw.media)
+    ? raw.media
+        .map((item, index) => chuanHoaDisplayAdMediaItem(item, index))
+        .filter((item): item is DisplayAdMediaItem => Boolean(item))
+        .slice(0, DISPLAY_AD_MEDIA_MAX)
+    : []
 
   return {
     enabled: typeof raw.enabled === 'boolean' ? raw.enabled : false,
     title: title.trim() ? title : DEFAULT_DISPLAY_AD.title,
     text: catChuoiCauHinh(raw.text, DISPLAY_AD_TEXT_MAX),
+    media,
+    mediaEnabled: typeof raw.mediaEnabled === 'boolean' ? raw.mediaEnabled : media.length > 0,
+    mediaIntervalSeconds: gioiHanSo(
+      raw.mediaIntervalSeconds,
+      DISPLAY_AD_MEDIA_INTERVAL_MIN,
+      DISPLAY_AD_MEDIA_INTERVAL_MAX,
+      DEFAULT_DISPLAY_AD_MEDIA_INTERVAL,
+    ),
   }
 }
 
@@ -89,7 +138,7 @@ export const useSettingsStore = create<SettingsState>()(
     }),
     {
       name: SETTINGS_STORAGE_KEY,
-      version: 6,
+      version: 7,
       partialize: (state) => ({
         displayMonitorIndex: state.displayMonitorIndex,
         autoplayNext: state.autoplayNext,

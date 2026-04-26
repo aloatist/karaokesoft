@@ -13,11 +13,20 @@ type Props = {
 // Mini floating bar hiển thị bài đang phát trên mobile — luôn visible phía trên bottom nav
 export function NowPlayingMini({ currentSong, isPlaying, onPlayPause, onClick, disabled }: Props) {
   if (!currentSong) return null
+  const isLocalMedia = currentSong.source === 'local-media'
+  const sourceLabel = isLocalMedia
+    ? currentSong.mediaType === 'video'
+      ? 'Video máy tính'
+      : 'Ảnh máy tính'
+    : isPlaying
+      ? 'Đang phát trên YouTube'
+      : 'YouTube'
+  const canRenderThumbnail = Boolean(currentSong.thumbnail && !currentSong.thumbnail.startsWith('idb-media:'))
 
   return (
     <div className="nowPlayingMini" onClick={onClick} role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && onClick?.()}>
       <div className="nowPlayingMiniLeft">
-        {currentSong.thumbnail ? (
+        {canRenderThumbnail ? (
           <img
             className="nowPlayingMiniThumb"
             src={currentSong.thumbnail}
@@ -25,11 +34,13 @@ export function NowPlayingMini({ currentSong, isPlaying, onPlayPause, onClick, d
             aria-hidden="true"
           />
         ) : (
-          <div className="nowPlayingMiniThumbPh" />
+          <div className="nowPlayingMiniThumbPh">
+            {isLocalMedia ? <AppIcon name="camera" className="buttonIcon" /> : null}
+          </div>
         )}
         <div className="nowPlayingMiniInfo">
           {isPlaying && <WaveformIcon isPlaying={isPlaying} size="sm" />}
-          <div className="nowPlayingMiniSource">{isPlaying ? 'Đang phát trên YouTube' : 'YouTube'}</div>
+          <div className="nowPlayingMiniSource">{sourceLabel}</div>
           <div className="nowPlayingMiniTitle">{currentSong.title}</div>
         </div>
       </div>
