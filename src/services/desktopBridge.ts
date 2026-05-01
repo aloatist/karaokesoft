@@ -4,6 +4,7 @@ import type {
   DesktopNetworkInfo,
   ImportLocalMediaResult,
   OpenDisplayWindowResult,
+  StartRelayResult,
   SyncMessage,
   UpdateEventName,
   UpdateInfo,
@@ -29,6 +30,12 @@ export async function layThongTinMangDesktop(): Promise<DesktopNetworkInfo | nul
   const bridge = layBridge()
   if (!bridge?.getNetworkInfo) return null
   return bridge.getNetworkInfo()
+}
+
+export async function batRelayDesktop(): Promise<StartRelayResult | null> {
+  const bridge = layBridge()
+  if (!bridge?.startRelay) return null
+  return bridge.startRelay()
 }
 
 export async function nhapMediaDiaPhuongDesktop(): Promise<ImportLocalMediaResult | null> {
@@ -79,11 +86,10 @@ export async function taiCapNhatDesktop() {
   return bridge.update.download()
 }
 
-export function caiDatCapNhatDesktop() {
+export async function caiDatCapNhatDesktop() {
   const bridge = layBridge()
-  if (!bridge?.update) return false
-  bridge.update.install()
-  return true
+  if (!bridge?.update) return { success: false, error: 'Không chạy trong bản desktop.' }
+  return bridge.update.install()
 }
 
 export async function layTrangThaiCapNhatDesktop() {

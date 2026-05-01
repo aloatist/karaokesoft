@@ -60,8 +60,10 @@ export function UpdateStatus() {
     layTrangThaiCapNhatDesktop()
       .then((result) => {
         if (!active || !result) return
-        setState(result.state)
+        setState(result.state ?? 'idle')
         setInfo(result.info ?? null)
+        setProgress(result.progress ?? null)
+        setError(result.error ?? null)
       })
       .catch(() => undefined)
 
@@ -129,6 +131,8 @@ export function UpdateStatus() {
       if (desktopResult?.success) {
         setState(desktopResult.state ?? 'idle')
         setInfo(desktopResult.info ?? null)
+        setProgress(desktopResult.progress ?? null)
+        setError(desktopResult.error ?? null)
         return
       }
 
@@ -152,27 +156,34 @@ export function UpdateStatus() {
   const taiBanCapNhat = useCallback(async () => {
     setError(null)
 
-    if (manifestResult?.downloadUrl) {
-      moLinkCapNhat(manifestResult.downloadUrl)
-      return
-    }
-
     if (laDesktop && state === 'available') {
       setState('downloading')
       const result = await taiCapNhatDesktop()
       if (!result?.success) {
         setState('error')
         setError(result?.error ?? 'Không tải được cập nhật')
+        return
       }
+      setState(result.state ?? 'downloading')
+      setInfo(result.info ?? null)
+      setProgress(result.progress ?? null)
+      return
+    }
+
+    if (manifestResult?.downloadUrl) {
+      moLinkCapNhat(manifestResult.downloadUrl)
       return
     }
 
     moLinkCapNhat(manifestResult?.downloadUrl ?? null)
   }, [laDesktop, manifestResult, state])
 
-  const caiDatCapNhat = useCallback(() => {
+  const caiDatCapNhat = useCallback(async () => {
     if (laDesktop) {
-      caiDatCapNhatDesktop()
+      const result = await caiDatCapNhatDesktop()
+      if (!result.success) {
+        setError(result.error ?? 'Không thể cài cập nhật')
+      }
     }
   }, [laDesktop])
 
@@ -204,6 +215,12 @@ export function UpdateStatus() {
         </div>
       ) : null}
 
+      {laDesktop ? (
+        <div className="hint">
+          Desktop hỗ trợ cập nhật trong app: bấm tải, chờ xong rồi khởi động lại để cài. Không cần tải lại bộ cài thủ công.
+        </div>
+      ) : null}
+
       {dangTai && progress ? (
         <div className="updateProgress" aria-label="Tiến trình tải cập nhật">
           <div className="updateProgressTrack">
@@ -221,14 +238,14 @@ export function UpdateStatus() {
       ) : null}
 
       <div className="updateStatusActions">
-        {coTheTaiBanMoi ? (
-          <button className="primary compactButton buttonToneAccent" onClick={() => void taiBanCapNhat()} type="button">
-            {manifestResult?.downloadUrl ? 'Mở trang tải' : 'Tải cập nhật'}
+        {coTheTaiBanMoi && state !== 'downloaded' ? (
+          <button className="primary compactButton buttonToneAccent" disabled={dangTai} onClick={() => void taiBanCapNhat()} type="button">
+            {dangTai ? 'Đang tải...' : manifestResult?.downloadUrl ? 'Mở trang tải' : 'Tải cập nhật'}
           </button>
         ) : null}
         {state === 'downloaded' ? (
-          <button className="primary compactButton buttonToneAccent" onClick={caiDatCapNhat} type="button">
-            Khởi động lại để cài
+          <button className="primary compactButton buttonToneAccent" onClick={() => void caiDatCapNhat()} type="button">
+            Khởi động lại để cập nhật
           </button>
         ) : null}
       </div>

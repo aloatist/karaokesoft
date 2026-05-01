@@ -7,6 +7,51 @@ type ErrorBoundaryState = {
   error: Error | null
 }
 
+function dangChayTrongAppNative() {
+  const electronWindow = window as Window & {
+    karaokeDesktop?: {
+      isElectron?: boolean
+      __ELECTRON__?: boolean
+    }
+    Capacitor?: unknown
+  }
+  const protocol = window.location.protocol
+  const hostname = window.location.hostname
+  const userAgent = navigator.userAgent
+  const capacitorLocalhost =
+    (protocol === 'http:' || protocol === 'https:') &&
+    hostname === 'localhost' &&
+    !window.location.port &&
+    /(Android|iPhone|iPad|iPod|Capacitor|wv)/i.test(userAgent)
+
+  return Boolean(
+    electronWindow.karaokeDesktop?.isElectron ||
+      electronWindow.karaokeDesktop?.__ELECTRON__ ||
+      electronWindow.Capacitor ||
+      protocol === 'capacitor:' ||
+      protocol === 'file:' ||
+      capacitorLocalhost,
+  )
+}
+
+function xoaServiceWorkerNativeCu() {
+  if (!('serviceWorker' in navigator)) return
+
+  window.addEventListener('load', () => {
+    navigator.serviceWorker
+      .getRegistrations()
+      .then((registrations) => Promise.all(registrations.map((registration) => registration.unregister())))
+      .catch(() => undefined)
+
+    if ('caches' in window) {
+      window.caches
+        .keys()
+        .then((keys) => Promise.all(keys.filter((key) => key.startsWith('karaokeyt-')).map((key) => window.caches.delete(key))))
+        .catch(() => undefined)
+    }
+  })
+}
+
 class ErrorBoundary extends Component<{ children: ReactNode }, ErrorBoundaryState> {
   state: ErrorBoundaryState = { error: null }
 
@@ -35,7 +80,9 @@ class ErrorBoundary extends Component<{ children: ReactNode }, ErrorBoundaryStat
   }
 }
 
-if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+if (dangChayTrongAppNative()) {
+  xoaServiceWorkerNativeCu()
+} else if (import.meta.env.PROD && 'serviceWorker' in navigator) {
   const serviceWorkerUrl = new URL('sw.js', window.location.href)
   window.addEventListener('load', () => {
     navigator.serviceWorker.register(serviceWorkerUrl).catch(() => undefined)

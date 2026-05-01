@@ -5,18 +5,26 @@ type Props = {
   value: string
   onChange: (v: string) => void
   onClear: () => void
+  onSubmit?: () => void
+  showSubmit?: boolean
   disabled?: boolean
   onFocus?: () => void
 }
 
 export const SearchBar = forwardRef<HTMLInputElement, Props>(function SearchBar(
-  { value, onChange, onClear, disabled = false, onFocus },
+  { value, onChange, onClear, onSubmit, showSubmit = false, disabled = false, onFocus },
   ref,
 ) {
   const id = useId()
 
   return (
-    <div className="searchBar">
+    <form
+      className={`searchBar ${showSubmit ? 'searchBarWithSubmit' : ''}`}
+      onSubmit={(event) => {
+        event.preventDefault()
+        onSubmit?.()
+      }}
+    >
       <label className="srOnly" htmlFor={id}>
         Tìm bài karaoke
       </label>
@@ -39,6 +47,12 @@ export const SearchBar = forwardRef<HTMLInputElement, Props>(function SearchBar(
           <span className="buttonLabel">Xoá</span>
         </button>
       ) : null}
-    </div>
+      {showSubmit ? (
+        <button className="primary buttonToneAccent buttonWithIcon searchSubmitButton" disabled={disabled || value.trim().length < 2} type="submit">
+          <AppIcon name="search" className="buttonIcon" />
+          <span className="buttonLabel">Tìm</span>
+        </button>
+      ) : null}
+    </form>
   )
 })

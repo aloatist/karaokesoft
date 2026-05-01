@@ -19,7 +19,9 @@ type Props = {
   controllerReady?: boolean
   currentDeviceIsController?: boolean
   autoOpenScanner?: boolean
+  startingRelay?: boolean
   onRegenerate: () => void
+  onStartRelay?: () => void
   onUseRoomCode: (roomCode: string) => void
   onUsePairingPayload?: (payload: { roomCode: string; roomToken?: string; relayUrl?: string }) => void
   onUseLanHost?: (host: string) => void
@@ -102,7 +104,9 @@ export function RemotePairingModal({
   controllerReady,
   currentDeviceIsController = false,
   autoOpenScanner = false,
+  startingRelay = false,
   onRegenerate,
+  onStartRelay,
   onUseRoomCode,
   onUsePairingPayload,
   onUseLanHost,
@@ -358,6 +362,17 @@ export function RemotePairingModal({
           </div>
 
           <div className="remotePairPrimaryActions">
+            {onStartRelay ? (
+              <button
+                className="primary buttonWithIcon buttonToneAccent"
+                disabled={startingRelay}
+                onClick={onStartRelay}
+                type="button"
+              >
+                <AppIcon name="cloud" className="buttonIcon" />
+                <span className="buttonLabel">{startingRelay ? 'Đang bật relay...' : 'Bật relay'}</span>
+              </button>
+            ) : null}
             <button className="primary buttonWithIcon remotePairDesktopOnly" onClick={openDisplayWindow} type="button">
               <AppIcon name="screen" className="buttonIcon" />
               <span className="buttonLabel">Mở TV/laptop</span>
@@ -556,13 +571,24 @@ export function RemotePairingModal({
                   <div>TV/laptop: {presence.displays}</div>
                 </div>
                 <div className="hint">{statusHint(status, statusMessage)}</div>
+                {onStartRelay ? (
+                  <button
+                    className="primary buttonWithIcon buttonToneAccent"
+                    disabled={startingRelay}
+                    onClick={onStartRelay}
+                    type="button"
+                  >
+                    <AppIcon name="cloud" className="buttonIcon" />
+                    <span className="buttonLabel">{startingRelay ? 'Đang bật relay...' : 'Bật relay thủ công'}</span>
+                  </button>
+                ) : null}
               </div>
               <div className="remotePairCard remoteDiagnosticsCard">
                 <div className="remotePairCardTitle">Khi không kết nối được</div>
                 <div className="remoteDiagnosticsList">
-                  <div>1. Chạy `npm run remote:relay` ở môi trường local.</div>
-                  <div>2. Điện thoại và TV/laptop nên cùng mạng Wi-Fi.</div>
-                  <div>3. Khi deploy web, cấu hình `VITE_REMOTE_RELAY_URL` dùng WSS.</div>
+                  <div>1. Mở KaraokeYT trên laptop trước, relay sẽ tự chạy kèm app.</div>
+                  <div>2. Cho phép KaraokeYT qua Windows Firewall nếu điện thoại không vào được link IP LAN.</div>
+                  <div>3. Điện thoại và TV/laptop phải cùng Wi-Fi. Khi deploy web, relay cần dùng WSS.</div>
                 </div>
               </div>
             </div>
@@ -578,7 +604,7 @@ export function RemotePairingModal({
               <input className="input" value={displayUrl} readOnly onFocus={(e) => e.currentTarget.select()} />
             </div>
             <div className="field">
-              <div className="label">Relay</div>
+              <div className="label">Relay cho điện thoại/TV</div>
               <input className="input" value={relayUrl} readOnly onFocus={(e) => e.currentTarget.select()} />
             </div>
           </div>

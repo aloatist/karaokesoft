@@ -11,6 +11,8 @@ type YTPlayer = {
   setVolume: (v: number) => void
   loadVideoById: (videoId: string) => void
   seekTo?: (seconds: number, allowSeekAhead?: boolean) => void
+  getCurrentTime?: () => number
+  getDuration?: () => number
   getPlayerState?: () => number
 }
 
@@ -44,6 +46,10 @@ let ytApiPromise: Promise<YTGlobal> | null = null
 
 function clampVolume(value: number) {
   return Math.max(0, Math.min(100, Math.round(Number.isFinite(value) ? value : 100)))
+}
+
+function clampSeconds(value: number) {
+  return Math.max(0, Math.round(Number.isFinite(value) ? value : 0))
 }
 
 function loadYouTubeIframeApi(): Promise<YTGlobal> {
@@ -100,6 +106,7 @@ export function useYouTubePlayer(opts: {
   >('idle')
   const [lastErrorState, setLastErrorState] = useState<{ code: number; videoId?: string } | null>(null)
   const [activeVideoId, setActiveVideoId] = useState<string | null>(null)
+  const [progress, setProgress] = useState({ currentTime: 0, duration: 0 })
   const playbackProbeRef = useRef<number | null>(null)
   const volumeRef = useRef(opts.volume)
   const videoIdRef = useRef(opts.videoId)
@@ -267,6 +274,40 @@ export function useYouTubePlayer(opts: {
 
   useEffect(() => {
     if (!ready) return
+    let cancelled = false
+
+    const updateProgress = () => {
+      if (cancelled) return
+      const player = playerRef.current
+      if (!player) return
+
+      try {
+        const currentTime = clampSeconds(player.getCurrentTime?.() ?? 0)
+        const duration = clampSeconds(player.getDuration?.() ?? 0)
+        setProgress((current) =>
+          current.currentTime === currentTime && current.duration === duration
+            ? current
+            : { currentTime, duration },
+        )
+      } catch {
+        // YouTube co the chua san sang tra ve thoi gian.
+      }
+    }
+
+    updateProgress()
+    const timer = window.setInterval(updateProgress, 1000)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [ready])
+
+  useEffect(() => {
+    setProgress({ currentTime: 0, duration: 0 })
+  }, [opts.videoId])
+
+  useEffect(() => {
+    if (!ready) return
     const id = opts.videoId
     if (!id) return
     try {
@@ -318,6 +359,21 @@ export function useYouTubePlayer(opts: {
     }
   }, [])
 
+  const seekTo = useCallback((seconds: number) => {
+    const p = playerRef.current
+    if (!p) return
+    const targetSeconds = clampSeconds(seconds)
+    try {
+      p.seekTo?.(targetSeconds, true)
+      setProgress((current) => ({
+        currentTime: current.duration > 0 ? Math.min(targetSeconds, current.duration) : targetSeconds,
+        duration: current.duration,
+      }))
+    } catch {
+      // ignore
+    }
+  }, [])
+
   const setPlayerVolume = useCallback((v: number) => {
     const nextVolume = clampVolume(v)
     playerRef.current?.setVolume(nextVolume)
@@ -350,9 +406,11 @@ export function useYouTubePlayer(opts: {
     playerState,
     lastError,
     activeVideoId,
+    progress,
     play,
     pause,
     restart,
+    seekTo,
     setVolume: setPlayerVolume,
     getRawPlayerState,
     unmuteAndPlay,

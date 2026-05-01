@@ -4,7 +4,7 @@
  */
 
 const { autoUpdater } = require('electron-updater')
-const { app, ipcMain, dialog, BrowserWindow } = require('electron')
+const { app, ipcMain } = require('electron')
 const log = require('electron-log')
 
 // Configure logging
@@ -15,6 +15,9 @@ autoUpdater.logger.transports.file.level = 'info'
 const UPDATE_CHECK_INTERVAL = 60 * 60 * 1000 // Check every hour
 let updateInterval = null
 let mainWindow = null
+let handlersRegistered = false
+let checkingPromise = null
+let downloadingPromise = null
 
 // Update states
 const UpdateState = {
@@ -29,17 +32,27 @@ const UpdateState = {
 
 let currentState = UpdateState.IDLE
 let updateInfo = null
+let updateProgress = null
+let lastError = null
 
 function setupAutoUpdate(window) {
   mainWindow = window
 
   // Configure auto-updater
-  autoUpdater.autoDownload = false // Manual download to show progress
+  autoUpdater.autoDownload = false // Người dùng chủ động bấm tải trong UI.
   autoUpdater.autoInstallOnAppQuit = true
+  autoUpdater.allowDowngrade = false
+  autoUpdater.allowPrerelease = process.env.KARAOKEYT_UPDATE_PRERELEASE === '1'
+
+  if (handlersRegistered) {
+    return
+  }
+  handlersRegistered = true
 
   // Event handlers
   autoUpdater.on('checking-for-update', () => {
     currentState = UpdateState.CHECKING
+    lastError = null
     notifyRenderer('update:checking')
     log.info('Checking for update...')
   })
@@ -47,25 +60,10 @@ function setupAutoUpdate(window) {
   autoUpdater.on('update-available', (info) => {
     currentState = UpdateState.AVAILABLE
     updateInfo = info
+    updateProgress = null
+    lastError = null
     notifyRenderer('update:available', info)
     log.info('Update available:', info)
-
-    // Show dialog to user
-    dialog
-      .showMessageBox(mainWindow, {
-        type: 'info',
-        title: 'Cập nhật mới có sẵn',
-        message: `Phiên bản ${info.version} đã có sẵn`,
-        detail: `Phiên bản hiện tại: ${autoUpdater.currentVersion}\n\nBạn có muốn tải xuống ngay bây giờ?`,
-        buttons: ['Tải xuống', 'Để sau'],
-        defaultId: 0,
-        cancelId: 1,
-      })
-      .then((result) => {
-        if (result.response === 0) {
-          downloadUpdate()
-        }
-      })
   })
 
   autoUpdater.on('update-not-available', (info) => {
@@ -76,6 +74,8 @@ function setupAutoUpdate(window) {
 
   autoUpdater.on('download-progress', (progressObj) => {
     currentState = UpdateState.DOWNLOADING
+    updateProgress = progressObj
+    lastError = null
     notifyRenderer('update:progress', progressObj)
     log.info('Download progress:', progressObj.percent)
   })
@@ -83,58 +83,47 @@ function setupAutoUpdate(window) {
   autoUpdater.on('update-downloaded', (info) => {
     currentState = UpdateState.DOWNLOADED
     updateInfo = info
+    lastError = null
     notifyRenderer('update:downloaded', info)
     log.info('Update downloaded:', info)
-
-    // Prompt to install
-    dialog
-      .showMessageBox(mainWindow, {
-        type: 'info',
-        title: 'Cập nhật đã sẵn sàng',
-        message: `Phiên bản ${info.version} đã tải xuống`,
-        detail: 'Ứng dụng sẽ khởi động lại để cài đặt cập nhật.',
-        buttons: ['Khởi động lại ngay', 'Cài đặt sau'],
-        defaultId: 0,
-        cancelId: 1,
-      })
-      .then((result) => {
-        if (result.response === 0) {
-          autoUpdater.quitAndInstall()
-        }
-      })
   })
 
   autoUpdater.on('error', (err) => {
     currentState = UpdateState.ERROR
-    notifyRenderer('update:error', err.message)
+    lastError = err?.message || 'Không kiểm tra được cập nhật'
+    notifyRenderer('update:error', lastError)
     log.error('Update error:', err)
   })
 
   // IPC handlers
   ipcMain.handle('update:check', async () => {
     try {
-      await checkForUpdates()
-      return { success: true, state: currentState, info: updateInfo }
+      const result = await checkForUpdates()
+      return taoKetQuaTrangThai({ result })
     } catch (error) {
-      return { success: false, error: error.message }
+      return taoKetQuaTrangThai({ success: false, error })
     }
   })
 
   ipcMain.handle('update:download', async () => {
     try {
       await downloadUpdate()
-      return { success: true }
+      return taoKetQuaTrangThai()
     } catch (error) {
-      return { success: false, error: error.message }
+      return taoKetQuaTrangThai({ success: false, error })
     }
   })
 
   ipcMain.handle('update:install', () => {
+    if (currentState !== UpdateState.DOWNLOADED) {
+      return { success: false, error: 'Chưa có bản cập nhật đã tải xong để cài.' }
+    }
     autoUpdater.quitAndInstall()
+    return { success: true }
   })
 
   ipcMain.handle('update:get-state', () => {
-    return { state: currentState, info: updateInfo }
+    return taoKetQuaTrangThai()
   })
 
   if (app.isPackaged) {
@@ -154,35 +143,87 @@ function notifyRenderer(channel, data) {
   }
 }
 
+function layTenNenTang() {
+  if (process.platform === 'win32') return 'windows'
+  if (process.platform === 'darwin') return 'mac'
+  if (process.platform === 'linux') return 'linux'
+  return process.platform
+}
+
+function taoKetQuaTrangThai({ success = true, error, result } = {}) {
+  const message = error instanceof Error ? error.message : typeof error === 'string' ? error : lastError
+  return {
+    success,
+    state: currentState,
+    info: updateInfo,
+    progress: updateProgress,
+    error: message || undefined,
+    currentVersion: String(autoUpdater.currentVersion || app.getVersion()),
+    isPackaged: app.isPackaged,
+    platform: layTenNenTang(),
+    updateResult: result
+      ? {
+          updateInfo: result.updateInfo,
+        }
+      : undefined,
+  }
+}
+
 async function checkForUpdates() {
   if (!app.isPackaged) {
     log.info('Skipping update check in development mode')
     currentState = UpdateState.ERROR
     const message = 'Cập nhật desktop chỉ hoạt động sau khi app đã được đóng gói.'
+    lastError = message
     notifyRenderer('update:error', message)
     throw new Error(message)
   }
 
+  if (checkingPromise) return checkingPromise
+
   try {
-    return await autoUpdater.checkForUpdates()
+    checkingPromise = autoUpdater.checkForUpdates()
+    return await checkingPromise
   } catch (error) {
     currentState = UpdateState.ERROR
     updateInfo = null
-    notifyRenderer('update:error', error.message)
+    lastError = error instanceof Error ? error.message : 'Không kiểm tra được cập nhật'
+    notifyRenderer('update:error', lastError)
     log.error('Failed to check for updates:', error)
     throw error
+  } finally {
+    checkingPromise = null
   }
 }
 
 async function downloadUpdate() {
+  if (!app.isPackaged) {
+    const message = 'Cập nhật desktop chỉ hoạt động sau khi app đã được đóng gói.'
+    currentState = UpdateState.ERROR
+    lastError = message
+    notifyRenderer('update:error', message)
+    throw new Error(message)
+  }
+
+  if (currentState === UpdateState.DOWNLOADED) {
+    return []
+  }
+
+  if (downloadingPromise) return downloadingPromise
+
   try {
-    return await autoUpdater.downloadUpdate()
+    currentState = UpdateState.DOWNLOADING
+    notifyRenderer('update:progress', updateProgress || { percent: 0 })
+    downloadingPromise = autoUpdater.downloadUpdate()
+    return await downloadingPromise
   } catch (error) {
     currentState = UpdateState.ERROR
-    notifyRenderer('update:error', error.message)
+    lastError = error instanceof Error ? error.message : 'Không tải được cập nhật'
+    notifyRenderer('update:error', lastError)
     log.error('Failed to download update:', error)
-    dialog.showErrorBox('Lỗi cập nhật', `Không thể tải xuống: ${error.message}`)
     throw error
+  } finally {
+    downloadingPromise = null
   }
 }
 

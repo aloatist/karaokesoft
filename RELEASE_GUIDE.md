@@ -31,6 +31,32 @@
 3. **Hoặc trigger thủ công**:
    - GitHub → Actions → Build Desktop Apps → Run workflow
 
+### Desktop Auto Update
+
+Desktop Windows/mac/Linux dùng `electron-updater` qua GitHub Release. Khi có tag mới, workflow `Build Desktop Apps` sẽ build và upload các file cần thiết lên Release:
+
+- Windows: `.exe`, `.blockmap`, `latest.yml`
+- macOS: `.dmg`, `.zip`, `.blockmap`, `latest-mac.yml`
+- Linux: `.AppImage`/`.deb`, `.yml`
+
+Quy trình phát hành bản mới:
+
+```bash
+npm version patch
+git push origin main
+git push origin v$(node -p "require('./package.json').version")
+```
+
+Sau khi GitHub Actions chạy xong, người dùng mở app sẽ thấy banner cập nhật. Bấm `Cập nhật`, chờ tải xong, rồi bấm `Khởi động lại để cập nhật`. Người dùng không cần tải lại bộ cài thủ công.
+
+Lưu ý:
+
+- Auto update chỉ chạy khi app đã được đóng gói (`app.isPackaged`), không chạy trong `npm run dev:desktop`.
+- GitHub Release phải có `latest.yml` và file `.exe/.blockmap` tương ứng cho Windows.
+- Windows auto update chỉ nên dùng bản cài đặt `setup.exe`. Bản `portable.exe` là bản chạy nhanh để test, không phải luồng cập nhật chính.
+- macOS production cần code signing/notarization để cập nhật ổn định trên máy người dùng ngoài môi trường test.
+- Android/iOS không thể tự cài APK/AAB kiểu desktop; production nên dùng Google Play/App Store hoặc link tải APK trong manifest.
+
 ### Cách 2: Docker (Build Linux local)
 
 ```bash
@@ -66,6 +92,20 @@ Upload `release/KaraokeYT-0.1.0-release.aab` lên Google Play Console
 1. Mở `KaraokeYT-0.1.0-mac-arm64.dmg`
 2. Kéo KaraokeYT vào Applications
 3. Mở từ Applications (bỏ qua cảnh báo Gatekeeper nếu có)
+
+### iPhone chạy local từ Mac
+1. Bật `Developer Mode` trên iPhone.
+2. Đăng nhập Apple ID trong Xcode và chọn `Team` cho target `App`.
+3. Cắm iPhone, mở khóa máy, chấp nhận `Trust This Computer`.
+4. Chạy:
+   ```bash
+   npm run ios:run -- 00008110-00121C641A9B801E
+   ```
+5. Nếu không truyền UDID, script sẽ tự chọn iPhone đang kết nối đầu tiên.
+
+Ghi chú:
+- Script `ios:run` không dùng `cap run ios` nữa. Nó build bằng `xcodebuild`, cài bằng `devicectl`, rồi retry launch để tránh lỗi `ERR_UNKNOWN` sau bước cài.
+- Nếu iPhone chưa cho mở app sau lần cài đầu, mở tay biểu tượng app một lần để xác nhận developer app.
 
 ### Windows (Từ CI)
 1. Download `KaraokeYT-0.1.0-win-x64.exe` từ GitHub Actions

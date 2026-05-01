@@ -85,7 +85,8 @@ export type AppSettings = {
 
 export type SyncMessage =
   | { type: 'QUEUE_UPDATE'; queue: SongItem[]; currentIndex: number }
-  | { type: 'PLAYER_CMD'; cmd: 'play' | 'pause' | 'skip' | 'volume' | 'restart'; value?: number }
+  | { type: 'PLAYER_CMD'; cmd: 'play' | 'pause' | 'skip' | 'volume' | 'restart' | 'seek'; value?: number }
+  | { type: 'PLAYER_PROGRESS'; state: PlayerState }
   | { type: 'PLAYER_ERROR'; code: number; videoId?: string }
   | { type: 'SONG_ENDED' }
   | { type: 'SKIP_REQUEST'; reason: 'ad-long' | 'user' }
@@ -106,9 +107,11 @@ export type RemotePresence = {
 
 export type RemoteAction =
   | { type: 'TRANSPORT'; cmd: PlayerCommand | 'prev' }
+  | { type: 'SEEK_RELATIVE'; delta: number }
   | { type: 'SET_VOLUME'; value: number }
   | { type: 'PLAY_QUEUE_ITEM'; queueId: string }
   | { type: 'REMOVE_QUEUE_ITEM'; queueId: string }
+  | { type: 'PLAYER_PROGRESS'; state: PlayerState }
 
 export type RemoteRoomState = {
   roomCode: string
@@ -122,6 +125,7 @@ export type RemoteRoomState = {
   displayMode: 'idle' | 'desktop' | 'browser'
   displayRunMode: DisplayRunMode
   activeDisplayTarget: DisplayTarget
+  playerProgress: PlayerState
   lastPlayerCommand: PlayerCommand | null
   commandNonce: number
   commandValue?: number
@@ -213,7 +217,19 @@ export type DesktopNetworkInfo = {
   rendererBaseUrl: string
   rendererPort: number
   relayPort: number
+  relayReady?: boolean
+  relayStatus?: string
+  relayMessage?: string
   addresses: DesktopNetworkAddress[]
+}
+
+export type StartRelayResult = {
+  success: boolean
+  reused?: boolean
+  localReady?: boolean
+  lanReady?: boolean
+  message?: string
+  networkInfo?: DesktopNetworkInfo
 }
 
 export type ImportLocalMediaResult = {
@@ -223,11 +239,11 @@ export type ImportLocalMediaResult = {
 }
 
 export interface SecureStorageApi {
-  saveKey: (apiKey: string) => Promise<{ success: boolean; message?: string; error?: string }>
+  saveKey: (apiKey: string) => Promise<{ success: boolean; message?: string; error?: string; keyCount?: number; usableCount?: number }>
   getKey: () => Promise<{ success: boolean; key?: string; error?: string }>
   deleteKey: () => Promise<{ success: boolean; message?: string; error?: string }>
-  hasKey: () => Promise<{ success: boolean; hasKey?: boolean; error?: string }>
-  checkKey: () => Promise<{ success: boolean; valid?: boolean; message?: string; error?: string }>
+  hasKey: () => Promise<{ success: boolean; hasKey?: boolean; keyCount?: number; error?: string }>
+  checkKey: () => Promise<{ success: boolean; valid?: boolean; message?: string; keyCount?: number; error?: string }>
 }
 
 export type UpdateEventName =
@@ -260,11 +276,22 @@ export type UpdateProgress = {
   total?: number
 }
 
+export type UpdateOperationResult = {
+  success: boolean
+  state?: UpdateState
+  info?: UpdateInfo
+  progress?: UpdateProgress
+  error?: string
+  currentVersion?: string
+  isPackaged?: boolean
+  platform?: string
+}
+
 export interface UpdateApi {
-  check: () => Promise<{ success: boolean; state?: UpdateState; info?: UpdateInfo; error?: string }>
-  download: () => Promise<{ success: boolean; error?: string }>
-  install: () => void
-  getState: () => Promise<{ state: UpdateState; info?: UpdateInfo }>
+  check: () => Promise<UpdateOperationResult>
+  download: () => Promise<UpdateOperationResult>
+  install: () => Promise<{ success: boolean; error?: string }>
+  getState: () => Promise<UpdateOperationResult>
 }
 
 export type DesktopBridgeApi = {
@@ -272,6 +299,7 @@ export type DesktopBridgeApi = {
   __ELECTRON__: true
   getDisplays: () => Promise<DesktopDisplayInfo[]>
   getNetworkInfo?: () => Promise<DesktopNetworkInfo>
+  startRelay?: () => Promise<StartRelayResult>
   importLocalMedia?: () => Promise<ImportLocalMediaResult>
   openDisplayWindow: (monitorIndex?: number, roomCode?: string, roomToken?: string) => Promise<OpenDisplayWindowResult>
   closeDisplayWindow: () => Promise<CloseDisplayWindowResult>

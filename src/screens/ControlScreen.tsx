@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { AccountModal } from '../components/AccountModal'
 import { AppIcon } from '../components/AppIcon'
-import { FakeProgressBar } from '../components/FakeProgressBar'
 import { LegalModal } from '../components/LegalModal'
 import { MediaLibraryPanel } from '../components/MediaLibraryPanel'
 import { NowPlayingMini } from '../components/NowPlayingMini'
@@ -58,16 +57,18 @@ import {
   authRefresh,
   mapApiUserToAppUser,
 } from '../services/authApi'
-import { dangChayDesktop, layThongTinMangDesktop, nhapMediaDiaPhuongDesktop } from '../services/desktopBridge'
+import { batRelayDesktop, dangChayDesktop, layThongTinMangDesktop, nhapMediaDiaPhuongDesktop } from '../services/desktopBridge'
 import { useAuthStore } from '../store/authStore'
 import { useMediaLibraryStore } from '../store/mediaLibraryStore'
 import { useQueueStore } from '../store/queueStore'
 import { useSettingsStore } from '../store/settingsStore'
 import type {
   AppUser,
+  DesktopNetworkInfo,
   DisplayRunMode,
   DisplayTarget,
   PlayerCommand,
+  PlayerState,
   RemoteAction,
   RemotePresence,
   RemoteRelayStatus,
@@ -92,6 +93,8 @@ const REMOTE_STATE_ECHO_MUTE_MS = 900
 const DISPLAY_RUN_MODE_STORAGE_KEY = 'karaokeyt-display-run-mode'
 const DISPLAY_ACTIVE_TARGET_STORAGE_KEY = 'karaokeyt-display-active-target'
 const DEFAULT_DISPLAY_VOLUME = 100
+const SEEK_STEP_SECONDS = 10
+const EMPTY_PLAYER_PROGRESS: PlayerState = { status: 'idle', volume: DEFAULT_DISPLAY_VOLUME, currentTime: 0, duration: 0 }
 
 type MobileControlTarget = 'laptop' | 'tv'
 type DisplayRunChoice = DisplayTarget | 'parallel'
@@ -112,6 +115,27 @@ function clamp(n: number, min: number, max: number) {
 function clampVolume(value: number) {
   if (!Number.isFinite(value)) return DEFAULT_DISPLAY_VOLUME
   return clamp(Math.round(value), 0, 100)
+}
+
+function chuanHoaTienDoPlayer(input?: Partial<PlayerState> | null): PlayerState {
+  const duration = Math.max(0, Math.round(Number.isFinite(input?.duration) ? Number(input?.duration) : 0))
+  const currentTime = Math.max(
+    0,
+    Math.min(duration || Number.MAX_SAFE_INTEGER, Math.round(Number.isFinite(input?.currentTime) ? Number(input?.currentTime) : 0)),
+  )
+  return {
+    status: input?.status ?? 'idle',
+    volume: clampVolume(Number.isFinite(input?.volume) ? Number(input?.volume) : DEFAULT_DISPLAY_VOLUME),
+    currentTime,
+    duration,
+  }
+}
+
+function dinhDangThoiGian(seconds: number) {
+  const total = Math.max(0, Math.round(Number.isFinite(seconds) ? seconds : 0))
+  const minutes = Math.floor(total / 60)
+  const remain = total % 60
+  return `${minutes}:${String(remain).padStart(2, '0')}`
 }
 
 function laLoiVideoKhongTonTai(code: number) {
@@ -145,6 +169,12 @@ function taoKhoaDongBoRemote(state: RemoteRoomState) {
     displayMode: state.displayMode,
     displayRunMode: chuanHoaCheDoChayManChieu(state.displayRunMode),
     activeDisplayTarget: chuanHoaManChieuDangChon(state.activeDisplayTarget),
+    playerProgress: {
+      status: state.playerProgress.status,
+      currentTime: Math.round(state.playerProgress.currentTime),
+      duration: Math.round(state.playerProgress.duration),
+      volume: state.playerProgress.volume,
+    },
     lastPlayerCommand: state.lastPlayerCommand,
     commandNonce: state.commandNonce,
     commandValue: state.commandValue ?? null,
@@ -271,10 +301,12 @@ export function ControlScreen() {
   const [openMobileMenu, setOpenMobileMenu] = useState(false)
   const [settingsSyncNonce, setSettingsSyncNonce] = useState(0)
   const [query, setQuery] = useState('')
+  const [submittedMobileQuery, setSubmittedMobileQuery] = useState('')
   const [sourceTab, setSourceTab] = useState<'youtube' | 'media'>('youtube')
   const [queueFilter, setQueueFilter] = useState<QueueFilter>('all')
   const [importingMedia, setImportingMedia] = useState(false)
   const [volume, setVolume] = useState(DEFAULT_DISPLAY_VOLUME)
+  const [playerProgress, setPlayerProgress] = useState<PlayerState>(EMPTY_PLAYER_PROGRESS)
   const [toast, setToast] = useState<string | null>(null)
   const [recentAction, setRecentAction] = useState<{ videoId: string; message: string } | null>(null)
   const [recentMediaAction, setRecentMediaAction] = useState<{ id: string; message: string } | null>(null)
@@ -299,6 +331,7 @@ export function ControlScreen() {
   const [remotePhoneRelayUrl, setRemotePhoneRelayUrl] = useState('')
   const [remotePhoneLinkHint, setRemotePhoneLinkHint] = useState<string | null>(null)
   const [mobileLanHostInput, setMobileLanHostInput] = useState('')
+  const [startingRelay, setStartingRelay] = useState(false)
   const [remotePresence, setRemotePresence] = useState<RemotePresence>(EMPTY_REMOTE_PRESENCE)
   const [paneSizes, setPaneSizes] = useState(() => docThongSoKhung())
   const [isThreePane, setIsThreePane] = useState(() => window.innerWidth >= BREAKPOINT_3_PANE)
@@ -378,6 +411,11 @@ export function ControlScreen() {
   const tongBai = queue.length
   const soBaiSapToi = baiDangPhat ? Math.max(queue.length - currentIndex - 1, 0) : queue.length
   const hienThiPlayerMode = baiDangPhat ? (playerMode === 'idle' ? 'playing' : playerMode) : 'idle'
+  const playerProgressPercent =
+    playerProgress.duration > 0 ? clamp((playerProgress.currentTime / playerProgress.duration) * 100, 0, 100) : 0
+  const playerProgressRemaining = playerProgress.duration > 0
+    ? Math.max(playerProgress.duration - playerProgress.currentTime, 0)
+    : 0
   const nhanTaiKhoan = userDangDangNhap?.name ?? 'Khách dùng nhanh'
   const hienThiModalTaiKhoan = openAccountModal || (canThietLapQuanTri && !isMobileLayout)
 
@@ -390,12 +428,20 @@ export function ControlScreen() {
     return labels[replayMode]
   }, [replayMode])
 
+  useEffect(() => {
+    setPlayerProgress((current) => ({ ...EMPTY_PLAYER_PROGRESS, volume: current.volume }))
+  }, [baiDangPhat?.queueId])
+
   const [remoteRelayUrl, setRemoteRelayUrl] = useState(() => layRelayUrlMacDinh())
-  const { status, results, errorMessage } = useYouTubeSearch(query, remoteRelayUrl)
+  const searchQuery = isMobileLayout ? submittedMobileQuery : query
+  const { status, results, errorMessage, warningMessage } = useYouTubeSearch(searchQuery, remoteRelayUrl)
+  const mobileQueryDangChoTim = isMobileLayout && query.trim().length >= 2 && query.trim() !== submittedMobileQuery.trim()
+  const hienThiTrangThaiTimKiem = mobileQueryDangChoTim ? 'idle' : status
+  const hienThiKetQuaTimKiem = mobileQueryDangChoTim ? [] : results
   const canMoCaiDatYoutubeApiKey =
-    laDesktop && status === 'error' && Boolean(errorMessage?.toLowerCase().includes('api key'))
+    laDesktop && hienThiTrangThaiTimKiem === 'error' && Boolean(errorMessage?.toLowerCase().includes('api key'))
   const nhanKetQua =
-    status === 'success' ? `${results.length} kết quả` : status === 'loading' ? 'Đang tìm…' : 'Sẵn sàng'
+    mobileQueryDangChoTim ? 'Bấm Tìm' : hienThiTrangThaiTimKiem === 'success' ? `${hienThiKetQuaTimKiem.length} kết quả` : hienThiTrangThaiTimKiem === 'loading' ? 'Đang tìm…' : 'Sẵn sàng'
   const phonePairingRelayUrl = remotePhoneRelayUrl || remoteRelayUrl
   const phonePairingBaseUrl = remotePhoneBaseUrl || undefined
   const displayJoinUrl = useMemo(
@@ -567,6 +613,18 @@ export function ControlScreen() {
 
       const desktopNetworkInfo = await layThongTinMangDesktop()
       if (cancelled) return
+      if (
+        laDesktop &&
+        desktopNetworkInfo?.relayPort &&
+        desktopNetworkInfo.relayReady &&
+        remoteRelayStatus !== 'connected'
+      ) {
+        const desktopLocalRelayUrl = chuanHoaRelayUrl(`ws://127.0.0.1:${desktopNetworkInfo.relayPort}/`)
+        if (desktopLocalRelayUrl && desktopLocalRelayUrl !== chuanHoaRelayUrl(remoteRelayUrl)) {
+          setRemoteRelayUrl(desktopLocalRelayUrl)
+          luuRelayUrl(desktopLocalRelayUrl)
+        }
+      }
       const desktopAddress =
         desktopNetworkInfo?.addresses.find((item) => item.family === 'IPv4' && !item.address.startsWith('169.254.')) ??
         desktopNetworkInfo?.addresses.find((item) => item.family === 'IPv4') ??
@@ -604,7 +662,9 @@ export function ControlScreen() {
         setRemotePhoneBaseUrl('')
         setRemotePhoneRelayUrl('')
         setRemotePhoneLinkHint(
-          'Chưa thấy relay trên laptop. Hãy chạy `npm run dev:remote` hoặc `npm run remote:relay`, sau đó bấm Đổi mã TV hoặc quét lại QR.',
+          laDesktop
+            ? 'App laptop chưa mở được relay LAN. Hãy cho phép KaraokeYT qua Windows Firewall rồi bấm Đổi mã TV hoặc mở lại app.'
+            : 'Chưa thấy relay trên laptop. Hãy chạy `npm run dev:remote` hoặc `npm run remote:relay`, sau đó bấm Đổi mã TV hoặc quét lại QR.',
         )
         return
       }
@@ -612,6 +672,7 @@ export function ControlScreen() {
       try {
         const normalizedMatchedRelayUrl = chuanHoaRelayUrl(matched.relayUrl)
         if (
+          !laDesktop &&
           normalizedMatchedRelayUrl &&
           normalizedMatchedRelayUrl !== chuanHoaRelayUrl(remoteRelayUrl) &&
           remoteRelayStatus !== 'connected'
@@ -626,7 +687,11 @@ export function ControlScreen() {
       } catch {
         setRemotePhoneBaseUrl('')
         setRemotePhoneRelayUrl('')
-        setRemotePhoneLinkHint('Không tạo được link LAN. Hãy mở Control bằng http://IP-laptop:5173 rồi quét lại QR.')
+        setRemotePhoneLinkHint(
+          laDesktop
+            ? 'Không tạo được link LAN từ app laptop. Kiểm tra IP/Wi-Fi/Firewall rồi bấm Đổi mã TV.'
+            : 'Không tạo được link LAN. Hãy mở Control bằng http://IP-laptop:5173 rồi quét lại QR.',
+        )
       }
     }
 
@@ -635,7 +700,7 @@ export function ControlScreen() {
     return () => {
       cancelled = true
     }
-  }, [remoteRelayStatus, remoteRelayUrl])
+  }, [laDesktop, remoteRelayStatus, remoteRelayUrl])
 
   const dongBoPhienDangNhapTuServer = useCallback((user: AppUser, capabilities?: string[]) => {
     useAuthStore.setState((state) => {
@@ -674,6 +739,7 @@ export function ControlScreen() {
     const nextVolume = clampVolume(rawValue)
     volumeRef.current = nextVolume
     setVolume(nextVolume)
+    setPlayerProgress((current) => ({ ...current, volume: nextVolume }))
     guiLenhTrinhChieu('volume', nextVolume)
 
     if (options?.syncPhone && coTheDongBoAmLuongDienThoai()) {
@@ -765,6 +831,11 @@ export function ControlScreen() {
   }, [isMobileLayout, isThreePane])
 
   const onMsg = useCallback((msg: SyncMessage) => {
+    if (msg.type === 'PLAYER_PROGRESS') {
+      setPlayerProgress(chuanHoaTienDoPlayer(msg.state))
+      return
+    }
+
     if (msg.type === 'SKIP_REQUEST') {
       if (!baiDangPhat) return
 
@@ -1087,6 +1158,12 @@ export function ControlScreen() {
     [authServerOnline, dongBoPhienDangNhapTuServer, khoiTaoQuanTriChinhLocal, thongBao],
   )
 
+  const thucHienTimKiemMobile = useCallback(() => {
+    const nextQuery = query.trim()
+    setShowSearchHistory(false)
+    setSubmittedMobileQuery(nextQuery.length >= 2 ? nextQuery : '')
+  }, [query])
+
   const dangXuatTaiKhoan = useCallback(async () => {
     if (authServerOnline) {
       try {
@@ -1147,8 +1224,30 @@ export function ControlScreen() {
     nhanNut('transport-restart')
     guiLenhTrinhChieu('restart')
     setPlayerMode('playing')
+    setPlayerProgress((current) => ({ ...current, currentTime: 0 }))
     thongBao('Đã phát lại từ đầu')
   }, [baiDangPhat, canPlayback, guiLenhTrinhChieu, nhanNut, thongBao])
+
+  const tuaDenGiay = useCallback((targetSeconds: number, label: string) => {
+    if (!baiDangPhat || !canPlayback) return
+    const duration = playerProgress.duration
+    const nextSeconds = Math.max(0, Math.min(duration || Number.MAX_SAFE_INTEGER, Math.round(targetSeconds)))
+    nhanNut(label)
+    guiLenhTrinhChieu('seek', nextSeconds)
+    setPlayerProgress((current) => ({
+      ...current,
+      currentTime: current.duration > 0 ? Math.min(nextSeconds, current.duration) : nextSeconds,
+    }))
+    thongBao(label === 'transport-seek-forward' ? `Đã tua tới ${SEEK_STEP_SECONDS} giây` : `Đã tua lùi ${SEEK_STEP_SECONDS} giây`)
+  }, [baiDangPhat, canPlayback, guiLenhTrinhChieu, nhanNut, playerProgress.duration, thongBao])
+
+  const tuaLui = useCallback(() => {
+    tuaDenGiay(playerProgress.currentTime - SEEK_STEP_SECONDS, 'transport-seek-back')
+  }, [playerProgress.currentTime, tuaDenGiay])
+
+  const tuaToi = useCallback(() => {
+    tuaDenGiay(playerProgress.currentTime + SEEK_STEP_SECONDS, 'transport-seek-forward')
+  }, [playerProgress.currentTime, tuaDenGiay])
 
   const tamDungPhat = useCallback(() => {
     if (!canPlayback) return
@@ -1367,9 +1466,23 @@ export function ControlScreen() {
         phatLaiTuDau()
         return
       }
+      if (action.cmd === 'seek') {
+        tuaDenGiay(typeof action.value === 'number' ? action.value : playerProgress.currentTime, 'transport-seek-forward')
+        return
+      }
       if (action.cmd === 'prev') {
         quaBaiTruoc()
       }
+      return
+    }
+
+    if (action.type === 'SEEK_RELATIVE') {
+      tuaDenGiay(playerProgress.currentTime + action.delta, action.delta >= 0 ? 'transport-seek-forward' : 'transport-seek-back')
+      return
+    }
+
+    if (action.type === 'PLAYER_PROGRESS') {
+      setPlayerProgress(chuanHoaTienDoPlayer(action.state))
       return
     }
 
@@ -1401,11 +1514,13 @@ export function ControlScreen() {
     datAmLuongTrinhChieu,
     phatLaiTuDau,
     phatTuHangCho,
+    playerProgress.currentTime,
     quaBaiTruoc,
     removeSong,
     sangBaiTiepTheo,
     tamDungPhat,
     thongBao,
+    tuaDenGiay,
   ])
 
   const xoaTatCa = useCallback(() => {
@@ -1464,6 +1579,7 @@ export function ControlScreen() {
       setDisplayMode(stateToApply.displayMode)
       setDisplayRunMode(chuanHoaCheDoChayManChieu(stateToApply.displayRunMode))
       setActiveDisplayTarget(chuanHoaManChieuDangChon(stateToApply.activeDisplayTarget))
+      setPlayerProgress(chuanHoaTienDoPlayer(stateToApply.playerProgress))
       setRelayPlayerCommand({
         cmd: stateToApply.lastPlayerCommand,
         value: stateToApply.commandValue,
@@ -1529,17 +1645,87 @@ export function ControlScreen() {
 
     try {
       const lanRelayUrl = `ws://${host}:8787/`
-      setRemoteRelayUrl(lanRelayUrl)
-      luuRelayUrl(lanRelayUrl)
+      if (!laDesktop) {
+        setRemoteRelayUrl(lanRelayUrl)
+        luuRelayUrl(lanRelayUrl)
+      }
       setRemotePhoneBaseUrl(taoBaseUrlUngDungLan(host, `http://${host}:8787/`))
       setRemotePhoneRelayUrl(lanRelayUrl)
-      setRemotePhoneLinkHint(`Đã dùng IP LAN ${host}. Điện thoại cần cùng Wi-Fi và relay phải đang chạy trên laptop.`)
+      setRemotePhoneLinkHint(
+        laDesktop
+          ? `QR/link điện thoại đang dùng IP LAN ${host}. Máy điều khiển vẫn dùng relay local trên laptop.`
+          : `Đã dùng IP LAN ${host}. Điện thoại cần cùng Wi-Fi và relay phải đang chạy trên laptop.`,
+      )
       setMobileLanHostInput(host)
       thongBao(`Đã dùng IP LAN ${host} cho QR điện thoại`)
     } catch {
       thongBao('IP LAN không hợp lệ. Ví dụ đúng: 192.168.1.50')
     }
-  }, [thongBao])
+  }, [laDesktop, thongBao])
+
+  const apDungThongTinMangDesktop = useCallback((networkInfo?: DesktopNetworkInfo | null, message?: string) => {
+    if (!networkInfo?.relayPort) return false
+
+    const desktopLocalRelayUrl = chuanHoaRelayUrl(`ws://127.0.0.1:${networkInfo.relayPort}/`)
+    if (laDesktop && desktopLocalRelayUrl) {
+      setRemoteRelayUrl(desktopLocalRelayUrl)
+      luuRelayUrl(desktopLocalRelayUrl)
+    }
+
+    const desktopAddress =
+      networkInfo.addresses.find((item) => item.family === 'IPv4' && !item.address.startsWith('169.254.')) ??
+      networkInfo.addresses.find((item) => item.family === 'IPv4') ??
+      networkInfo.addresses[0]
+
+    if (!desktopAddress?.address) {
+      setRemotePhoneBaseUrl('')
+      setRemotePhoneRelayUrl('')
+      setRemotePhoneLinkHint(message || 'Relay đã bật nhưng chưa tìm thấy IP LAN của laptop.')
+      return false
+    }
+
+    const lanRelayUrl = desktopAddress.relayUrl || `ws://${desktopAddress.address}:${networkInfo.relayPort}/`
+    setRemotePhoneBaseUrl(taoBaseUrlUngDungLan(desktopAddress.address, desktopAddress.url || `http://${desktopAddress.address}:${networkInfo.relayPort}/`))
+    setRemotePhoneRelayUrl(doiHostUrl(lanRelayUrl, desktopAddress.address))
+    setRemotePhoneLinkHint(message || `QR/link đang dùng IP LAN ${desktopAddress.address}. Điện thoại cần cùng Wi-Fi với laptop.`)
+    setMobileLanHostInput(desktopAddress.address)
+    return true
+  }, [laDesktop])
+
+  const batRelayThuCong = useCallback(async () => {
+    if (!laDesktop) {
+      thongBao('Chức năng bật relay thủ công chỉ dùng trên app laptop.')
+      return
+    }
+
+    setStartingRelay(true)
+    setRemoteRelayMessage('Đang bật relay thủ công trên laptop...')
+    try {
+      const result = await batRelayDesktop()
+      if (!result) {
+        thongBao('Không tìm thấy bridge desktop để bật relay.')
+        return
+      }
+
+      const applied = apDungThongTinMangDesktop(result.networkInfo, result.message)
+      setRemoteRelayMessage(result.message ?? null)
+      if (result.networkInfo?.relayPort) {
+        setRemoteRelayUrl(chuanHoaRelayUrl(`ws://127.0.0.1:${result.networkInfo.relayPort}/`))
+      }
+
+      if (result.success && applied) {
+        thongBao(result.message || 'Đã bật relay. Hãy quét lại QR trên điện thoại.')
+      } else if (result.localReady && !result.lanReady) {
+        thongBao(result.message || 'Relay chạy local nhưng điện thoại chưa vào được LAN. Kiểm tra Firewall/Wi-Fi.')
+      } else {
+        thongBao(result.message || 'Không bật được relay thủ công.')
+      }
+    } catch (error) {
+      thongBao(error instanceof Error ? error.message : 'Không bật được relay thủ công.')
+    } finally {
+      setStartingRelay(false)
+    }
+  }, [apDungThongTinMangDesktop, laDesktop, thongBao])
 
   const taoPhongRemoteMoi = useCallback(() => {
     const nextRoomCode = taoMaPhongRemote()
@@ -1719,9 +1905,14 @@ export function ControlScreen() {
               value={query}
               onChange={(val) => {
                 setQuery(val)
+                if (isMobileLayout && !val.trim()) {
+                  setSubmittedMobileQuery('')
+                }
                 setShowSearchHistory(false)
               }}
-              onClear={() => { setQuery(''); setShowSearchHistory(false) }}
+              onClear={() => { setQuery(''); setSubmittedMobileQuery(''); setShowSearchHistory(false) }}
+              onSubmit={thucHienTimKiemMobile}
+              showSubmit={isMobileLayout}
               disabled={!canSearch}
               onFocus={() => { if (!query) setShowSearchHistory(true) }}
             />
@@ -1729,6 +1920,9 @@ export function ControlScreen() {
               <SearchHistoryDropdown
                 onSelect={(q) => {
                   setQuery(q)
+                  if (isMobileLayout) {
+                    setSubmittedMobileQuery(q.trim())
+                  }
                   setShowSearchHistory(false)
                   searchInputRef.current?.focus()
                 }}
@@ -1743,22 +1937,23 @@ export function ControlScreen() {
           </div>
           <div className={`panelScrollArea searchResultsArea ${isMobileLayout ? 'searchResultsAreaMobile' : ''}`}>
             <SearchResults
-              status={status}
+              status={hienThiTrangThaiTimKiem}
               errorMessage={errorMessage}
-              results={results}
+              warningMessage={mobileQueryDangChoTim ? undefined : warningMessage}
+              results={hienThiKetQuaTimKiem}
               onAdd={(song) => {
                 nhanNut(`search-end:${song.videoId}`)
-                saveToSearchHistory(query)
+                saveToSearchHistory(searchQuery || query)
                 themCuoiHangCho(song)
               }}
               onAddNext={(song) => {
                 nhanNut(`search-next:${song.videoId}`)
-                saveToSearchHistory(query)
+                saveToSearchHistory(searchQuery || query)
                 themKeTiep(song)
               }}
               onPlayNow={(song) => {
                 nhanNut(`search-play:${song.videoId}`)
-                saveToSearchHistory(query)
+                saveToSearchHistory(searchQuery || query)
                 phatNgay(song)
               }}
               recentAction={recentAction}
@@ -2602,7 +2797,9 @@ export function ControlScreen() {
         presence={remotePresence}
         controllerReady={remoteControllerReady}
         currentDeviceIsController={currentDeviceIsController}
+        startingRelay={startingRelay}
         onRegenerate={taoPhongRemoteMoi}
+        onStartRelay={batRelayThuCong}
         onUseRoomCode={dungMaTV}
         onUsePairingPayload={apDungThongTinPairing}
         onUseLanHost={apDungIpLanThuCong}

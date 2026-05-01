@@ -66,6 +66,19 @@ function taoHealthUrlTuRelay(relayUrl: string) {
   }
 }
 
+async function kiemTraHealthRelay(healthUrl: string, timeoutMs = 3500) {
+  const controller = new AbortController()
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const response = await fetch(healthUrl, { cache: 'no-store', signal: controller.signal })
+    return response.ok
+  } catch {
+    return false
+  } finally {
+    window.clearTimeout(timer)
+  }
+}
+
 function docThongBaoLoiCamera(error: unknown) {
   const message = error instanceof Error ? error.message : ''
   const normalized = message.toLowerCase()
@@ -251,13 +264,36 @@ export function RemoteScreen() {
     }
 
     setStatusMessage(`Đang kiểm tra ${healthUrl}...`)
-    try {
-      const response = await fetch(healthUrl, { cache: 'no-store' })
-      setStatusMessage(response.ok ? `Relay laptop OK: ${healthUrl}` : `Relay trả lỗi ${response.status}: ${healthUrl}`)
-    } catch {
-      setStatusMessage(`Không gọi được relay laptop: ${healthUrl}. Kiểm tra cùng Wi-Fi, firewall hoặc IP laptop.`)
-    }
+    const ok = await kiemTraHealthRelay(healthUrl, 5000)
+    setStatusMessage(ok ? `Relay laptop OK: ${healthUrl}` : `Không gọi được relay laptop: ${healthUrl}. Kiểm tra cùng Wi-Fi, firewall hoặc IP laptop.`)
   }, [laptopIpInput, relayDangTroVeMayDienThoai, relayUrlInput])
+
+  useEffect(() => {
+    if (!joinedRoom || relayStatus === 'connected' || relayStatus === 'idle') return
+
+    const relayCanDung = relayDangTroVeMayDienThoai ? taoRelayUrlTuIpLaptop(laptopIpInput) || relayUrlInput : relayUrl
+    const healthUrl = taoHealthUrlTuRelay(relayCanDung)
+    if (!healthUrl) return
+
+    let cancelled = false
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        const ok = await kiemTraHealthRelay(healthUrl)
+        if (cancelled || relayStatusRef.current === 'connected') return
+
+        setStatusMessage(
+          ok
+            ? `Điện thoại gọi được relay ${healthUrl}, đang chờ máy điều khiển vào đúng mã TV. Nếu vẫn không chạy, bấm Đổi TV trên laptop rồi quét lại QR.`
+            : `Điện thoại không gọi được ${healthUrl}. Khả năng cao IP laptop sai, khác Wi-Fi, hoặc Windows Firewall đang chặn cổng 8787.`,
+        )
+      })()
+    }, relayStatus === 'error' ? 500 : 4500)
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [joinedRoom, laptopIpInput, relayDangTroVeMayDienThoai, relayStatus, relayUrl, relayUrlInput])
 
   const xuLyQrPayload = useCallback((payload: string) => {
     const raw = payload.trim()

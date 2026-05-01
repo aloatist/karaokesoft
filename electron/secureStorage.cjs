@@ -54,8 +54,53 @@ function normalizeApiKey(value) {
   return typeof value === 'string' ? value.trim() : ''
 }
 
+function normalizeApiKeys(value) {
+  const rawItems = Array.isArray(value) ? value : String(value || '').split(/[\s,;]+/)
+  const seen = new Set()
+  const keys = []
+
+  for (const item of rawItems) {
+    const key = normalizeApiKey(item)
+    if (!key || seen.has(key)) continue
+    seen.add(key)
+    keys.push(key)
+  }
+
+  return keys
+}
+
 function looksLikeYoutubeApiKey(value) {
   return /^AIza[0-9A-Za-z_-]{35}$/.test(normalizeApiKey(value))
+}
+
+function parseStoredApiKeys(rawValue) {
+  const normalized = normalizeApiKey(rawValue)
+  if (!normalized) return []
+
+  try {
+    const parsed = JSON.parse(normalized)
+    if (Array.isArray(parsed?.keys)) return normalizeApiKeys(parsed.keys)
+  } catch {}
+
+  return normalizeApiKeys(normalized)
+}
+
+function serializeApiKeys(keys) {
+  return JSON.stringify({
+    version: 2,
+    keys,
+  })
+}
+
+function applyApiKeysToEnv(keys) {
+  if (!keys.length) {
+    delete process.env.YOUTUBE_API_KEY
+    delete process.env.YOUTUBE_API_KEYS
+    return
+  }
+
+  process.env.YOUTUBE_API_KEY = keys[0]
+  process.env.YOUTUBE_API_KEYS = keys.join(',')
 }
 
 async function readYoutubeApiErrorMessage(response) {
@@ -107,58 +152,68 @@ class SecureStorage {
   }
 
   async saveApiKey(apiKey) {
-    const normalizedKey = normalizeApiKey(apiKey)
-    if (!normalizedKey) {
+    const keys = normalizeApiKeys(apiKey)
+    if (!keys.length) {
       throw new Error('Bạn chưa nhập YouTube API key.')
     }
 
-    if (!looksLikeYoutubeApiKey(normalizedKey)) {
+    if (keys.some((key) => !looksLikeYoutubeApiKey(key))) {
       throw new Error('YouTube API key không đúng định dạng. Key thường bắt đầu bằng AIza và dài 39 ký tự.')
     }
 
+    const storedValue = serializeApiKeys(keys)
     if (this.useKeytar && this.keytar) {
-      await this.keytar.setPassword(SERVICE_NAME, ACCOUNT_NAME, normalizedKey)
-      console.log('[SecureStorage] API key saved to OS Keychain')
+      await this.keytar.setPassword(SERVICE_NAME, ACCOUNT_NAME, storedValue)
+      console.log('[SecureStorage] API keys saved to OS Keychain')
     } else {
-      const encrypted = encryptData(normalizedKey)
+      const encrypted = encryptData(storedValue)
       fs.writeFileSync(getFallbackPath(), encrypted, 'utf-8')
-      console.log('[SecureStorage] API key saved to encrypted file')
+      console.log('[SecureStorage] API keys saved to encrypted file')
     }
 
-    // Also set env for relay server
-    process.env.YOUTUBE_API_KEY = normalizedKey
+    applyApiKeysToEnv(keys)
   }
 
-  async getApiKey() {
-    // Check env first (for dev or pre-configured)
-    if (process.env.YOUTUBE_API_KEY) {
-      return normalizeApiKey(process.env.YOUTUBE_API_KEY)
+  async getApiKeys() {
+    const envKeys = normalizeApiKeys([
+      process.env.YOUTUBE_API_KEY,
+      process.env.YOUTUBE_API_KEYS,
+      process.env.YT_API_KEY,
+      process.env.VITE_YT_API_KEY,
+    ].filter(Boolean).join(','))
+    if (envKeys.length) {
+      applyApiKeysToEnv(envKeys)
+      return envKeys
     }
 
     if (this.useKeytar && this.keytar) {
       const key = await this.keytar.getPassword(SERVICE_NAME, ACCOUNT_NAME)
-      if (key) {
-        const normalizedKey = normalizeApiKey(key)
-        process.env.YOUTUBE_API_KEY = normalizedKey
-        return normalizedKey
+      const keys = parseStoredApiKeys(key)
+      if (keys.length) {
+        applyApiKeysToEnv(keys)
+        return keys
       }
     }
 
-    // Fallback to encrypted file
     const fallbackPath = getFallbackPath()
     if (fs.existsSync(fallbackPath)) {
       try {
         const encrypted = fs.readFileSync(fallbackPath, 'utf-8')
-        const decrypted = normalizeApiKey(decryptData(encrypted))
-        process.env.YOUTUBE_API_KEY = decrypted
-        return decrypted
+        const keys = parseStoredApiKeys(decryptData(encrypted))
+        applyApiKeysToEnv(keys)
+        return keys
       } catch (error) {
         console.error('[SecureStorage] Failed to decrypt fallback file:', error)
-        return null
+        return []
       }
     }
 
-    return null
+    return []
+  }
+
+  async getApiKey() {
+    const keys = await this.getApiKeys()
+    return keys[0] || null
   }
 
   async deleteApiKey() {
@@ -171,7 +226,7 @@ class SecureStorage {
       fs.unlinkSync(fallbackPath)
     }
     
-    delete process.env.YOUTUBE_API_KEY
+    applyApiKeysToEnv([])
   }
 
   async validateApiKey(apiKey) {
@@ -213,17 +268,112 @@ class SecureStorage {
     }
   }
 
+  async validateApiKeyList(apiKeys) {
+    const keys = normalizeApiKeys(apiKeys)
+    if (!keys.length) {
+      return { valid: false, message: 'Bạn chưa nhập YouTube API key.' }
+    }
+
+    for (const [index, key] of keys.entries()) {
+      if (!looksLikeYoutubeApiKey(key)) {
+        return {
+          valid: false,
+          message: `Key ${index + 1} không đúng định dạng. Key thường bắt đầu bằng AIza và dài 39 ký tự.`,
+        }
+      }
+    }
+
+    const messages = []
+    let usableCount = 0
+    for (const [index, key] of keys.entries()) {
+      const result = await this.validateApiKey(key)
+      if (result.valid) {
+        usableCount += 1
+        continue
+      }
+
+      const message = result.message || 'Không kiểm tra được key.'
+      if (message.includes('hết quota')) {
+        messages.push(`Key ${index + 1} đã hết quota hôm nay`)
+        continue
+      }
+
+      return {
+        valid: false,
+        message: `Key ${index + 1}: ${message}`,
+      }
+    }
+
+    if (usableCount <= 0) {
+      return {
+        valid: false,
+        message: 'Tất cả YouTube API key đều đã hết quota hoặc chưa dùng được.',
+      }
+    }
+
+    return {
+      valid: true,
+      keyCount: keys.length,
+      usableCount,
+      message: messages.length
+        ? `Đã lưu ${keys.length} key. ${messages.join('; ')}; app sẽ ưu tiên key còn quota.`
+        : `Đã kiểm tra và lưu ${keys.length} YouTube API key.`,
+    }
+  }
+
   async validateStoredApiKey() {
-    const key = await this.getApiKey()
-    if (!key) {
+    const keys = await this.getApiKeys()
+    if (!keys.length) {
       return { valid: false, message: 'Laptop này chưa lưu YouTube API key.' }
     }
-    return this.validateApiKey(key)
+
+    const messages = []
+    let usableCount = 0
+    for (const [index, key] of keys.entries()) {
+      const result = await this.validateApiKey(key)
+      if (result.valid) {
+        usableCount += 1
+        continue
+      }
+
+      const message = result.message || 'Không kiểm tra được key.'
+      if (message.includes('hết quota')) {
+        messages.push(`Key ${index + 1} đã hết quota hôm nay`)
+        continue
+      }
+
+      return {
+        valid: false,
+        message: `Key ${index + 1}: ${message}`,
+        keyCount: keys.length,
+      }
+    }
+
+    if (usableCount <= 0) {
+      return {
+        valid: false,
+        message: 'Tất cả YouTube API key đều đã hết quota hoặc chưa dùng được.',
+        keyCount: keys.length,
+      }
+    }
+
+    return {
+      valid: true,
+      message: messages.length
+        ? `Có ${usableCount}/${keys.length} key còn dùng được. ${messages.join('; ')}.`
+        : `Đã kiểm tra ${keys.length} YouTube API key. Tất cả đang hoạt động.`,
+      keyCount: keys.length,
+    }
   }
 
   async hasApiKey() {
-    const key = await this.getApiKey()
-    return looksLikeYoutubeApiKey(key)
+    const keys = await this.getApiKeys()
+    return keys.some((key) => looksLikeYoutubeApiKey(key))
+  }
+
+  async getApiKeyCount() {
+    const keys = await this.getApiKeys()
+    return keys.filter((key) => looksLikeYoutubeApiKey(key)).length
   }
 }
 

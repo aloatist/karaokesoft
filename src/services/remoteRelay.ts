@@ -88,6 +88,17 @@ function relayUrlTroVeLocalhost(relayUrl: string) {
   }
 }
 
+function dangChayTrongElectronDesktop() {
+  if (typeof window === 'undefined') return false
+  const electronWindow = window as Window & {
+    karaokeDesktop?: {
+      isElectron?: boolean
+      __ELECTRON__?: boolean
+    }
+  }
+  return Boolean(electronWindow.karaokeDesktop?.isElectron || electronWindow.karaokeDesktop?.__ELECTRON__)
+}
+
 function layHostTrangHienTaiChoRelay() {
   if (typeof window === 'undefined') return ''
   if (window.location.protocol !== 'http:' && window.location.protocol !== 'https:') return ''
@@ -227,6 +238,10 @@ export function layRelayUrlMacDinh() {
       luuRelayUrl(relayFromUrl)
       return relayFromUrl
     }
+  }
+
+  if (dangChayTrongElectronDesktop()) {
+    return LOCAL_RELAY_URLS[0]
   }
 
   const envUrl = suaRelayLocalhostTheoTrangHienTai(import.meta.env.VITE_REMOTE_RELAY_URL ?? '')
@@ -422,6 +437,8 @@ export function taoKetNoiRelay({
   const normalizedRoom = chuanHoaMaPhongRemote(roomCode)
   const normalizedToken = chuanHoaTokenPhongRemote(roomToken ?? '')
   const normalizedRelayUrl = chuanHoaRelayUrl(relayUrl)
+  const relayCandidates = taoDanhSachRelayUrlUngVien(normalizedRelayUrl)
+  let relayCandidateIndex = 0
   let socket: WebSocket | null = null
   let manuallyClosed = false
   let reconnectTimer: number | null = null
@@ -431,6 +448,15 @@ export function taoKetNoiRelay({
 
   function thongBaoTrangThai(status: RemoteRelayStatus, message?: string) {
     onStatusChange?.(status, message)
+  }
+
+  function relayUrlHienTai() {
+    return relayCandidates[relayCandidateIndex] ?? normalizedRelayUrl
+  }
+
+  function chuyenRelayUngVienTiepTheo() {
+    if (relayCandidates.length <= 1) return
+    relayCandidateIndex = (relayCandidateIndex + 1) % relayCandidates.length
   }
 
   function gui(payload: RelayClientMessage) {
@@ -479,7 +505,8 @@ export function taoKetNoiRelay({
 
   function moKetNoi() {
     if (!normalizedRoom || manuallyClosed) return
-    if (!normalizedRelayUrl) {
+    const currentRelayUrl = relayUrlHienTai()
+    if (!currentRelayUrl) {
       thongBaoTrangThai(
         'error',
         dangChayTrongCapacitorWebView()
@@ -497,10 +524,11 @@ export function taoKetNoiRelay({
     let nextSocket: WebSocket
     try {
       thongBaoTrangThai('connecting')
-      nextSocket = new WebSocket(normalizedRelayUrl)
+      nextSocket = new WebSocket(currentRelayUrl)
       socket = nextSocket
     } catch (error) {
       thongBaoTrangThai('error', error instanceof Error ? error.message : 'Không tạo được kết nối remote')
+      chuyenRelayUngVienTiepTheo()
       henKetNoiLai('Không tạo được kết nối relay, đang thử lại.')
       return
     }
@@ -515,6 +543,8 @@ export function taoKetNoiRelay({
 
     openTimeoutTimer = window.setTimeout(() => {
       if (socket !== nextSocket || manuallyClosed) return
+      thongBaoTrangThai('error', `Quá thời gian kết nối relay ${currentRelayUrl}. Kiểm tra IP laptop, Wi-Fi hoặc firewall.`)
+      chuyenRelayUngVienTiepTheo()
       try {
         nextSocket.close()
       } catch {
@@ -563,20 +593,21 @@ export function taoKetNoiRelay({
         thongBaoTrangThai('idle')
         return
       }
-      henKetNoiLai('Mất kết nối relay, đang tự kết nối lại.')
+      henKetNoiLai(`Mất kết nối relay ${currentRelayUrl}, đang tự kết nối lại.`)
     })
 
     nextSocket.addEventListener('error', () => {
       if (socket !== nextSocket) return
       clearOpenTimeout()
-      thongBaoTrangThai('error', 'Không kết nối được tới remote relay')
+      chuyenRelayUngVienTiepTheo()
+      thongBaoTrangThai('error', `Không kết nối được tới remote relay ${currentRelayUrl}`)
     })
   }
 
   moKetNoi()
 
   return {
-    relayUrl: normalizedRelayUrl,
+    relayUrl: relayUrlHienTai(),
     sendState: (state) => {
       lastState = state
       gui({ type: 'ROOM_STATE', roomCode: normalizedRoom, state })

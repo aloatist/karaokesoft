@@ -41,7 +41,13 @@ type SearchOptions = {
 type ProxySearchResponse = {
   ok?: boolean
   message?: string
+  warning?: string
   items?: SearchSong[]
+}
+
+export type SearchSongsResult = {
+  items: SearchSong[]
+  warning?: string
 }
 
 function getThumbnailUrl(item: SearchItem) {
@@ -56,6 +62,7 @@ async function fetchVideoDetails(videoIds: string[], apiKey: string) {
     id: videoIds.join(','),
     part: 'contentDetails,status',
     maxResults: String(videoIds.length),
+    fields: 'items(id,contentDetails/duration,status/embeddable)',
   })
 
   const res = await fetch(`${BASE_URL}/videos?${params}`)
@@ -89,7 +96,7 @@ export async function searchSongs(
   query: string,
   apiKey: string,
   opts?: SearchOptions,
-): Promise<SearchSong[]> {
+): Promise<SearchSongsResult> {
   const karaokeFilterEnabled = opts?.karaokeFilterEnabled ?? true
   const language = opts?.language ?? 'vi'
   const maxResults = String(opts?.maxResults ?? 12)
@@ -102,10 +109,13 @@ export async function searchSongs(
     q: cacheKey,
     part: 'snippet',
     type: 'video',
+    videoEmbeddable: 'true',
+    videoSyndicated: 'true',
     videoCategoryId: '10',
     maxResults,
     safeSearch: 'strict',
     relevanceLanguage: language,
+    fields: 'items(id/videoId,snippet/title,snippet/channelTitle,snippet/thumbnails/default/url,snippet/thumbnails/medium/url)',
   })
 
   const res = await fetch(`${BASE_URL}/search?${params}`)
@@ -120,7 +130,8 @@ export async function searchSongs(
     apiKey,
   )
 
-  return items
+  return {
+    items: items
     .map((item): SearchSong | null => {
       const videoId = item.id?.videoId
       if (!videoId) return null
@@ -134,14 +145,15 @@ export async function searchSongs(
         embeddable: details?.status?.embeddable,
       }
     })
-    .filter((x): x is SearchSong => x !== null)
+    .filter((x): x is SearchSong => x !== null),
+  }
 }
 
 export async function searchSongsViaProxy(
   query: string,
   proxyUrl: string,
   opts?: SearchOptions,
-): Promise<SearchSong[]> {
+): Promise<SearchSongsResult> {
   const karaokeFilterEnabled = opts?.karaokeFilterEnabled ?? true
   const language = opts?.language ?? 'vi'
   const maxResults = String(opts?.maxResults ?? 12)
@@ -158,5 +170,8 @@ export async function searchSongsViaProxy(
   if (res.status === 403 || json.message === 'API_QUOTA_EXCEEDED') throw new Error('API_QUOTA_EXCEEDED')
   if (!res.ok || json.ok === false) throw new Error(json.message || `Lỗi YouTube proxy: ${res.status}`)
 
-  return Array.isArray(json.items) ? json.items : []
+  return {
+    items: Array.isArray(json.items) ? json.items : [],
+    warning: json.warning,
+  }
 }

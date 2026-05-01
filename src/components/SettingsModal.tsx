@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { USER_ROLE_LABEL, moTaVaiTro } from '../lib/auth'
 import { useYouTubeApiKey } from '../hooks/useSecureStorage'
+import { nhapFileBackupCucBo, taiFileBackupCucBo } from '../services/appBackup'
 import { luuMediaDiaPhuong } from '../services/localMediaStore'
 import {
   dangChayDesktop,
@@ -115,6 +116,7 @@ export function SettingsModal({ open, onClose, canManageUsers, canManageDisplayA
   const laDesktop = dangChayDesktop()
   const {
     hasKey: hasYoutubeApiKey,
+    keyCount: youtubeApiKeyCount,
     isElectron: supportsSecureYoutubeKey,
     loading: youtubeKeyLoading,
     saveKey: luuYoutubeApiKey,
@@ -138,10 +140,13 @@ export function SettingsModal({ open, onClose, canManageUsers, canManageDisplayA
   const [auditLoading, setAuditLoading] = useState(false)
   const [auditMessage, setAuditMessage] = useState<string | null>(null)
   const [youtubeApiKeyInput, setYoutubeApiKeyInput] = useState('')
+  const [youtubeBackupApiKeyInput, setYoutubeBackupApiKeyInput] = useState('')
   const [showYoutubeApiKey, setShowYoutubeApiKey] = useState(false)
   const [youtubeKeyMessage, setYoutubeKeyMessage] = useState<string | null>(null)
   const [checkingYoutubeApiKey, setCheckingYoutubeApiKey] = useState(false)
+  const [backupMessage, setBackupMessage] = useState<string | null>(null)
   const mediaFileInputRef = useRef<HTMLInputElement | null>(null)
+  const backupFileInputRef = useRef<HTMLInputElement | null>(null)
 
   async function dongBoUsersTuServer() {
     const res = await listUsersApi()
@@ -270,7 +275,7 @@ export function SettingsModal({ open, onClose, canManageUsers, canManageDisplayA
   }
 
   async function luuYoutubeApiKeyDesktop() {
-    const candidate = youtubeApiKeyInput.trim()
+    const candidate = [youtubeApiKeyInput, youtubeBackupApiKeyInput].map((item) => item.trim()).filter(Boolean).join('\n')
     if (!candidate) {
       setYoutubeKeyMessage('Bạn chưa nhập YouTube API key.')
       return
@@ -280,6 +285,7 @@ export function SettingsModal({ open, onClose, canManageUsers, canManageDisplayA
     const result = await luuYoutubeApiKey(candidate)
     if (result.success) {
       setYoutubeApiKeyInput('')
+      setYoutubeBackupApiKeyInput('')
       setYoutubeKeyMessage(result.message || 'Đã lưu YouTube API key trên laptop. App sẽ tải lại để áp dụng.')
       return
     }
@@ -306,10 +312,38 @@ export function SettingsModal({ open, onClose, canManageUsers, canManageDisplayA
     const result = await xoaYoutubeApiKey()
     if (result.success) {
       setYoutubeApiKeyInput('')
+      setYoutubeBackupApiKeyInput('')
       setYoutubeKeyMessage(result.message || 'Đã xoá YouTube API key khỏi laptop.')
       return
     }
     setYoutubeKeyMessage(result.error || 'Không xoá được YouTube API key.')
+  }
+
+  async function xuatBackupCucBo() {
+    setBackupMessage(null)
+    try {
+      const count = taiFileBackupCucBo()
+      setBackupMessage(`Đã xuất file backup gồm ${count} nhóm dữ liệu. File không chứa YouTube API key.`)
+    } catch (error) {
+      setBackupMessage(error instanceof Error ? error.message : 'Không xuất được backup.')
+    }
+  }
+
+  async function nhapBackupCucBo(files: FileList | null) {
+    const file = files?.[0]
+    if (!file) return
+
+    setBackupMessage(null)
+    try {
+      const result = await nhapFileBackupCucBo(file)
+      setBackupMessage(`Đã nhập ${result.imported} nhóm dữ liệu: ${result.labels.join(', ')}. Hãy đóng cài đặt và tải lại app để áp dụng đầy đủ.`)
+    } catch (error) {
+      setBackupMessage(error instanceof Error ? error.message : 'Không nhập được backup.')
+    } finally {
+      if (backupFileInputRef.current) {
+        backupFileInputRef.current.value = ''
+      }
+    }
   }
 
   const taiNhatKyHoatDong = useCallback(async () => {
@@ -394,6 +428,7 @@ export function SettingsModal({ open, onClose, canManageUsers, canManageDisplayA
     setUserAdminMessage(null)
     setAuditMessage(null)
     setYoutubeKeyMessage(null)
+    setBackupMessage(null)
   }, [open])
 
   function capNhatBanNhapUser(userId: string, patch: Partial<UserEditDraft>) {
@@ -488,7 +523,7 @@ export function SettingsModal({ open, onClose, canManageUsers, canManageDisplayA
                     {hasYoutubeApiKey === null
                       ? 'Đang kiểm tra key...'
                       : hasYoutubeApiKey
-                        ? 'Laptop đã có YouTube API key'
+                        ? `Laptop đã có ${youtubeApiKeyCount || 1} YouTube API key`
                         : 'Laptop chưa có YouTube API key'}
                   </div>
                   <button
@@ -515,7 +550,17 @@ export function SettingsModal({ open, onClose, canManageUsers, canManageDisplayA
                     type={showYoutubeApiKey ? 'text' : 'password'}
                     value={youtubeApiKeyInput}
                     onChange={(e) => setYoutubeApiKeyInput(e.target.value)}
-                    placeholder={hasYoutubeApiKey ? 'Nhập key mới để thay thế' : 'AIza...'}
+                    placeholder={hasYoutubeApiKey ? 'Key chính mới để thay thế' : 'Key chính AIza...'}
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
+                  />
+                  <input
+                    className="input"
+                    type={showYoutubeApiKey ? 'text' : 'password'}
+                    value={youtubeBackupApiKeyInput}
+                    onChange={(e) => setYoutubeBackupApiKeyInput(e.target.value)}
+                    placeholder="Key dự phòng AIza..."
                     autoCapitalize="none"
                     autoCorrect="off"
                     spellCheck={false}
@@ -529,16 +574,16 @@ export function SettingsModal({ open, onClose, canManageUsers, canManageDisplayA
                   </button>
                   <button
                     className="primary compactButton"
-                    disabled={!youtubeApiKeyInput.trim() || youtubeKeyLoading}
+                    disabled={!(youtubeApiKeyInput.trim() || youtubeBackupApiKeyInput.trim()) || youtubeKeyLoading}
                     onClick={() => void luuYoutubeApiKeyDesktop()}
                     type="button"
                   >
-                    {youtubeKeyLoading ? 'Đang lưu…' : hasYoutubeApiKey ? 'Lưu key mới' : 'Lưu key'}
+                    {youtubeKeyLoading ? 'Đang lưu…' : hasYoutubeApiKey ? 'Lưu danh sách key' : 'Lưu key'}
                   </button>
                 </div>
 
                 <div className="hint">
-                  Dùng key Server hoặc key không chặn domain/IP, nhưng nên giới hạn API sang <strong>YouTube Data API v3</strong>. Sau khi lưu, app sẽ tự tải lại để áp dụng.
+                  Key chính được dùng trước. Nếu key chính hết quota, app tự chuyển sang key dự phòng và báo trên màn tìm kiếm. Sau khi lưu, app sẽ tự tải lại để áp dụng.
                 </div>
                 {youtubeKeyMessage ? <div className="settingsInlineMessage">{youtubeKeyMessage}</div> : null}
               </>
@@ -550,6 +595,36 @@ export function SettingsModal({ open, onClose, canManageUsers, canManageDisplayA
           </div>
 
           <UpdateStatus />
+
+          <div className="field settingsInfoCard settingsBackupCard">
+            <div className="settingsInfoTitle">Sao lưu và chuyển máy</div>
+            <div className="hint">
+              Xuất cài đặt, hàng chờ, thư viện máy và cache tìm kiếm ra file JSON để nhập sang máy khác. File backup không chứa YouTube API key.
+            </div>
+            <div className="settingsBackupActions">
+              <button className="primary compactButton" onClick={() => void xuatBackupCucBo()} type="button">
+                Xuất file backup
+              </button>
+              <button
+                className="ghost compactButton buttonToneMuted"
+                onClick={() => backupFileInputRef.current?.click()}
+                type="button"
+              >
+                Nhập từ file
+              </button>
+              <input
+                ref={backupFileInputRef}
+                className="srOnly"
+                type="file"
+                accept="application/json,.json"
+                onChange={(e) => void nhapBackupCucBo(e.target.files)}
+              />
+            </div>
+            <div className="hint">
+              Google Drive/GitHub nên làm ở phase đồng bộ cloud riêng vì cần OAuth/token bảo mật. Hiện tại file JSON là cách an toàn nhất để dùng ngay.
+            </div>
+            {backupMessage ? <div className="settingsInlineMessage">{backupMessage}</div> : null}
+          </div>
 
           <div className="field">
             <div className="label">Màn hình trình chiếu</div>

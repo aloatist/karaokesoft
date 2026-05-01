@@ -11,6 +11,9 @@ const config: CapacitorConfig = {
     path: 'android',
     allowMixedContent: true,
   },
+  ios: {
+    path: 'ios',
+  },
   plugins: {
     // Chromecast plugin configuration
     GoogleCast: {

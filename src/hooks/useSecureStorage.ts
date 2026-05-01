@@ -20,6 +20,7 @@ function coProxyEnvDungDuoc() {
 
 export function useSecureStorage() {
   const [hasKey, setHasKey] = useState<boolean | null>(null)
+  const [keyCount, setKeyCount] = useState(0)
   const [loading, setLoading] = useState(false)
 
   const checkHasKey = useCallback(async () => {
@@ -31,8 +32,10 @@ export function useSecureStorage() {
     try {
       const result = await secureStorage.hasKey()
       setHasKey(result.success ? (result.hasKey ?? false) : false)
+      setKeyCount(result.success ? (result.keyCount ?? 0) : 0)
     } catch {
       setHasKey(false)
+      setKeyCount(0)
     }
   }, [])
 
@@ -50,6 +53,7 @@ export function useSecureStorage() {
       const result = await secureStorage.saveKey(apiKey)
       if (result.success) {
         setHasKey(true)
+        setKeyCount(result.keyCount ?? 1)
         // Reload page to apply new API key
         window.location.reload()
         return { success: true, message: result.message }
@@ -72,6 +76,7 @@ export function useSecureStorage() {
       const result = await secureStorage.deleteKey()
       if (result.success) {
         setHasKey(false)
+        setKeyCount(0)
         return { success: true, message: result.message || 'Đã xoá YouTube API key khỏi laptop.' }
       }
       return { success: false, error: result.error || 'Không xoá được YouTube API key.' }
@@ -91,16 +96,18 @@ export function useSecureStorage() {
       const result = await secureStorage.checkKey()
       if (result.success) {
         setHasKey(result.valid ?? false)
+        setKeyCount(result.keyCount ?? keyCount)
       }
       return result
     } catch (error) {
       return { success: false, error: error instanceof Error ? error.message : 'Không kiểm tra được YouTube API key.' }
     }
-  }, [])
+  }, [keyCount])
 
   return {
     isElectron: !!isElectron,
     hasKey,
+    keyCount,
     loading,
     saveKey,
     deleteKey,
@@ -110,13 +117,14 @@ export function useSecureStorage() {
 }
 
 export function useYouTubeApiKey() {
-  const { isElectron, hasKey, loading, saveKey, deleteKey, checkKey } = useSecureStorage()
+  const { isElectron, hasKey, keyCount, loading, saveKey, deleteKey, checkKey } = useSecureStorage()
 
   // For web app, use environment variable check
   const webHasKey = !isElectron && coProxyEnvDungDuoc()
 
   return {
     hasKey: isElectron ? hasKey : webHasKey,
+    keyCount: isElectron ? keyCount : webHasKey ? 1 : 0,
     isElectron,
     loading,
     saveKey,

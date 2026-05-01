@@ -4,6 +4,7 @@ import type { SearchSong } from '../types'
 export function SearchResults({
   status,
   errorMessage,
+  warningMessage,
   results,
   onAdd,
   onAddNext,
@@ -16,6 +17,7 @@ export function SearchResults({
 }: {
   status: 'idle' | 'loading' | 'error' | 'success'
   errorMessage?: string
+  warningMessage?: string
   results: SearchSong[]
   onAdd: (song: SearchSong) => void
   onAddNext: (song: SearchSong) => void
@@ -50,11 +52,17 @@ export function SearchResults({
     )
   }
   if (!results.length) {
-    return <div className="empty">Không có kết quả phù hợp.</div>
+    return (
+      <div className="results">
+        {warningMessage ? <div className="warningBox">{warningMessage}</div> : null}
+        <div className="empty">Không có kết quả phù hợp.</div>
+      </div>
+    )
   }
 
   return (
     <div className="results">
+      {warningMessage ? <div className="warningBox">{warningMessage}</div> : null}
       {results.map((it) => {
         const biChanPhatNhung = it.embeddable === false
         const khoaThaoTac = disabled || biChanPhatNhung

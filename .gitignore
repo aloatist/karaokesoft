@@ -11,6 +11,9 @@ node_modules
 dist
 dist-ssr
 release
+ios/DerivedData
+ios/**/Pods
+ios/**/.build
 .env
 .env.*
 !.env.example

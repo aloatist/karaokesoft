@@ -4,6 +4,7 @@ const net = require('node:net')
 const crypto = require('node:crypto')
 const os = require('node:os')
 const path = require('node:path')
+const { spawn } = require('node:child_process')
 const { pathToFileURL } = require('node:url')
 const { app, BrowserWindow, dialog, ipcMain, screen } = require('electron')
 const { SecureStorage } = require('./secureStorage.cjs')
@@ -12,8 +13,13 @@ const { setupAutoUpdate } = require('./autoUpdate.cjs')
 const preloadPath = path.join(__dirname, 'preload.cjs')
 const distRootPath = path.join(__dirname, '..', 'dist')
 const devServerUrl = process.env.VITE_DEV_SERVER_URL
+const windowsGpuWorkaroundEnabled = process.platform === 'win32' && process.env.KARAOKEYT_ENABLE_GPU !== '1'
 
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
+if (windowsGpuWorkaroundEnabled) {
+  app.disableHardwareAcceleration()
+  app.commandLine.appendSwitch('disable-gpu-compositing')
+}
 
 let controlWindow = null
 let displayWindow = null
@@ -24,28 +30,43 @@ let rendererBaseUrl = null
 let remoteRelayStarted = false
 let activeRelayPort = Number(process.env.PORT || process.env.RELAY_PORT || '8787')
 let dangXuLyLoiNghiemTrong = false
+let relayStartupStatus = 'not-started'
+let relayStartupMessage = ''
 const secureStorage = new SecureStorage()
 const LOCAL_MEDIA_URL_PREFIX = '/local-media/'
 const YOUTUBE_BASE_URL = 'https://www.googleapis.com/youtube/v3'
+const SEARCH_CACHE_TTL_MS = Math.max(60_000, Number(process.env.YOUTUBE_SEARCH_CACHE_TTL_MS || 15 * 60 * 1000))
+const SEARCH_STALE_CACHE_TTL_MS = Math.max(SEARCH_CACHE_TTL_MS, Number(process.env.YOUTUBE_SEARCH_STALE_CACHE_TTL_MS || 6 * 60 * 60 * 1000))
+const SEARCH_CACHE_MAX_ENTRIES = Math.max(50, Number(process.env.YOUTUBE_SEARCH_CACHE_MAX_ENTRIES || 400))
 const IMAGE_MEDIA_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif'])
 const VIDEO_MEDIA_EXTENSIONS = new Set(['.mp4', '.webm', '.mov', '.m4v'])
 const LOCAL_MEDIA_EXTENSIONS = new Set([...IMAGE_MEDIA_EXTENSIONS, ...VIDEO_MEDIA_EXTENSIONS])
+const youtubeSearchCache = new Map()
 
 function taoUserAgent() {
   return (app.userAgentFallback || '').replace(/\sElectron\/[\d.]+/, '')
 }
 
-function looksLikeYoutubeApiKey(value) {
-  return /^AIza[0-9A-Za-z_-]{35}$/.test(String(value || '').trim())
-}
+function layYoutubeApiKeys() {
+  const seen = new Set()
+  const keys = []
+  const rawValues = [
+    process.env.YOUTUBE_API_KEY,
+    process.env.YOUTUBE_API_KEYS,
+    process.env.YT_API_KEY,
+    process.env.VITE_YT_API_KEY,
+  ]
 
-function layYoutubeApiKey() {
-  const serverKey = process.env.YOUTUBE_API_KEY || process.env.YT_API_KEY || ''
-  const devClientKey = process.env.VITE_YT_API_KEY || ''
+  for (const rawValue of rawValues) {
+    for (const item of String(rawValue || '').split(/[\s,;]+/)) {
+      const key = item.trim()
+      if (!key || seen.has(key)) continue
+      seen.add(key)
+      keys.push(key)
+    }
+  }
 
-  if (looksLikeYoutubeApiKey(serverKey)) return serverKey.trim()
-  if (looksLikeYoutubeApiKey(devClientKey)) return devClientKey.trim()
-  return String(serverKey || devClientKey || '').trim()
+  return keys
 }
 
 function vietJson(res, status, payload, extraHeaders = {}) {
@@ -55,6 +76,61 @@ function vietJson(res, status, payload, extraHeaders = {}) {
     ...extraHeaders,
   })
   res.end(JSON.stringify(payload))
+}
+
+function chuanHoaPhanCacheTimKiem(value) {
+  return String(value || '').trim().toLowerCase().replace(/\s+/g, ' ')
+}
+
+function taoKhoaCacheTimKiem({ query, karaokeFilterEnabled, language, maxResults }) {
+  return [
+    chuanHoaPhanCacheTimKiem(query),
+    karaokeFilterEnabled ? 'karaoke' : 'all',
+    chuanHoaPhanCacheTimKiem(language || 'vi'),
+    String(maxResults),
+  ].join('|')
+}
+
+function layCacheTimKiem(cacheKey) {
+  const entry = youtubeSearchCache.get(cacheKey)
+  if (!entry) return null
+
+  const ageMs = Date.now() - entry.createdAt
+  if (ageMs > SEARCH_STALE_CACHE_TTL_MS) {
+    youtubeSearchCache.delete(cacheKey)
+    return null
+  }
+
+  return {
+    ...entry,
+    ageMs,
+    fresh: ageMs <= SEARCH_CACHE_TTL_MS,
+  }
+}
+
+function luuCacheTimKiem(cacheKey, items) {
+  if (youtubeSearchCache.size >= SEARCH_CACHE_MAX_ENTRIES) {
+    const oldestKey = youtubeSearchCache.keys().next().value
+    if (oldestKey) youtubeSearchCache.delete(oldestKey)
+  }
+
+  youtubeSearchCache.set(cacheKey, {
+    createdAt: Date.now(),
+    items,
+  })
+}
+
+function vietCacheTimKiem(res, cached, { stale = false, warning } = {}) {
+  vietJson(res, 200, {
+    ok: true,
+    items: cached.items,
+    cached: true,
+    stale,
+    cacheAgeMs: cached.ageMs,
+    warning,
+  }, {
+    'X-KaraokeYT-Cache': stale ? 'stale' : 'hit',
+  })
 }
 
 async function layMessageLoiYoutube(response) {
@@ -90,6 +166,7 @@ async function layChiTietVideoYoutube(videoIds, apiKey) {
     id: videoIds.join(','),
     part: 'contentDetails,status',
     maxResults: String(videoIds.length),
+    fields: 'items(id,contentDetails/duration,status/embeddable)',
   })
 
   const response = await fetch(`${YOUTUBE_BASE_URL}/videos?${params}`)
@@ -100,13 +177,6 @@ async function layChiTietVideoYoutube(videoIds, apiKey) {
 }
 
 async function phucVuYoutubeSearchNoiBo(_req, res, reqUrl) {
-  const youtubeApiKey = layYoutubeApiKey()
-
-  if (!youtubeApiKey) {
-    vietJson(res, 500, { ok: false, message: 'Server chưa cấu hình YOUTUBE_API_KEY.' })
-    return
-  }
-
   const rawQuery = String(reqUrl.searchParams.get('q') || '').trim()
   if (rawQuery.length < 2) {
     vietJson(res, 400, { ok: false, message: 'Từ khoá tìm kiếm quá ngắn.' })
@@ -117,26 +187,79 @@ async function phucVuYoutubeSearchNoiBo(_req, res, reqUrl) {
   const language = String(reqUrl.searchParams.get('language') || 'vi').replace(/[^a-z-]/gi, '').slice(0, 8) || 'vi'
   const maxResults = Math.max(1, Math.min(Number(reqUrl.searchParams.get('maxResults') || 12), 25))
   const q = karaokeFilterEnabled ? `${rawQuery} karaoke` : rawQuery
+  const cacheKey = taoKhoaCacheTimKiem({ query: rawQuery, karaokeFilterEnabled, language, maxResults })
+  const cached = layCacheTimKiem(cacheKey)
 
-  const params = new URLSearchParams({
-    key: youtubeApiKey,
-    q,
-    part: 'snippet',
-    type: 'video',
-    videoCategoryId: '10',
-    maxResults: String(maxResults),
-    safeSearch: 'strict',
-    relevanceLanguage: language,
-  })
-
-  const response = await fetch(`${YOUTUBE_BASE_URL}/search?${params}`)
-  if (response.status === 403) {
-    vietJson(res, 403, { ok: false, message: await layMessageLoiYoutube(response) })
+  if (cached?.fresh) {
+    vietCacheTimKiem(res, cached)
     return
   }
 
-  if (!response.ok) {
-    vietJson(res, response.status, { ok: false, message: await layMessageLoiYoutube(response) })
+  const youtubeApiKeys = layYoutubeApiKeys()
+
+  if (!youtubeApiKeys.length) {
+    vietJson(res, 500, { ok: false, message: 'Server chưa cấu hình YOUTUBE_API_KEY.' })
+    return
+  }
+
+  let response
+  let activeYoutubeApiKey = ''
+  let switchedBackupKey = false
+  for (const [index, youtubeApiKey] of youtubeApiKeys.entries()) {
+    const params = new URLSearchParams({
+      key: youtubeApiKey,
+      q,
+      part: 'snippet',
+      type: 'video',
+      videoEmbeddable: 'true',
+      videoSyndicated: 'true',
+      videoCategoryId: '10',
+      maxResults: String(maxResults),
+      safeSearch: 'strict',
+      relevanceLanguage: language,
+      fields: 'items(id/videoId,snippet/title,snippet/channelTitle,snippet/thumbnails/default/url,snippet/thumbnails/medium/url)',
+    })
+
+    try {
+      response = await fetch(`${YOUTUBE_BASE_URL}/search?${params}`)
+    } catch (error) {
+      if (cached) {
+        vietCacheTimKiem(res, cached, { stale: true, warning: 'Không gọi được YouTube API, đang dùng kết quả đã lưu.' })
+        return
+      }
+      throw error
+    }
+
+    if (response.status === 403) {
+      const message = await layMessageLoiYoutube(response)
+      if (message === 'API_QUOTA_EXCEEDED' && index < youtubeApiKeys.length - 1) {
+        switchedBackupKey = true
+        continue
+      }
+      if (message === 'API_QUOTA_EXCEEDED' && cached) {
+        vietCacheTimKiem(res, cached, { stale: true, warning: message })
+        return
+      }
+      vietJson(res, 403, { ok: false, message })
+      return
+    }
+
+    if (!response.ok) {
+      const message = await layMessageLoiYoutube(response)
+      if (cached && response.status >= 500) {
+        vietCacheTimKiem(res, cached, { stale: true, warning: message })
+        return
+      }
+      vietJson(res, response.status, { ok: false, message })
+      return
+    }
+
+    activeYoutubeApiKey = youtubeApiKey
+    break
+  }
+
+  if (!response || !activeYoutubeApiKey) {
+    vietJson(res, 403, { ok: false, message: 'API_QUOTA_EXCEEDED' })
     return
   }
 
@@ -144,7 +267,7 @@ async function phucVuYoutubeSearchNoiBo(_req, res, reqUrl) {
   const rawItems = Array.isArray(json.items) ? json.items : []
   const detailsById = await layChiTietVideoYoutube(
     rawItems.map((item) => item?.id?.videoId).filter(Boolean),
-    youtubeApiKey,
+    activeYoutubeApiKey,
   )
 
   const items = rawItems
@@ -163,7 +286,13 @@ async function phucVuYoutubeSearchNoiBo(_req, res, reqUrl) {
     })
     .filter(Boolean)
 
-  vietJson(res, 200, { ok: true, items })
+  luuCacheTimKiem(cacheKey, items)
+  vietJson(res, 200, {
+    ok: true,
+    items,
+    warning: switchedBackupKey ? 'Key chính đã hết quota, đã chuyển sang key dự phòng.' : undefined,
+    activeKeyIndex: youtubeApiKeys.indexOf(activeYoutubeApiKey),
+  })
 }
 
 function escapeHtml(value) {
@@ -174,15 +303,18 @@ function escapeHtml(value) {
     .replace(/"/g, '&quot;')
 }
 
-function ghiLogSuCo(nhan, error) {
-  const stack = error instanceof Error ? error.stack || error.message : String(error)
-  const message = `[${new Date().toISOString()}] ${nhan}\n${stack}\n\n`
-  console.error(nhan, error)
-
+function ghiLogDesktop(nhan, detail = '') {
   try {
     fs.mkdirSync(app.getPath('userData'), { recursive: true })
+    const message = `[${new Date().toISOString()}] ${nhan}${detail ? `\n${detail}` : ''}\n\n`
     fs.appendFileSync(path.join(app.getPath('userData'), 'desktop-startup.log'), message, 'utf8')
   } catch {}
+}
+
+function ghiLogSuCo(nhan, error) {
+  const stack = error instanceof Error ? error.stack || error.message : String(error)
+  console.error(nhan, error)
+  ghiLogDesktop(nhan, stack)
 }
 
 function taoTrangLoiHtml(title, message, detail) {
@@ -295,6 +427,10 @@ async function baoLoiNghiemTrong(error, nhan = 'Lỗi desktop') {
 function ganTheoDoiCuaSo(name, targetWindow) {
   if (!targetWindow || targetWindow.isDestroyed()) return
 
+  targetWindow.webContents.on('did-finish-load', () => {
+    ghiLogDesktop(`[${name}] did-finish-load`, targetWindow.webContents.getURL())
+  })
+
   targetWindow.webContents.on('did-fail-load', (_event, code, description, validatedURL, isMainFrame) => {
     if (!isMainFrame) return
     if (code === -3) return
@@ -307,6 +443,29 @@ function ganTheoDoiCuaSo(name, targetWindow) {
     )
   })
 
+  targetWindow.webContents.on('console-message', (_event, ...args) => {
+    const maybeDetails = args[0]
+    const detail =
+      maybeDetails && typeof maybeDetails === 'object'
+        ? maybeDetails
+        : {
+            level: args[0],
+            message: args[1],
+            line: args[2],
+            sourceId: args[3],
+          }
+
+    const level = Number(detail.level ?? 0)
+    const message = String(detail.message || '')
+    if (message.includes('Electron Security Warning')) return
+    if (level < 2 && !/error|failed|uncaught/i.test(message)) return
+
+    ghiLogSuCo(
+      `[${name}] renderer-console level=${detail.level} source=${detail.sourceId || ''}:${detail.line || ''}`,
+      new Error(message || 'Renderer console error'),
+    )
+  })
+
   targetWindow.webContents.on('render-process-gone', (_event, details) => {
     ghiLogSuCo(`[${name}] render-process-gone`, new Error(JSON.stringify(details)))
   })
@@ -314,6 +473,42 @@ function ganTheoDoiCuaSo(name, targetWindow) {
   targetWindow.on('unresponsive', () => {
     ghiLogSuCo(`[${name}] unresponsive`, new Error('Window unresponsive'))
   })
+}
+
+function kiemTraRendererDaRender(targetWindow, name, loadedUrl) {
+  setTimeout(() => {
+    void (async () => {
+      if (!targetWindow || targetWindow.isDestroyed()) return
+
+      const state = await targetWindow.webContents.executeJavaScript(
+        `(() => {
+          const root = document.getElementById('root');
+          return {
+            href: window.location.href,
+            readyState: document.readyState,
+            hasRoot: Boolean(root),
+            rootChildren: root ? root.children.length : -1,
+            bodyText: document.body ? document.body.innerText.slice(0, 800) : ''
+          };
+        })()`,
+        true,
+      )
+
+      ghiLogDesktop(`[${name}] renderer-health`, JSON.stringify(state, null, 2))
+
+      if (!state?.hasRoot || state.rootChildren < 1) {
+        ghiLogSuCo(`[${name}] renderer-root-empty`, new Error(JSON.stringify(state, null, 2)))
+        await taiTrangLoi(
+          targetWindow,
+          'Giao diện KaraokeYT bị trống',
+          'Renderer đã tải nhưng React không render nội dung. Đây là nguyên nhân thường gây màn hình đen trên Windows.',
+          `URL: ${loadedUrl}\n\nState:\n${JSON.stringify(state, null, 2)}`,
+        )
+      }
+    })().catch((error) => {
+      ghiLogSuCo(`[${name}] renderer-health-check-failed`, error)
+    })
+  }, 7000)
 }
 
 function layContentType(extname) {
@@ -445,12 +640,20 @@ async function batMayChuRenderer() {
     return rendererBaseUrl
   }
 
+  if (remoteRelayStarted && activeRelayPort && await kiemTraRelayLocal(activeRelayPort)) {
+    rendererBaseUrl = `http://127.0.0.1:${activeRelayPort}/`
+    ghiLogDesktop('[renderer] using-relay-server', rendererBaseUrl)
+    return rendererBaseUrl
+  }
+
   const rendererDistRootPath = layDistRootPathChoRelay()
   const rendererIndexPath = path.join(rendererDistRootPath, 'index.html')
 
   if (!fs.existsSync(rendererIndexPath)) {
     throw new Error(`Không tìm thấy renderer bundle. Đã thử: ${rendererDistRootPath}`)
   }
+
+  ghiLogDesktop('[renderer] dist-root', rendererDistRootPath)
 
   rendererServer = http.createServer((req, res) => {
     const reqUrl = new URL(req.url || '/', 'http://127.0.0.1')
@@ -504,6 +707,7 @@ async function batMayChuRenderer() {
   }
 
   rendererBaseUrl = `http://127.0.0.1:${address.port}`
+  ghiLogDesktop('[renderer] local-server-ready', rendererBaseUrl)
   return rendererBaseUrl
 }
 
@@ -601,6 +805,9 @@ function layThongTinMangDesktop() {
     rendererBaseUrl: rendererBaseUrl || devServerUrl || '',
     rendererPort,
     relayPort,
+    relayReady: remoteRelayStarted,
+    relayStatus: relayStartupStatus,
+    relayMessage: relayStartupMessage,
     addresses: layDiaChiLan().map((item) => ({
       ...item,
       url: `${httpProtocol}://${item.address}:${relayPort}/`,
@@ -668,29 +875,66 @@ function layDistRootPathChoRelay() {
   return candidates.find((candidate) => fs.existsSync(path.join(candidate, 'index.html'))) || distRootPath
 }
 
-async function batRemoteRelayNeuCan() {
-  if (remoteRelayStarted || process.env.KARAOKEYT_DISABLE_EMBEDDED_RELAY === '1') return
+function layDuongDanRemoteRelayScript() {
+  return [
+    path.join(__dirname, '..', 'server', 'remoteRelay.mjs'),
+    path.join(process.resourcesPath || '', 'server', 'remoteRelay.mjs'),
+    path.join(app.getAppPath(), 'server', 'remoteRelay.mjs'),
+  ].find((candidate) => candidate && fs.existsSync(candidate))
+}
 
+function ghiLogMoiTruongDesktop() {
+  const payload = {
+    platform: process.platform,
+    arch: process.arch,
+    versions: process.versions,
+    appPath: app.getAppPath(),
+    resourcesPath: process.resourcesPath,
+    cwd: process.cwd(),
+    distRoot: layDistRootPathChoRelay(),
+    devServerUrl: devServerUrl || '',
+    windowsGpuWorkaroundEnabled,
+  }
+  ghiLogDesktop('[startup] desktop-environment', JSON.stringify(payload, null, 2))
+}
+
+async function batRemoteRelayNeuCan() {
+  if (remoteRelayStarted) return
+  if (process.env.KARAOKEYT_DISABLE_EMBEDDED_RELAY === '1') {
+    relayStartupStatus = 'disabled'
+    relayStartupMessage = 'Embedded relay bị tắt bằng KARAOKEYT_DISABLE_EMBEDDED_RELAY=1.'
+    ghiLogDesktop('[relay] disabled', relayStartupMessage)
+    return
+  }
+
+  relayStartupStatus = 'starting'
+  relayStartupMessage = 'Đang mở server điều khiển và relay.'
   activeRelayPort = Number(process.env.PORT || process.env.RELAY_PORT || activeRelayPort || '8787')
   if (await kiemTraRelayLocal(activeRelayPort)) {
     if (await kiemTraRelayLan(activeRelayPort)) {
       remoteRelayStarted = true
+      relayStartupStatus = 'running-existing'
+      relayStartupMessage = `Đang dùng relay đã chạy trên cổng ${activeRelayPort}.`
+      ghiLogDesktop('[relay] using-existing', relayStartupMessage)
       return
     }
     console.warn(`Có relay local trên cổng ${activeRelayPort} nhưng chưa truy cập được qua IP LAN. Thử mở relay nhúng trên cổng khác.`)
+    ghiLogDesktop(
+      '[relay] existing-local-not-lan',
+      `Có relay local trên cổng ${activeRelayPort} nhưng chưa truy cập được qua IP LAN. Thử mở relay nhúng trên cổng khác.`,
+    )
   }
 
   // Read config before starting relay
   docConfigMayChu()
 
-  const relayScriptPath = [
-    path.join(__dirname, '..', 'server', 'remoteRelay.mjs'),
-    path.join(process.resourcesPath || '', 'server', 'remoteRelay.mjs'),
-    path.join(app.getAppPath(), 'server', 'remoteRelay.mjs'),
-  ].find((candidate) => candidate && fs.existsSync(candidate))
+  const relayScriptPath = layDuongDanRemoteRelayScript()
 
   if (!relayScriptPath) {
-    console.warn('Không tìm thấy server/remoteRelay.mjs để mở relay nhúng.')
+    relayStartupStatus = 'error'
+    relayStartupMessage = 'Không tìm thấy server/remoteRelay.mjs để mở relay nhúng.'
+    console.warn(relayStartupMessage)
+    ghiLogDesktop('[relay] script-missing', relayStartupMessage)
     return
   }
 
@@ -705,12 +949,116 @@ async function batRemoteRelayNeuCan() {
     await import(pathToFileURL(relayScriptPath).href)
     remoteRelayStarted = await doiRelayLocalSanSang(4000, activeRelayPort)
     if (!remoteRelayStarted) {
-      console.warn(`Relay nhúng chưa sẵn sàng trên cổng local ${activeRelayPort} sau khi khởi động.`)
-    } else if (!(await kiemTraRelayLan(activeRelayPort))) {
-      console.warn(`Relay nhúng chạy local nhưng chưa truy cập được qua IP LAN trên cổng ${activeRelayPort}. Có thể Windows Firewall đang chặn.`)
+      relayStartupStatus = 'error'
+      relayStartupMessage = `Relay nhúng chưa sẵn sàng trên cổng local ${activeRelayPort} sau khi khởi động.`
+      console.warn(relayStartupMessage)
+      ghiLogDesktop('[relay] not-ready', relayStartupMessage)
+    } else {
+      const lanReady = await kiemTraRelayLan(activeRelayPort)
+      if (!lanReady) {
+        relayStartupStatus = 'local-only'
+        relayStartupMessage = `Relay đã chạy trên laptop ở cổng ${activeRelayPort}, nhưng IP LAN chưa truy cập được. Có thể Windows Firewall đang chặn.`
+        console.warn(relayStartupMessage)
+        ghiLogDesktop('[relay] local-only', relayStartupMessage)
+      } else {
+        relayStartupStatus = 'running'
+        relayStartupMessage = `Relay đã chạy trên cổng ${activeRelayPort}.`
+        ghiLogDesktop('[relay] ready', relayStartupMessage)
+      }
     }
   } catch (error) {
+    remoteRelayStarted = false
+    relayStartupStatus = 'error'
+    relayStartupMessage = error instanceof Error ? error.message : 'Không mở được relay nhúng.'
     console.warn('Không mở được relay nhúng:', error)
+    ghiLogSuCo('[relay] start-failed', error)
+  }
+}
+
+async function batRemoteRelayThuCong() {
+  const currentLocalReady = await kiemTraRelayLocal(activeRelayPort)
+  const currentLanReady = currentLocalReady ? await kiemTraRelayLan(activeRelayPort) : false
+
+  if (currentLocalReady && currentLanReady) {
+    remoteRelayStarted = true
+    relayStartupStatus = 'running-existing'
+    relayStartupMessage = `Relay đang chạy trên cổng ${activeRelayPort}.`
+    ghiLogDesktop('[relay] manual-existing-ready', relayStartupMessage)
+    return {
+      success: true,
+      reused: true,
+      localReady: true,
+      lanReady: true,
+      message: relayStartupMessage,
+      networkInfo: layThongTinMangDesktop(),
+    }
+  }
+
+  const relayScriptPath = layDuongDanRemoteRelayScript()
+  if (!relayScriptPath) {
+    relayStartupStatus = 'error'
+    relayStartupMessage = 'Không tìm thấy server/remoteRelay.mjs để bật relay thủ công.'
+    ghiLogDesktop('[relay] manual-script-missing', relayStartupMessage)
+    return {
+      success: false,
+      localReady: false,
+      lanReady: false,
+      message: relayStartupMessage,
+      networkInfo: layThongTinMangDesktop(),
+    }
+  }
+
+  const manualRelayPort = await timCongRelayKhaDung()
+  activeRelayPort = manualRelayPort
+  process.env.RELAY_HOST = '0.0.0.0'
+  process.env.PORT = String(activeRelayPort)
+  process.env.RELAY_PORT = String(activeRelayPort)
+  process.env.KARAOKEYT_DIST_DIR = process.env.KARAOKEYT_DIST_DIR || layDistRootPathChoRelay()
+  process.env.KARAOKEYT_MEDIA_DIR = process.env.KARAOKEYT_MEDIA_DIR || damBaoThuMucMediaLocal()
+  relayStartupStatus = 'starting'
+  relayStartupMessage = `Đang bật relay thủ công trên cổng ${activeRelayPort}.`
+  ghiLogDesktop('[relay] manual-starting', relayStartupMessage)
+
+  try {
+    const relayModuleUrl = `${pathToFileURL(relayScriptPath).href}?manual=${Date.now()}-${activeRelayPort}`
+    await import(relayModuleUrl)
+
+    const localReady = await doiRelayLocalSanSang(5000, activeRelayPort)
+    const lanReady = localReady ? await kiemTraRelayLan(activeRelayPort) : false
+    remoteRelayStarted = localReady
+
+    if (!localReady) {
+      relayStartupStatus = 'error'
+      relayStartupMessage = `Đã bật lệnh relay nhưng cổng ${activeRelayPort} chưa phản hồi local.`
+    } else if (!lanReady) {
+      relayStartupStatus = 'local-only'
+      relayStartupMessage = `Relay đã chạy trên laptop ở cổng ${activeRelayPort}, nhưng điện thoại chưa truy cập được IP LAN. Kiểm tra Wi-Fi/Firewall.`
+    } else {
+      relayStartupStatus = 'running-manual'
+      relayStartupMessage = `Đã bật relay thủ công trên cổng ${activeRelayPort}.`
+    }
+
+    ghiLogDesktop('[relay] manual-result', relayStartupMessage)
+    return {
+      success: Boolean(localReady && lanReady),
+      reused: false,
+      localReady,
+      lanReady,
+      message: relayStartupMessage,
+      networkInfo: layThongTinMangDesktop(),
+    }
+  } catch (error) {
+    remoteRelayStarted = false
+    relayStartupStatus = 'error'
+    relayStartupMessage = error instanceof Error ? error.message : 'Không bật được relay thủ công.'
+    ghiLogSuCo('[relay] manual-start-failed', error)
+    return {
+      success: false,
+      localReady: false,
+      lanReady: false,
+      message: relayStartupMessage,
+      networkInfo: layThongTinMangDesktop(),
+    }
   }
 }
 
@@ -793,7 +1141,9 @@ async function taiRenderer(targetWindow, targetScreen, roomCode, roomToken, disp
   } else {
     url.searchParams.delete('displayTarget')
   }
-  await targetWindow.loadURL(url.toString())
+  const loadedUrl = url.toString()
+  await targetWindow.loadURL(loadedUrl)
+  kiemTraRendererDaRender(targetWindow, targetScreen, loadedUrl)
 }
 
 function apDungKhungCuaSoTrinhChieu(targetWindow, preferredIndex) {
@@ -1052,6 +1402,20 @@ function dongCuaSoTrinhChieu() {
 function dangKyIpc() {
   ipcMain.handle('karaoke:get-displays', () => layDanhSachManHinh())
   ipcMain.handle('karaoke:get-network-info', () => layThongTinMangDesktop())
+  ipcMain.handle('karaoke:start-relay', async () => {
+    try {
+      return await batRemoteRelayThuCong()
+    } catch (error) {
+      console.warn('Không bật được relay thủ công:', error)
+      return {
+        success: false,
+        localReady: false,
+        lanReady: false,
+        message: error?.message || 'Không bật được relay thủ công.',
+        networkInfo: layThongTinMangDesktop(),
+      }
+    }
+  })
   ipcMain.handle('karaoke:import-local-media', async () => {
     try {
       return await nhapMediaDiaPhuong()
@@ -1109,12 +1473,17 @@ function dangKyIpc() {
 // Register IPC handlers for secure storage
 ipcMain.handle('secure-storage:save-key', async (_event, apiKey) => {
   try {
-    const validation = await secureStorage.validateApiKey(apiKey)
+    const validation = await secureStorage.validateApiKeyList(apiKey)
     if (!validation.valid) {
       return { success: false, error: validation.message }
     }
     await secureStorage.saveApiKey(apiKey)
-    return { success: true, message: validation.message || 'Đã lưu YouTube API key trên laptop.' }
+    return {
+      success: true,
+      message: validation.message || 'Đã lưu YouTube API key trên laptop.',
+      keyCount: validation.keyCount,
+      usableCount: validation.usableCount,
+    }
   } catch (error) {
     console.error('[IPC] Failed to save API key:', error)
     return { success: false, error: error.message }
@@ -1144,7 +1513,8 @@ ipcMain.handle('secure-storage:delete-key', async () => {
 ipcMain.handle('secure-storage:has-key', async () => {
   try {
     const hasKey = await secureStorage.hasApiKey()
-    return { success: true, hasKey }
+    const keyCount = await secureStorage.getApiKeyCount()
+    return { success: true, hasKey, keyCount }
   } catch (error) {
     console.error('[IPC] Failed to check API key:', error)
     return { success: false, error: error.message }
@@ -1158,6 +1528,7 @@ ipcMain.handle('secure-storage:check-key', async () => {
       success: true,
       valid: result.valid,
       message: result.message,
+      keyCount: result.keyCount,
     }
   } catch (error) {
     console.error('[IPC] Failed to validate API key:', error)
@@ -1167,6 +1538,7 @@ ipcMain.handle('secure-storage:check-key', async () => {
 
 app.whenReady().then(async () => {
   try {
+    ghiLogMoiTruongDesktop()
     // Init secure storage first
     await initSecureStorage()
     docConfigMayChu() // Migrate legacy config if exists

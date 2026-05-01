@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { SearchSong } from '../types'
 import { useSettingsStore } from '../store/settingsStore'
-import { searchSongs, searchSongsViaProxy } from '../services/youtubeDataApi'
+import { searchSongs, searchSongsViaProxy, type SearchSongsResult } from '../services/youtubeDataApi'
 import {
   chuanHoaRelayUrl,
   dangChayTrongCapacitorWebView,
@@ -9,15 +9,17 @@ import {
   laHostLocalhost,
   layRelayUrlMacDinh,
 } from '../services/remoteRelay'
+import { layKetQuaTimKiemDaLuu, luuKetQuaTimKiem } from '../services/searchCache'
+import { taoBaiHatTuYoutubeInput } from '../services/youtubeLink'
 
 type State = {
   status: 'idle' | 'loading' | 'error' | 'success'
   results: SearchSong[]
   errorMessage?: string
+  warningMessage?: string
 }
 
-const CACHE_TTL_MS = 5 * 60 * 1000
-const cache = new Map<string, { ts: number; data: SearchSong[] }>()
+const SEARCH_DEBOUNCE_MS = 800
 const DEFAULT_DESKTOP_PROXIES = [
   'http://127.0.0.1:8787/api/youtube/search',
   'http://localhost:8787/api/youtube/search',
@@ -143,6 +145,14 @@ function formatSearchError(message: string) {
   return `Không thể tìm kiếm: ${message}`
 }
 
+function formatSearchWarning(message?: string) {
+  if (!message) return undefined
+  if (message === 'API_QUOTA_EXCEEDED') {
+    return 'Hết quota YouTube API trong ngày, đang dùng kết quả đã lưu nếu có.'
+  }
+  return message
+}
+
 export function useYouTubeSearch(query: string, relayUrlDangKetNoi = '') {
   const karaokeFilterEnabled = useSettingsStore((s) => s.karaokeFilterEnabled)
   const searchLanguage = useSettingsStore((s) => s.searchLanguage)
@@ -154,17 +164,26 @@ export function useYouTubeSearch(query: string, relayUrlDangKetNoi = '') {
     : ''
   const proxyUrls = useMemo(() => taoDanhSachYoutubeProxy(envProxyUrl, relayUrlDangKetNoi), [envProxyUrl, relayUrlDangKetNoi])
   const proxyKey = proxyUrls.join('|')
+  const directYoutubeSong = useMemo(() => taoBaiHatTuYoutubeInput(query), [query])
 
   const [state, setState] = useState<State>({ status: 'idle', results: [] })
 
   const canSearch = useMemo(() => {
-    return query.trim().length >= 2
-  }, [query])
+    return directYoutubeSong !== null || query.trim().length >= 2
+  }, [directYoutubeSong, query])
 
   const fallbackState = useMemo<State | null>(() => {
     const isDesktopApp = dangChayDesktopElectron()
     if (!canSearch) {
       return { status: 'idle', results: [] }
+    }
+
+    if (directYoutubeSong) {
+      return {
+        status: 'success',
+        results: [directYoutubeSong],
+        warningMessage: 'Đã nhận link/mã YouTube trực tiếp. Kết quả này không dùng YouTube Search API.',
+      }
     }
 
     if (!proxyUrls.length && !apiKey.trim()) {
@@ -180,7 +199,7 @@ export function useYouTubeSearch(query: string, relayUrlDangKetNoi = '') {
     }
 
     return null
-  }, [apiKey, canSearch, proxyUrls.length])
+  }, [apiKey, canSearch, directYoutubeSong, proxyUrls.length])
 
   useEffect(() => {
     if (fallbackState) {
@@ -191,27 +210,27 @@ export function useYouTubeSearch(query: string, relayUrlDangKetNoi = '') {
 
     const loadingHandle = window.setTimeout(() => {
       if (!cancelled) {
-        setState((s) => ({ ...s, status: 'loading', errorMessage: undefined }))
+        setState((s) => ({ ...s, status: 'loading', errorMessage: undefined, warningMessage: undefined }))
       }
     }, 0)
 
     const handle = window.setTimeout(async () => {
       const key = `${proxyKey || 'direct'}|${normalizeKey(query, karaokeFilterEnabled, searchLanguage)}`
-      const cached = cache.get(key)
-      if (cached && Date.now() - cached.ts < CACHE_TTL_MS) {
+      const cached = layKetQuaTimKiemDaLuu(key)
+      if (cached) {
         if (cancelled) return
-        setState({ status: 'success', results: cached.data })
+        setState({ status: 'success', results: cached.data, warningMessage: formatSearchWarning(cached.warning) })
         return
       }
 
       try {
         let lastError: unknown = null
         let preferredError: Error | null = null
-        let data: SearchSong[] | null = null
+        let result: SearchSongsResult | null = null
 
         for (const proxyUrl of proxyUrls) {
           try {
-            data = await searchSongsViaProxy(query, proxyUrl, {
+            result = await searchSongsViaProxy(query, proxyUrl, {
               karaokeFilterEnabled,
               language: searchLanguage,
               maxResults: 12,
@@ -232,31 +251,44 @@ export function useYouTubeSearch(query: string, relayUrlDangKetNoi = '') {
           }
         }
 
-        if (!data && apiKey) {
-          data = await searchSongs(query, apiKey, {
+        if (!result && apiKey) {
+          result = await searchSongs(query, apiKey, {
             karaokeFilterEnabled,
             language: searchLanguage,
             maxResults: 12,
           })
         }
 
-        if (!data) {
+        if (!result) {
           throw preferredError ?? (lastError instanceof Error ? lastError : new Error('Chưa có nguồn tìm kiếm YouTube khả dụng.'))
         }
 
         if (cancelled) return
-        cache.set(key, { ts: Date.now(), data })
-        setState({ status: 'success', results: data })
+        luuKetQuaTimKiem(key, { ts: Date.now(), data: result.items, warning: result.warning })
+        setState({ status: 'success', results: result.items, warningMessage: formatSearchWarning(result.warning) })
       } catch (e) {
         if (cancelled) return
         const msg = e instanceof Error ? e.message : 'Không xác định'
+        const stale = layKetQuaTimKiemDaLuu(key, { allowStale: true })
+        if (stale) {
+          setState({
+            status: 'success',
+            results: stale.data,
+            warningMessage:
+              msg === 'API_QUOTA_EXCEEDED'
+                ? 'Key YouTube đã hết quota, đang dùng kết quả đã lưu trên máy.'
+                : 'Không gọi được YouTube Search Proxy, đang dùng kết quả đã lưu trên máy.',
+          })
+          return
+        }
         setState({
           status: 'error',
           results: [],
           errorMessage: formatSearchError(msg),
+          warningMessage: undefined,
         })
       }
-    }, 500)
+    }, SEARCH_DEBOUNCE_MS)
 
     return () => {
       cancelled = true

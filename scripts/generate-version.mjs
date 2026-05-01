@@ -37,7 +37,7 @@ assignIfSet(payload, 'androidDownloadUrl', readEnv('UPDATE_ANDROID_DOWNLOAD_URL'
 assignIfSet(payload, 'iosDownloadUrl', readEnv('UPDATE_IOS_DOWNLOAD_URL'))
 assignIfSet(payload, 'webUrl', readEnv('UPDATE_WEB_URL'))
 
-const tempPath = `${versionJsonPath}.tmp`
+const tempPath = `${versionJsonPath}.${process.pid}.${Date.now()}.tmp`
 fs.writeFileSync(tempPath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8')
 fs.renameSync(tempPath, versionJsonPath)
 console.log(`[version] ${versionJsonPath} => v${version}`)

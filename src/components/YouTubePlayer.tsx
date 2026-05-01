@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useYouTubePlayer } from '../hooks/useYouTubePlayer'
+import type { PlayerState, PlayerStatus } from '../types'
 
 function layThongTinLoiPlayer(code: number) {
   switch (code) {
@@ -48,6 +49,7 @@ export function YouTubePlayer({
   onEnded,
   onError,
   onReady,
+  onProgress,
   onSkipSong,
   hideAdAssist = false,
   command,
@@ -57,9 +59,10 @@ export function YouTubePlayer({
   onEnded: () => void
   onError?: (code: number, videoId?: string) => void
   onReady?: () => void
+  onProgress?: (state: PlayerState) => void
   onSkipSong?: () => void
   hideAdAssist?: boolean
-  command?: { type: 'play' | 'pause' | 'volume' | 'restart'; value?: number; nonce: number }
+  command?: { type: 'play' | 'pause' | 'volume' | 'restart' | 'seek'; value?: number; nonce: number }
 }) {
   const {
     containerRef,
@@ -68,9 +71,11 @@ export function YouTubePlayer({
     playerState,
     lastError,
     activeVideoId,
+    progress,
     play,
     pause,
     restart,
+    seekTo,
     setVolume,
     unmuteAndPlay,
   } = useYouTubePlayer({
@@ -92,10 +97,32 @@ export function YouTubePlayer({
   const coLoiPlayer = typeof lastError === 'number'
   const daAnTroGiupQuangCao = troGiupQuangCaoDaAn === currentVideoKey
   const hienTroGiupQuangCao = Boolean(videoId) && !coLoiPlayer && !daAnTroGiupQuangCao
+  const progressStatus: PlayerStatus =
+    coLoiPlayer
+      ? 'idle'
+      : playerState === 'playing'
+        ? 'playing'
+        : playerState === 'paused'
+          ? 'paused'
+          : playerState === 'ended'
+            ? 'ended'
+            : videoId
+              ? 'loading'
+              : 'idle'
 
   useEffect(() => {
     if (ready) onReady?.()
   }, [onReady, ready])
+
+  useEffect(() => {
+    if (!videoId) return
+    onProgress?.({
+      status: progressStatus,
+      volume,
+      currentTime: progress.currentTime,
+      duration: progress.duration,
+    })
+  }, [onProgress, progress.currentTime, progress.duration, progressStatus, videoId, volume])
 
   useEffect(() => {
     if (typeof lastError !== 'number') {
@@ -133,8 +160,9 @@ export function YouTubePlayer({
     if (commandType === 'play') play()
     if (commandType === 'pause') pause()
     if (commandType === 'restart') restart()
+    if (commandType === 'seek') seekTo(typeof commandValue === 'number' ? commandValue : 0)
     if (commandType === 'volume') setVolume(typeof commandValue === 'number' ? commandValue : volume)
-  }, [commandNonce, commandType, commandValue, pause, play, ready, restart, setVolume, volume])
+  }, [commandNonce, commandType, commandValue, pause, play, ready, restart, seekTo, setVolume, volume])
 
   const dangThuMoKhoa = videoDaThuMoKhoa === currentVideoKey && playerState !== 'playing'
   const hienGate = !coLoiPlayer && requiresGesture && videoDaThuMoKhoa !== currentVideoKey

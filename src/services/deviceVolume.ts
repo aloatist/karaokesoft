@@ -21,7 +21,8 @@ function clampVolume(value: number) {
 }
 
 export function coTheDongBoAmLuongDienThoai() {
-  return Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android' && Capacitor.isPluginAvailable('DeviceVolume')
+  const platform = Capacitor.getPlatform()
+  return Capacitor.isNativePlatform() && (platform === 'android' || platform === 'ios') && Capacitor.isPluginAvailable('DeviceVolume')
 }
 
 export async function docAmLuongDienThoai() {
@@ -52,7 +53,7 @@ export async function langNgheAmLuongDienThoai(listener: (state: DeviceVolumeSta
 }
 
 export function langNghePhimAmLuongCung(listener: () => void) {
-  if (!coTheDongBoAmLuongDienThoai()) return null
+  if (!coTheDongBoAmLuongDienThoai() || Capacitor.getPlatform() !== 'android') return null
 
   const handler = () => listener()
   window.addEventListener('karaokeytDeviceVolumeKey', handler)

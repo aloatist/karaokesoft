@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld('karaokeDesktop', {
   __ELECTRON__: true,
   getDisplays: () => ipcRenderer.invoke('karaoke:get-displays'),
   getNetworkInfo: () => ipcRenderer.invoke('karaoke:get-network-info'),
+  startRelay: () => ipcRenderer.invoke('karaoke:start-relay'),
   importLocalMedia: () => ipcRenderer.invoke('karaoke:import-local-media'),
   openDisplayWindow: (monitorIndex, roomCode, roomToken) => ipcRenderer.invoke('karaoke:open-display-window', monitorIndex, roomCode, roomToken),
   closeDisplayWindow: () => ipcRenderer.invoke('karaoke:close-display-window'),

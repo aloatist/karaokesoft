@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { guiDongBoDesktop, ngheDongBoDesktop } from '../services/desktopBridge'
-import type { AppSettings, PlayerCommand, SyncMessage } from '../types'
+import type { AppSettings, PlayerCommand, PlayerState, SyncMessage } from '../types'
 import { useQueueStore } from '../store/queueStore'
 
 const CHANNEL_NAME = 'karaokeyt-sync'
@@ -40,6 +40,11 @@ export function phatQueueUpdate() {
 
 export function phatLenhPlayer(cmd: PlayerCommand, value?: number) {
   const msg: SyncMessage = { type: 'PLAYER_CMD', cmd, value }
+  guiDongBo(msg)
+}
+
+export function phatTienDoPlayer(state: PlayerState) {
+  const msg: SyncMessage = { type: 'PLAYER_PROGRESS', state }
   guiDongBo(msg)
 }
 

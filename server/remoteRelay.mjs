@@ -3,11 +3,32 @@ import os from 'node:os'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { WebSocket, WebSocketServer } from 'ws'
+import { createRequire } from 'node:module'
 
 const serverDirPath = path.dirname(fileURLToPath(import.meta.url))
 const projectRootPath = path.resolve(serverDirPath, '..')
 const envKeysLoadedFromFiles = new Set()
+
+function requirePackage(packageName) {
+  const requireCandidates = [
+    createRequire(import.meta.url),
+    process.resourcesPath ? createRequire(path.join(process.resourcesPath, 'app.asar', 'package.json')) : null,
+    createRequire(path.join(projectRootPath, 'package.json')),
+  ].filter(Boolean)
+
+  let lastError = null
+  for (const requireFrom of requireCandidates) {
+    try {
+      return requireFrom(packageName)
+    } catch (error) {
+      lastError = error
+    }
+  }
+
+  throw lastError || new Error(`Cannot find package ${packageName}`)
+}
+
+const { WebSocket, WebSocketServer } = requirePackage('ws')
 
 function loadEnvFile(filePath, { overrideFileValues = false } = {}) {
   if (!fs.existsSync(filePath)) return
@@ -51,34 +72,104 @@ const LOCAL_MEDIA_URL_PREFIX = '/local-media/'
 const YOUTUBE_BASE_URL = 'https://www.googleapis.com/youtube/v3'
 const SEARCH_RATE_WINDOW_MS = 10 * 60 * 1000
 const SEARCH_RATE_LIMIT = Number(process.env.YOUTUBE_SEARCH_RATE_LIMIT || 120)
+const SEARCH_CACHE_TTL_MS = Math.max(60_000, Number(process.env.YOUTUBE_SEARCH_CACHE_TTL_MS || 15 * 60 * 1000))
+const SEARCH_STALE_CACHE_TTL_MS = Math.max(SEARCH_CACHE_TTL_MS, Number(process.env.YOUTUBE_SEARCH_STALE_CACHE_TTL_MS || 6 * 60 * 60 * 1000))
+const SEARCH_CACHE_MAX_ENTRIES = Math.max(50, Number(process.env.YOUTUBE_SEARCH_CACHE_MAX_ENTRIES || 400))
 const HEARTBEAT_INTERVAL_MS = Math.max(5_000, Number(process.env.RELAY_HEARTBEAT_INTERVAL_MS || 15_000))
 const searchRateLimits = new Map()
+const youtubeSearchCache = new Map()
 const rooms = new Map()
 const peers = new Map()
 
-function looksLikeYoutubeApiKey(value) {
-  return /^AIza[0-9A-Za-z_-]{35}$/.test(String(value || '').trim())
+function getYoutubeApiKeys() {
+  const seen = new Set()
+  const keys = []
+  const rawValues = [
+    process.env.YOUTUBE_API_KEY,
+    process.env.YOUTUBE_API_KEYS,
+    process.env.YT_API_KEY,
+    process.env.VITE_YT_API_KEY,
+  ]
+
+  for (const rawValue of rawValues) {
+    for (const item of String(rawValue || '').split(/[\s,;]+/)) {
+      const key = item.trim()
+      if (!key || seen.has(key)) continue
+      seen.add(key)
+      keys.push(key)
+    }
+  }
+
+  return keys
 }
 
-function getYoutubeApiKey() {
-  const serverKey = process.env.YOUTUBE_API_KEY || process.env.YT_API_KEY || ''
-  const devClientKey = process.env.VITE_YT_API_KEY || ''
-
-  if (looksLikeYoutubeApiKey(serverKey)) return serverKey.trim()
-  if (looksLikeYoutubeApiKey(devClientKey)) return devClientKey.trim()
-  return String(serverKey || devClientKey || '').trim()
-}
-
-function writeJson(req, res, status, payload) {
+function writeJson(req, res, status, payload, extraHeaders = {}) {
   const origin = req.headers.origin || '*'
   res.writeHead(status, {
     'content-type': 'application/json; charset=utf-8',
     'access-control-allow-origin': origin,
     'access-control-allow-methods': 'GET,OPTIONS',
     'access-control-allow-headers': 'content-type',
+    'cache-control': 'no-store',
     vary: 'Origin',
+    ...extraHeaders,
   })
   res.end(JSON.stringify(payload))
+}
+
+function normalizeSearchCachePart(value) {
+  return String(value || '').trim().toLowerCase().replace(/\s+/g, ' ')
+}
+
+function getSearchCacheKey({ query, karaokeFilterEnabled, language, maxResults }) {
+  return [
+    normalizeSearchCachePart(query),
+    karaokeFilterEnabled ? 'karaoke' : 'all',
+    normalizeSearchCachePart(language || 'vi'),
+    String(maxResults),
+  ].join('|')
+}
+
+function getSearchCacheEntry(cacheKey) {
+  const entry = youtubeSearchCache.get(cacheKey)
+  if (!entry) return null
+
+  const ageMs = Date.now() - entry.createdAt
+  if (ageMs > SEARCH_STALE_CACHE_TTL_MS) {
+    youtubeSearchCache.delete(cacheKey)
+    return null
+  }
+
+  return {
+    ...entry,
+    ageMs,
+    fresh: ageMs <= SEARCH_CACHE_TTL_MS,
+  }
+}
+
+function setSearchCacheEntry(cacheKey, items) {
+  if (youtubeSearchCache.size >= SEARCH_CACHE_MAX_ENTRIES) {
+    const oldestKey = youtubeSearchCache.keys().next().value
+    if (oldestKey) youtubeSearchCache.delete(oldestKey)
+  }
+
+  youtubeSearchCache.set(cacheKey, {
+    createdAt: Date.now(),
+    items,
+  })
+}
+
+function writeCachedSearch(req, res, cached, { stale = false, warning } = {}) {
+  writeJson(req, res, 200, {
+    ok: true,
+    items: cached.items,
+    cached: true,
+    stale,
+    cacheAgeMs: cached.ageMs,
+    warning,
+  }, {
+    'x-karaokeyt-cache': stale ? 'stale' : 'hit',
+  })
 }
 
 function getRateKey(req) {
@@ -221,6 +312,7 @@ async function fetchVideoDetails(videoIds, apiKey) {
     id: videoIds.join(','),
     part: 'contentDetails,status',
     maxResults: String(videoIds.length),
+    fields: 'items(id,contentDetails/duration,status/embeddable)',
   })
 
   const response = await fetch(`${YOUTUBE_BASE_URL}/videos?${params}`)
@@ -252,18 +344,6 @@ async function getYoutubeApiErrorMessage(response) {
 }
 
 async function handleYoutubeSearch(req, res, url) {
-  const youtubeApiKey = getYoutubeApiKey()
-
-  if (!youtubeApiKey) {
-    writeJson(req, res, 500, { ok: false, message: 'Server chưa cấu hình YOUTUBE_API_KEY.' })
-    return
-  }
-
-  if (!allowSearchRequest(req)) {
-    writeJson(req, res, 429, { ok: false, message: 'Tìm kiếm quá nhanh, vui lòng thử lại sau.' })
-    return
-  }
-
   const rawQuery = String(url.searchParams.get('q') || '').trim()
   if (rawQuery.length < 2) {
     writeJson(req, res, 400, { ok: false, message: 'Từ khoá tìm kiếm quá ngắn.' })
@@ -274,26 +354,88 @@ async function handleYoutubeSearch(req, res, url) {
   const language = String(url.searchParams.get('language') || 'vi').replace(/[^a-z-]/gi, '').slice(0, 8) || 'vi'
   const maxResults = Math.max(1, Math.min(Number(url.searchParams.get('maxResults') || 12), 25))
   const q = karaokeFilterEnabled ? `${rawQuery} karaoke` : rawQuery
+  const cacheKey = getSearchCacheKey({ query: rawQuery, karaokeFilterEnabled, language, maxResults })
+  const cached = getSearchCacheEntry(cacheKey)
 
-  const params = new URLSearchParams({
-    key: youtubeApiKey,
-    q,
-    part: 'snippet',
-    type: 'video',
-    videoCategoryId: '10',
-    maxResults: String(maxResults),
-    safeSearch: 'strict',
-    relevanceLanguage: language,
-  })
-
-  const response = await fetch(`${YOUTUBE_BASE_URL}/search?${params}`)
-  if (response.status === 403) {
-    writeJson(req, res, 403, { ok: false, message: await getYoutubeApiErrorMessage(response) })
+  if (cached?.fresh) {
+    writeCachedSearch(req, res, cached)
     return
   }
 
-  if (!response.ok) {
-    writeJson(req, res, response.status, { ok: false, message: await getYoutubeApiErrorMessage(response) })
+  const youtubeApiKeys = getYoutubeApiKeys()
+
+  if (!youtubeApiKeys.length) {
+    writeJson(req, res, 500, { ok: false, message: 'Server chưa cấu hình YOUTUBE_API_KEY.' })
+    return
+  }
+
+  if (!allowSearchRequest(req)) {
+    if (cached) {
+      writeCachedSearch(req, res, cached, { stale: true, warning: 'Tìm kiếm quá nhanh, đang dùng kết quả đã lưu.' })
+      return
+    }
+    writeJson(req, res, 429, { ok: false, message: 'Tìm kiếm quá nhanh, vui lòng thử lại sau.' })
+    return
+  }
+
+  let response
+  let activeYoutubeApiKey = ''
+  let switchedBackupKey = false
+  for (const [index, youtubeApiKey] of youtubeApiKeys.entries()) {
+    const params = new URLSearchParams({
+      key: youtubeApiKey,
+      q,
+      part: 'snippet',
+      type: 'video',
+      videoEmbeddable: 'true',
+      videoSyndicated: 'true',
+      videoCategoryId: '10',
+      maxResults: String(maxResults),
+      safeSearch: 'strict',
+      relevanceLanguage: language,
+      fields: 'items(id/videoId,snippet/title,snippet/channelTitle,snippet/thumbnails/default/url,snippet/thumbnails/medium/url)',
+    })
+
+    try {
+      response = await fetch(`${YOUTUBE_BASE_URL}/search?${params}`)
+    } catch (error) {
+      if (cached) {
+        writeCachedSearch(req, res, cached, { stale: true, warning: 'Không gọi được YouTube API, đang dùng kết quả đã lưu.' })
+        return
+      }
+      throw error
+    }
+
+    if (response.status === 403) {
+      const message = await getYoutubeApiErrorMessage(response)
+      if (message === 'API_QUOTA_EXCEEDED' && index < youtubeApiKeys.length - 1) {
+        switchedBackupKey = true
+        continue
+      }
+      if (message === 'API_QUOTA_EXCEEDED' && cached) {
+        writeCachedSearch(req, res, cached, { stale: true, warning: message })
+        return
+      }
+      writeJson(req, res, 403, { ok: false, message })
+      return
+    }
+
+    if (!response.ok) {
+      const message = await getYoutubeApiErrorMessage(response)
+      if (cached && response.status >= 500) {
+        writeCachedSearch(req, res, cached, { stale: true, warning: message })
+        return
+      }
+      writeJson(req, res, response.status, { ok: false, message })
+      return
+    }
+
+    activeYoutubeApiKey = youtubeApiKey
+    break
+  }
+
+  if (!response || !activeYoutubeApiKey) {
+    writeJson(req, res, 403, { ok: false, message: 'API_QUOTA_EXCEEDED' })
     return
   }
 
@@ -301,7 +443,7 @@ async function handleYoutubeSearch(req, res, url) {
   const rawItems = Array.isArray(json.items) ? json.items : []
   const detailsById = await fetchVideoDetails(
     rawItems.map((item) => item?.id?.videoId).filter(Boolean),
-    youtubeApiKey,
+    activeYoutubeApiKey,
   )
   const items = rawItems
     .map((item) => {
@@ -319,7 +461,13 @@ async function handleYoutubeSearch(req, res, url) {
     })
     .filter(Boolean)
 
-  writeJson(req, res, 200, { ok: true, items })
+  setSearchCacheEntry(cacheKey, items)
+  writeJson(req, res, 200, {
+    ok: true,
+    items,
+    warning: switchedBackupKey ? 'Key chính đã hết quota, đã chuyển sang key dự phòng.' : undefined,
+    activeKeyIndex: youtubeApiKeys.indexOf(activeYoutubeApiKey),
+  })
 }
 
 function getLanAddresses() {

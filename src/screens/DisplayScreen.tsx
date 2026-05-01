@@ -4,7 +4,7 @@ import { NextSongTicker } from '../components/NextSongTicker'
 import { QrCodePanel } from '../components/QrCodePanel'
 import { SongOverlay } from '../components/SongOverlay'
 import { YouTubePlayer } from '../components/YouTubePlayer'
-import { phatBaoHetBai, phatBaoLoiPlayer, phatYeuCauBoQuaBai, useBroadcastReceiver } from '../hooks/useBroadcastSync'
+import { phatBaoHetBai, phatBaoLoiPlayer, phatTienDoPlayer, phatYeuCauBoQuaBai, useBroadcastReceiver } from '../hooks/useBroadcastSync'
 import { chuanHoaMucHangCho } from '../lib/queue'
 import { dongYoutubeTrenManHinhTrinhChieu, moYoutubeTrenManHinhTrinhChieu } from '../services/desktopBridge'
 import { laLocalIndexedMediaUrl, layBlobMediaDiaPhuong, layIdLocalIndexedMedia } from '../services/localMediaStore'
@@ -26,7 +26,7 @@ import {
 } from '../services/remoteRelay'
 import { getDisplayAdApi } from '../services/authApi'
 import { DEFAULT_DISPLAY_AD, chuanHoaDisplayAd, useSettingsStore } from '../store/settingsStore'
-import type { DisplayAdSettings, DisplayRunMode, DisplayTarget, RemotePresence, RemoteRelayStatus, SongItem, SyncMessage } from '../types'
+import type { DisplayAdSettings, DisplayRunMode, DisplayTarget, PlayerState, RemotePresence, RemoteRelayStatus, SongItem, SyncMessage } from '../types'
 
 type ViewState = {
   queue: SongItem[]
@@ -37,6 +37,7 @@ const EMPTY_REMOTE_PRESENCE: RemotePresence = { hosts: 0, remotes: 0, displays: 
 const DISPLAY_AD_POLL_MS = 20_000
 const MOBILE_DISPLAY_BREAKPOINT = 720
 const DEFAULT_DISPLAY_VOLUME = 100
+const EMPTY_PLAYER_PROGRESS: PlayerState = { status: 'idle', volume: DEFAULT_DISPLAY_VOLUME, currentTime: 0, duration: 0 }
 
 function chuanHoaCheDoChayManChieu(input: unknown): DisplayRunMode {
   return input === 'single' ? 'single' : 'parallel'
@@ -44,6 +45,21 @@ function chuanHoaCheDoChayManChieu(input: unknown): DisplayRunMode {
 
 function chuanHoaManChieu(input: unknown): DisplayTarget {
   return input === 'tv' ? 'tv' : 'laptop'
+}
+
+function chuanHoaTienDoPlayer(state: PlayerState): PlayerState {
+  const duration = Math.max(0, Math.round(Number.isFinite(state.duration) ? state.duration : 0))
+  const currentTime = Math.max(
+    0,
+    Math.min(duration || Number.MAX_SAFE_INTEGER, Math.round(Number.isFinite(state.currentTime) ? state.currentTime : 0)),
+  )
+  const nextVolume = Math.max(0, Math.min(100, Math.round(Number.isFinite(state.volume) ? state.volume : DEFAULT_DISPLAY_VOLUME)))
+  return {
+    status: state.status,
+    volume: nextVolume,
+    currentTime,
+    duration,
+  }
 }
 
 function laLoiYoutubeChanNhung(code: number) {
@@ -104,7 +120,7 @@ export function DisplayScreen() {
   const localDisplayAd = useSettingsStore((s) => s.displayAd)
   const [state, setState] = useState<ViewState>(() => docQueueTuLocalStorage() ?? { queue: [], currentIndex: 0 })
   const [volume, setVolume] = useState(DEFAULT_DISPLAY_VOLUME)
-  const [cmd, setCmd] = useState<{ type: 'play' | 'pause' | 'volume' | 'restart'; value?: number; nonce: number }>()
+  const [cmd, setCmd] = useState<{ type: 'play' | 'pause' | 'volume' | 'restart' | 'seek'; value?: number; nonce: number }>()
   const [tvCode] = useState(() => docMaTVBanDau())
   const [tvToken] = useState(() => docTokenTVBanDau())
   const [relayStatus, setRelayStatus] = useState<RemoteRelayStatus>(tvCode ? 'connecting' : 'idle')
@@ -122,11 +138,22 @@ export function DisplayScreen() {
   const nonceRef = useRef(1)
   const displayAdUpdatedAtRef = useRef(0)
   const relayCommandNonceRef = useRef<number | null>(null)
+  const remoteConnectionRef = useRef<ReturnType<typeof taoKetNoiRelay> | null>(null)
+  const lastProgressKeyRef = useRef('')
   const youtubeTrucTiepVideoIdRef = useRef<string | null>(null)
   const mediaVideoRef = useRef<HTMLVideoElement | null>(null)
   const [relayUrl, setRelayUrl] = useState(() => layRelayUrlMacDinh())
   const qrRelayUrl = remoteQrRelayUrl || relayUrl
   const controlUrl = useMemo(() => taoDuongDanRemote(tvCode, tvToken, qrRelayUrl, remoteQrBaseUrl || undefined), [qrRelayUrl, remoteQrBaseUrl, tvCode, tvToken])
+
+  const guiTienDoPlayer = useCallback((nextProgress: PlayerState) => {
+    const normalized = chuanHoaTienDoPlayer(nextProgress)
+    const progressKey = `${normalized.status}:${normalized.currentTime}:${normalized.duration}:${normalized.volume}`
+    if (progressKey === lastProgressKeyRef.current) return
+    lastProgressKeyRef.current = progressKey
+    phatTienDoPlayer(normalized)
+    remoteConnectionRef.current?.sendAction({ type: 'PLAYER_PROGRESS', state: normalized })
+  }, [])
 
   useEffect(() => {
     const media = window.matchMedia(`(max-width: ${MOBILE_DISPLAY_BREAKPOINT}px)`)
@@ -248,6 +275,7 @@ export function DisplayScreen() {
       if (msg.cmd === 'play') setCmd({ type: 'play', nonce: nonceRef.current++ })
       if (msg.cmd === 'pause') setCmd({ type: 'pause', nonce: nonceRef.current++ })
       if (msg.cmd === 'restart') setCmd({ type: 'restart', nonce: nonceRef.current++ })
+      if (msg.cmd === 'seek') setCmd({ type: 'seek', value: typeof msg.value === 'number' ? msg.value : 0, nonce: nonceRef.current++ })
       if (msg.cmd === 'skip') {
         // Control sẽ tự nextSong; Display chỉ cần nhận QUEUE_UPDATE kế tiếp
       }
@@ -337,6 +365,13 @@ export function DisplayScreen() {
         if (nextState.lastPlayerCommand === 'restart') {
           setCmd({ type: 'restart', nonce: nextState.commandNonce || nonceRef.current++ })
         }
+        if (nextState.lastPlayerCommand === 'seek') {
+          setCmd({
+            type: 'seek',
+            value: typeof nextState.commandValue === 'number' ? nextState.commandValue : 0,
+            nonce: nextState.commandNonce || nonceRef.current++,
+          })
+        }
         if (nextState.lastPlayerCommand === 'volume') {
           setCmd({
             type: 'volume',
@@ -346,8 +381,10 @@ export function DisplayScreen() {
         }
       },
     })
+    remoteConnectionRef.current = connection
 
     return () => {
+      remoteConnectionRef.current = null
       connection.close()
     }
   }, [apDungDisplayAd, displayTarget, relayUrl, tvCode, tvToken])
@@ -472,6 +509,9 @@ export function DisplayScreen() {
       video.currentTime = 0
       void video.play().catch(() => undefined)
     }
+    if (cmd.type === 'seek' && typeof cmd.value === 'number') {
+      video.currentTime = Math.max(0, Math.min(Number.isFinite(video.duration) ? video.duration : Number.MAX_SAFE_INTEGER, cmd.value))
+    }
     if (cmd.type === 'volume' && typeof cmd.value === 'number') {
       video.volume = Math.max(0, Math.min(1, cmd.value / 100))
     }
@@ -536,6 +576,7 @@ export function DisplayScreen() {
             command={cmd}
             onEnded={() => phatBaoHetBai()}
             onError={xuLyLoiPlayer}
+            onProgress={guiTienDoPlayer}
             onSkipSong={() => phatYeuCauBoQuaBai('ad-long')}
             hideAdAssist={Boolean(hienThiDisplayAd)}
           />
@@ -550,6 +591,43 @@ export function DisplayScreen() {
                 autoPlay
                 playsInline
                 preload="auto"
+                onLoadedMetadata={(event) => {
+                  const video = event.currentTarget
+                  guiTienDoPlayer({
+                    ...EMPTY_PLAYER_PROGRESS,
+                    status: 'loading',
+                    volume,
+                    currentTime: video.currentTime,
+                    duration: Number.isFinite(video.duration) ? video.duration : 0,
+                  })
+                }}
+                onPlay={(event) => {
+                  const video = event.currentTarget
+                  guiTienDoPlayer({
+                    status: 'playing',
+                    volume,
+                    currentTime: video.currentTime,
+                    duration: Number.isFinite(video.duration) ? video.duration : 0,
+                  })
+                }}
+                onPause={(event) => {
+                  const video = event.currentTarget
+                  guiTienDoPlayer({
+                    status: 'paused',
+                    volume,
+                    currentTime: video.currentTime,
+                    duration: Number.isFinite(video.duration) ? video.duration : 0,
+                  })
+                }}
+                onTimeUpdate={(event) => {
+                  const video = event.currentTarget
+                  guiTienDoPlayer({
+                    status: video.paused ? 'paused' : 'playing',
+                    volume,
+                    currentTime: video.currentTime,
+                    duration: Number.isFinite(video.duration) ? video.duration : 0,
+                  })
+                }}
                 onEnded={() => phatBaoHetBai()}
               />
             ) : (
