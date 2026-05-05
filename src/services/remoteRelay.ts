@@ -67,7 +67,17 @@ export function dangChayTrongCapacitorWebView() {
   const protocol = window.location.protocol
   const hostname = window.location.hostname
   const userAgent = typeof navigator !== 'undefined' ? navigator.userAgent : ''
-  const hasCapacitorRuntime = 'Capacitor' in window
+  const capacitorRuntime = (window as Window & {
+    Capacitor?: {
+      getPlatform?: () => string
+      isNativePlatform?: () => boolean
+    }
+  }).Capacitor
+  const capacitorPlatform = capacitorRuntime?.getPlatform?.() ?? ''
+  const isNativeCapacitor =
+    capacitorRuntime?.isNativePlatform?.() === true ||
+    capacitorPlatform === 'ios' ||
+    capacitorPlatform === 'android'
   const nativeProtocol = protocol === 'capacitor:' || protocol === 'file:'
   const capacitorLocalhost =
     (protocol === 'http:' || protocol === 'https:') &&
@@ -75,7 +85,7 @@ export function dangChayTrongCapacitorWebView() {
     !window.location.port &&
     /(Android|iPhone|iPad|iPod|Capacitor|wv)/i.test(userAgent)
 
-  return hasCapacitorRuntime || nativeProtocol || capacitorLocalhost
+  return isNativeCapacitor || nativeProtocol || capacitorLocalhost
 }
 
 function relayUrlTroVeLocalhost(relayUrl: string) {

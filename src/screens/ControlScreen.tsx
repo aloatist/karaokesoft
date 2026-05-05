@@ -4,6 +4,7 @@ import { AppIcon } from '../components/AppIcon'
 import { LegalModal } from '../components/LegalModal'
 import { MediaLibraryPanel } from '../components/MediaLibraryPanel'
 import { NowPlayingMini } from '../components/NowPlayingMini'
+import { PlaybackProgressBar } from '../components/PlaybackProgressBar'
 import { CloseDisplayButton, OpenDisplayButton } from '../components/OpenDisplayButton'
 import { QueueList } from '../components/QueueList'
 import { RemotePairingModal } from '../components/RemotePairingModal'
@@ -16,9 +17,11 @@ import { WaveformIcon } from '../components/WaveformIcon'
 import { phatCaiDatTrinhChieu, phatLenhPlayer, useBroadcastReceiver, useBroadcastSender } from '../hooks/useBroadcastSync'
 import { AUTH_SESSION_LABEL, coQuyen, USER_ROLE_LABEL, type UserPermission } from '../lib/auth'
 import { chuanHoaMucHangCho } from '../lib/queue'
+import { formatPlaybackTime } from '../lib/playbackTime'
 import { saveToSearchHistory } from '../lib/searchHistory'
 import { useYouTubeSearch } from '../hooks/useYouTubeSearch'
 import { luuMediaDiaPhuong } from '../services/localMediaStore'
+import { taoBaiHatTuYoutubeInput } from '../services/youtubeLink'
 import {
   coTheDongBoAmLuongDienThoai,
   datAmLuongDienThoai,
@@ -94,11 +97,33 @@ const DISPLAY_RUN_MODE_STORAGE_KEY = 'karaokeyt-display-run-mode'
 const DISPLAY_ACTIVE_TARGET_STORAGE_KEY = 'karaokeyt-display-active-target'
 const DEFAULT_DISPLAY_VOLUME = 100
 const SEEK_STEP_SECONDS = 10
+const DEFAULT_RELAY_PORT = 8787
 const EMPTY_PLAYER_PROGRESS: PlayerState = { status: 'idle', volume: DEFAULT_DISPLAY_VOLUME, currentTime: 0, duration: 0 }
+const CHROME_EXTENSION_MESSAGE_SOURCE = 'karaokeyt-extension'
+const CHROME_EXTENSION_MESSAGE_TYPE = 'KARAOKEYT_EXTENSION_YOUTUBE_ACTION'
+const CHROME_EXTENSION_ACTION_PARAM = 'karaokeytExtensionAction'
+const CHROME_EXTENSION_URL_PARAM = 'youtubeUrl'
+const CHROME_EXTENSION_VIDEO_ID_PARAM = 'youtubeVideoId'
+const CHROME_EXTENSION_TITLE_PARAM = 'youtubeTitle'
+const CHROME_EXTENSION_CHANNEL_PARAM = 'youtubeChannel'
+const CHROME_EXTENSION_THUMBNAIL_PARAM = 'youtubeThumbnail'
+const CHROME_EXTENSION_REQUEST_ID_PARAM = 'karaokeytRequestId'
+const MAX_EXTENSION_REQUEST_IDS = 80
 
 type MobileControlTarget = 'laptop' | 'tv'
 type DisplayRunChoice = DisplayTarget | 'parallel'
 type QueueFilter = 'all' | 'youtube' | 'image' | 'video'
+type ChromeExtensionYoutubeAction = 'play-now' | 'add-next' | 'add-end'
+
+type ChromeExtensionYoutubePayload = {
+  action?: unknown
+  url?: unknown
+  videoId?: unknown
+  title?: unknown
+  channelTitle?: unknown
+  thumbnail?: unknown
+  requestId?: unknown
+}
 
 function chuanHoaCheDoChayManChieu(input: unknown): DisplayRunMode {
   return input === 'single' ? 'single' : 'parallel'
@@ -131,19 +156,25 @@ function chuanHoaTienDoPlayer(input?: Partial<PlayerState> | null): PlayerState 
   }
 }
 
-function dinhDangThoiGian(seconds: number) {
-  const total = Math.max(0, Math.round(Number.isFinite(seconds) ? seconds : 0))
-  const minutes = Math.floor(total / 60)
-  const remain = total % 60
-  return `${minutes}:${String(remain).padStart(2, '0')}`
-}
-
 function laLoiVideoKhongTonTai(code: number) {
   return code === 100
 }
 
-function laLoiYoutubeChanNhung(code: number) {
-  return code === 101 || code === 150
+function laLoiYoutubeCanMoTrucTiep(code: number) {
+  return code === -2 || code === 5 || code === 101 || code === 150 || code === 153
+}
+
+function layThongBaoLoiYoutubeTrucTiep(code: number, title: string) {
+  if (code === -2) {
+    return `Trình phát YouTube trong app bị gián đoạn, đã mở trực tiếp trên YouTube: ${title}`
+  }
+  if (code === 5) {
+    return `YouTube player không phản hồi đúng, đã mở trực tiếp trên YouTube: ${title}`
+  }
+  if (code === 153) {
+    return `YouTube cần phiên xem trực tiếp, đã mở trên YouTube: ${title}`
+  }
+  return `Video chặn nhúng, đã mở trực tiếp trên YouTube: ${title}`
 }
 
 function taoKhoaDongBoRemote(state: RemoteRoomState) {
@@ -271,6 +302,92 @@ function taoHttpUrlTuRelay(relayUrl: string) {
   }
 }
 
+function layCongTuRelayUrl(relayUrl: string) {
+  try {
+    const normalized = chuanHoaRelayUrl(relayUrl)
+    if (!normalized) return DEFAULT_RELAY_PORT
+    return Number(new URL(normalized).port || DEFAULT_RELAY_PORT)
+  } catch {
+    return DEFAULT_RELAY_PORT
+  }
+}
+
+function laRecord(input: unknown): input is Record<string, unknown> {
+  return typeof input === 'object' && input !== null
+}
+
+function layChuoiExtension(input: unknown, maxLength = 500) {
+  if (typeof input !== 'string') return ''
+  return input.trim().slice(0, maxLength)
+}
+
+function chuanHoaLenhYoutubeExtension(input: unknown): ChromeExtensionYoutubeAction {
+  if (input === 'play-now' || input === 'add-next' || input === 'add-end') return input
+  return 'add-end'
+}
+
+function taoBaiHatTuLenhYoutubeExtension(input: unknown): SearchSong | null {
+  if (!laRecord(input)) return null
+  const payload = input as ChromeExtensionYoutubePayload
+  const youtubeInput = layChuoiExtension(payload.videoId, 32) || layChuoiExtension(payload.url, 2000)
+  const song = taoBaiHatTuYoutubeInput(youtubeInput)
+  if (!song) return null
+
+  const title = layChuoiExtension(payload.title, 180)
+  const channelTitle = layChuoiExtension(payload.channelTitle, 120)
+  const thumbnail = layChuoiExtension(payload.thumbnail, 500)
+
+  return {
+    ...song,
+    title: title || song.title,
+    channelTitle: channelTitle || song.channelTitle,
+    thumbnail: thumbnail || song.thumbnail,
+  }
+}
+
+function laThongDiepYoutubeExtension(data: unknown): data is { payload: unknown } {
+  if (!laRecord(data)) return false
+  return data.source === CHROME_EXTENSION_MESSAGE_SOURCE && data.type === CHROME_EXTENSION_MESSAGE_TYPE
+}
+
+function taoLenhYoutubeExtensionTuQuery(search: string): ChromeExtensionYoutubePayload | null {
+  const params = new URLSearchParams(search)
+  const action = params.get(CHROME_EXTENSION_ACTION_PARAM)
+  const url = params.get(CHROME_EXTENSION_URL_PARAM)
+  const videoId = params.get(CHROME_EXTENSION_VIDEO_ID_PARAM)
+  if (!action && !url && !videoId) return null
+
+  return {
+    action,
+    url,
+    videoId,
+    title: params.get(CHROME_EXTENSION_TITLE_PARAM),
+    channelTitle: params.get(CHROME_EXTENSION_CHANNEL_PARAM),
+    thumbnail: params.get(CHROME_EXTENSION_THUMBNAIL_PARAM),
+    requestId: params.get(CHROME_EXTENSION_REQUEST_ID_PARAM),
+  }
+}
+
+function xoaThongSoYoutubeExtensionKhoiUrl() {
+  const url = new URL(window.location.href)
+  const before = url.toString()
+  for (const key of [
+    CHROME_EXTENSION_ACTION_PARAM,
+    CHROME_EXTENSION_URL_PARAM,
+    CHROME_EXTENSION_VIDEO_ID_PARAM,
+    CHROME_EXTENSION_TITLE_PARAM,
+    CHROME_EXTENSION_CHANNEL_PARAM,
+    CHROME_EXTENSION_THUMBNAIL_PARAM,
+    CHROME_EXTENSION_REQUEST_ID_PARAM,
+  ]) {
+    url.searchParams.delete(key)
+  }
+
+  if (url.toString() !== before) {
+    window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`)
+  }
+}
+
 export function ControlScreen() {
   useBroadcastSender()
   const laDesktop = dangChayDesktop()
@@ -367,6 +484,7 @@ export function ControlScreen() {
   const phoneVolumePercentRef = useRef<number | null>(null)
   const phoneVolumeReadyRef = useRef(false)
   const syncingPhoneVolumeUntilRef = useRef(0)
+  const extensionRequestIdsRef = useRef<string[]>([])
 
   const baiDangPhat = queue[currentIndex]
   const baiTiepTheo = useMemo(() => queue[currentIndex + 1], [queue, currentIndex])
@@ -613,14 +731,13 @@ export function ControlScreen() {
 
       const desktopNetworkInfo = await layThongTinMangDesktop()
       if (cancelled) return
-      if (
-        laDesktop &&
-        desktopNetworkInfo?.relayPort &&
-        desktopNetworkInfo.relayReady &&
-        remoteRelayStatus !== 'connected'
-      ) {
+      if (laDesktop && desktopNetworkInfo?.relayPort && desktopNetworkInfo.relayReady) {
         const desktopLocalRelayUrl = chuanHoaRelayUrl(`ws://127.0.0.1:${desktopNetworkInfo.relayPort}/`)
-        if (desktopLocalRelayUrl && desktopLocalRelayUrl !== chuanHoaRelayUrl(remoteRelayUrl)) {
+        const currentRelayPort = layCongTuRelayUrl(remoteRelayUrl)
+        if (
+          desktopLocalRelayUrl &&
+          (desktopLocalRelayUrl !== chuanHoaRelayUrl(remoteRelayUrl) || currentRelayPort !== desktopNetworkInfo.relayPort)
+        ) {
           setRemoteRelayUrl(desktopLocalRelayUrl)
           luuRelayUrl(desktopLocalRelayUrl)
         }
@@ -862,9 +979,9 @@ export function ControlScreen() {
       if (!baiDangPhat) return
       if (msg.videoId && baiDangPhat.videoId !== msg.videoId) return
 
-      if (laLoiYoutubeChanNhung(msg.code)) {
+      if (laLoiYoutubeCanMoTrucTiep(msg.code)) {
         setPlayerMode('playing')
-        thongBao(`Video chặn nhúng, đã mở trực tiếp trên YouTube: ${baiDangPhat.title}`)
+        thongBao(layThongBaoLoiYoutubeTrucTiep(msg.code, baiDangPhat.title))
         return
       }
 
@@ -1238,6 +1355,10 @@ export function ControlScreen() {
       ...current,
       currentTime: current.duration > 0 ? Math.min(nextSeconds, current.duration) : nextSeconds,
     }))
+    if (label === 'transport-seek-bar') {
+      thongBao(`Đã tua đến ${formatPlaybackTime(nextSeconds)}`)
+      return
+    }
     thongBao(label === 'transport-seek-forward' ? `Đã tua tới ${SEEK_STEP_SECONDS} giây` : `Đã tua lùi ${SEEK_STEP_SECONDS} giây`)
   }, [baiDangPhat, canPlayback, guiLenhTrinhChieu, nhanNut, playerProgress.duration, thongBao])
 
@@ -1340,6 +1461,79 @@ export function ControlScreen() {
     duaDenKhung('command')
     thongBao('Đã chuyển sang bài vừa chọn')
   }, [addSongVaPhatNgay, canPlayback, canQueueSongs, danhDauDieuKhienNoiBo, duaDenKhung, guiLenhTrinhChieu, thongBao])
+
+  const xuLyLenhYoutubeExtension = useCallback((payload: unknown) => {
+    if (!laRecord(payload)) {
+      thongBao('Extension chưa gửi đúng dữ liệu YouTube')
+      return
+    }
+
+    const requestId = layChuoiExtension(payload.requestId, 120)
+    if (requestId && extensionRequestIdsRef.current.includes(requestId)) {
+      return
+    }
+    if (requestId) {
+      extensionRequestIdsRef.current = [...extensionRequestIdsRef.current, requestId].slice(-MAX_EXTENSION_REQUEST_IDS)
+    }
+
+    const song = taoBaiHatTuLenhYoutubeExtension(payload)
+    if (!song) {
+      thongBao('Extension chưa nhận được link YouTube hợp lệ')
+      return
+    }
+
+    const action = chuanHoaLenhYoutubeExtension(payload.action)
+    const watchUrl = `https://www.youtube.com/watch?v=${song.videoId}`
+    setSourceTab('youtube')
+    setQuery(watchUrl)
+    if (isMobileLayout) {
+      setSubmittedMobileQuery(watchUrl)
+      setMobileTab('search')
+    }
+    setShowSearchHistory(false)
+    saveToSearchHistory(watchUrl)
+
+    if (!canQueueSongs) {
+      thongBao('Tài khoản hiện tại không có quyền thêm bài từ extension')
+      return
+    }
+
+    if (action === 'play-now') {
+      if (!canPlayback) {
+        thongBao('Tài khoản hiện tại không có quyền phát bài từ extension')
+        return
+      }
+      nhanNut(`extension-play:${song.videoId}`)
+      phatNgay(song)
+      return
+    }
+
+    if (action === 'add-next') {
+      nhanNut(`extension-next:${song.videoId}`)
+      themKeTiep(song)
+      return
+    }
+
+    nhanNut(`extension-end:${song.videoId}`)
+    themCuoiHangCho(song)
+  }, [canPlayback, canQueueSongs, isMobileLayout, nhanNut, phatNgay, themCuoiHangCho, themKeTiep, thongBao])
+
+  useEffect(() => {
+    function onYoutubeExtensionMessage(event: MessageEvent) {
+      if (event.source !== window || !laThongDiepYoutubeExtension(event.data)) return
+      xuLyLenhYoutubeExtension(event.data.payload)
+    }
+
+    window.addEventListener('message', onYoutubeExtensionMessage)
+    return () => window.removeEventListener('message', onYoutubeExtensionMessage)
+  }, [xuLyLenhYoutubeExtension])
+
+  useEffect(() => {
+    const payload = taoLenhYoutubeExtensionTuQuery(window.location.search)
+    if (!payload) return
+    xoaThongSoYoutubeExtensionKhoiUrl()
+    xuLyLenhYoutubeExtension(payload)
+  }, [xuLyLenhYoutubeExtension])
 
   const resolveMediaPreviewUrl = useCallback((url: string) => {
     if (!url.startsWith('/local-media/')) return url
@@ -1486,6 +1680,11 @@ export function ControlScreen() {
       return
     }
 
+    if (action.type === 'ADD_YOUTUBE') {
+      xuLyLenhYoutubeExtension(action.payload)
+      return
+    }
+
     if (action.type === 'SET_VOLUME') {
       if (!canPlayback) return
       const nextVolume = clampVolume(action.value)
@@ -1521,6 +1720,7 @@ export function ControlScreen() {
     tamDungPhat,
     thongBao,
     tuaDenGiay,
+    xuLyLenhYoutubeExtension,
   ])
 
   const xoaTatCa = useCallback(() => {
@@ -1644,24 +1844,25 @@ export function ControlScreen() {
     }
 
     try {
-      const lanRelayUrl = `ws://${host}:8787/`
+      const relayPort = layCongTuRelayUrl(remotePhoneRelayUrl || remoteRelayUrl)
+      const lanRelayUrl = `ws://${host}:${relayPort}/`
       if (!laDesktop) {
         setRemoteRelayUrl(lanRelayUrl)
         luuRelayUrl(lanRelayUrl)
       }
-      setRemotePhoneBaseUrl(taoBaseUrlUngDungLan(host, `http://${host}:8787/`))
+      setRemotePhoneBaseUrl(taoBaseUrlUngDungLan(host, `http://${host}:${relayPort}/`))
       setRemotePhoneRelayUrl(lanRelayUrl)
       setRemotePhoneLinkHint(
         laDesktop
-          ? `QR/link điện thoại đang dùng IP LAN ${host}. Máy điều khiển vẫn dùng relay local trên laptop.`
-          : `Đã dùng IP LAN ${host}. Điện thoại cần cùng Wi-Fi và relay phải đang chạy trên laptop.`,
+          ? `QR/link điện thoại đang dùng IP LAN ${host}:${relayPort}. Máy điều khiển vẫn dùng relay local trên laptop.`
+          : `Đã dùng IP LAN ${host}:${relayPort}. Điện thoại cần cùng Wi-Fi và relay phải đang chạy trên laptop.`,
       )
       setMobileLanHostInput(host)
-      thongBao(`Đã dùng IP LAN ${host} cho QR điện thoại`)
+      thongBao(`Đã dùng IP LAN ${host}:${relayPort} cho QR điện thoại`)
     } catch {
       thongBao('IP LAN không hợp lệ. Ví dụ đúng: 192.168.1.50')
     }
-  }, [laDesktop, thongBao])
+  }, [laDesktop, remotePhoneRelayUrl, remoteRelayUrl, thongBao])
 
   const apDungThongTinMangDesktop = useCallback((networkInfo?: DesktopNetworkInfo | null, message?: string) => {
     if (!networkInfo?.relayPort) return false
@@ -1710,7 +1911,9 @@ export function ControlScreen() {
       const applied = apDungThongTinMangDesktop(result.networkInfo, result.message)
       setRemoteRelayMessage(result.message ?? null)
       if (result.networkInfo?.relayPort) {
-        setRemoteRelayUrl(chuanHoaRelayUrl(`ws://127.0.0.1:${result.networkInfo.relayPort}/`))
+        const localRelayUrl = chuanHoaRelayUrl(`ws://127.0.0.1:${result.networkInfo.relayPort}/`)
+        setRemoteRelayUrl(localRelayUrl)
+        luuRelayUrl(localRelayUrl)
       }
 
       if (result.success && applied) {
@@ -1777,6 +1980,7 @@ export function ControlScreen() {
       displayMode,
       displayRunMode,
       activeDisplayTarget,
+      playerProgress: chuanHoaTienDoPlayer(playerProgress),
       lastPlayerCommand: relayPlayerCommand.cmd,
       commandNonce: relayPlayerCommand.nonce,
       commandValue: relayPlayerCommand.value,
@@ -1814,6 +2018,7 @@ export function ControlScreen() {
     displayRunMode,
     hienThiPlayerMode,
     nguoiDungHienTai?.name,
+    playerProgress,
     queue,
     relayPlayerCommand.cmd,
     relayPlayerCommand.nonce,
@@ -2065,10 +2270,42 @@ export function ControlScreen() {
                   <div className="npMetaValue">{baiTiepTheo ? baiTiepTheo.title : 'Chưa có bài kế tiếp'}</div>
                 </div>
               </div>
-              {/* Fake progress bar */}
-              {!isMobileLayout && (
-                <FakeProgressBar isPlaying={hienThiPlayerMode === 'playing'} durationSeconds={240} />
-              )}
+              <div className="playbackControlBlock">
+                <PlaybackProgressBar
+                  currentTime={playerProgress.currentTime}
+                  duration={playerProgress.duration}
+                  disabled={!canPlayback || !baiDangPhat}
+                  label={baiDangPhatLaMedia ? 'Tiến trình nội dung' : 'Tiến trình YouTube'}
+                  onSeek={(seconds) => tuaDenGiay(seconds, 'transport-seek-bar')}
+                />
+                <div className="playbackSeekActions">
+                  <button
+                    className={`ghost compactButton buttonToneMuted buttonWithIcon ${activeButtonKey === 'transport-seek-back' ? 'buttonStateActive' : ''}`}
+                    data-pressed={activeButtonKey === 'transport-seek-back'}
+                    disabled={!canPlayback || !baiDangPhat}
+                    onClick={tuaLui}
+                    type="button"
+                  >
+                    <AppIcon name="rewind" className="buttonIcon" />
+                    <span className="buttonLabel">Lùi {SEEK_STEP_SECONDS}s</span>
+                  </button>
+                  <div className="playbackProgressPercent">
+                    {playerProgress.duration > 0
+                      ? `${Math.round(playerProgressPercent)}% · còn ${formatPlaybackTime(playerProgressRemaining)}`
+                      : 'Đợi màn chiếu gửi thời lượng'}
+                  </div>
+                  <button
+                    className={`ghost compactButton buttonToneMuted buttonWithIcon ${activeButtonKey === 'transport-seek-forward' ? 'buttonStateActive' : ''}`}
+                    data-pressed={activeButtonKey === 'transport-seek-forward'}
+                    disabled={!canPlayback || !baiDangPhat}
+                    onClick={tuaToi}
+                    type="button"
+                  >
+                    <AppIcon name="forward" className="buttonIcon" />
+                    <span className="buttonLabel">Tới {SEEK_STEP_SECONDS}s</span>
+                  </button>
+                </div>
+              </div>
               <div className="statsRow">
                 <div className="statBlock">
                   <div className="statValue">{tongBai}</div>

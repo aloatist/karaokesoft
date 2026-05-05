@@ -244,3 +244,23 @@ Khi deploy production, dat:
 ```bash
 VITE_YOUTUBE_SEARCH_PROXY_URL=https://your-domain.com/api/youtube/search
 ```
+
+## Chrome extension
+
+Extension chuột phải để đưa link YouTube vào hàng chờ nằm ở `extensions/chrome`.
+
+Chạy local:
+
+1. Mở `chrome://extensions`
+2. Bật `Developer mode`
+3. Chọn `Load unpacked`
+4. Chọn thư mục `extensions/chrome`
+
+Mặc định extension ưu tiên gửi bài vào app laptop qua relay `http://127.0.0.1:8787/api/extension/youtube-action`. Nếu app/relay chưa chạy, extension fallback sang `http://127.0.0.1:5173/`. Nếu Control chạy ở URL khác, bấm icon extension -> `Cài đặt` và nhập Control URL.
+
+
+npm install @capacitor/ios
+npx cap add ios
+npm run build:web
+npx cap sync ios
+npx cap open ios

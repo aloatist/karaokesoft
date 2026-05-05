@@ -16,6 +16,8 @@ type IconName =
   | 'pause'
   | 'next'
   | 'prev'
+  | 'rewind'
+  | 'forward'
   | 'restart'
   | 'repeat'
   | 'volume'
@@ -139,6 +141,22 @@ function Path({ name }: { name: IconName }) {
         <>
           <path d="m17 7-7 5 7 5V7Z" fill="currentColor" stroke="none" />
           <path d="m10 7-6 5 6 5V7Z" fill="currentColor" stroke="none" />
+        </>
+      )
+    case 'rewind':
+      return (
+        <>
+          <path d="m13 8-5 4 5 4V8Z" fill="currentColor" stroke="none" />
+          <path d="m19 8-5 4 5 4V8Z" fill="currentColor" stroke="none" />
+          <path d="M5 7v10" />
+        </>
+      )
+    case 'forward':
+      return (
+        <>
+          <path d="m11 8 5 4-5 4V8Z" fill="currentColor" stroke="none" />
+          <path d="m5 8 5 4-5 4V8Z" fill="currentColor" stroke="none" />
+          <path d="M19 7v10" />
         </>
       )
     case 'restart':

@@ -1,15 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 type YTPlayer = {
-  playVideo: () => void
-  pauseVideo: () => void
-  stopVideo: () => void
+  playVideo?: () => void
+  pauseVideo?: () => void
+  stopVideo?: () => void
   destroy?: () => void
-  mute: () => void
-  unMute: () => void
-  isMuted: () => boolean
-  setVolume: (v: number) => void
-  loadVideoById: (videoId: string) => void
+  mute?: () => void
+  unMute?: () => void
+  isMuted?: () => boolean
+  setVolume?: (v: number) => void
+  loadVideoById?: (videoId: string) => void
   seekTo?: (seconds: number, allowSeekAhead?: boolean) => void
   getCurrentTime?: () => number
   getDuration?: () => number
@@ -43,6 +43,8 @@ declare global {
 }
 
 let ytApiPromise: Promise<YTGlobal> | null = null
+const YT_API_LOAD_TIMEOUT_MS = 12_000
+const YT_API_POLL_INTERVAL_MS = 50
 
 function clampVolume(value: number) {
   return Math.max(0, Math.min(100, Math.round(Number.isFinite(value) ? value : 100)))
@@ -52,41 +54,132 @@ function clampSeconds(value: number) {
   return Math.max(0, Math.round(Number.isFinite(value) ? value : 0))
 }
 
+function coApiPlayerToiThieu(player: YTPlayer | null) {
+  return Boolean(player && typeof player.playVideo === 'function')
+}
+
+function datVolumeAnToan(player: YTPlayer | null, value: number) {
+  if (typeof player?.setVolume !== 'function') return false
+  player.setVolume(clampVolume(value))
+  return true
+}
+
+function moAmThanhAnToan(player: YTPlayer | null) {
+  if (typeof player?.unMute !== 'function') return false
+  player.unMute()
+  return true
+}
+
+function dangTatTiengAnToan(player: YTPlayer | null) {
+  if (typeof player?.isMuted !== 'function') return false
+  return player.isMuted()
+}
+
+function phatAnToan(player: YTPlayer | null) {
+  if (typeof player?.playVideo !== 'function') return false
+  player.playVideo()
+  return true
+}
+
+function tamDungAnToan(player: YTPlayer | null) {
+  if (typeof player?.pauseVideo !== 'function') return false
+  player.pauseVideo()
+  return true
+}
+
+function napVideoAnToan(player: YTPlayer | null, videoId: string) {
+  if (typeof player?.loadVideoById !== 'function') return false
+  player.loadVideoById(videoId)
+  return true
+}
+
+function tuaAnToan(player: YTPlayer | null, seconds: number) {
+  if (typeof player?.seekTo !== 'function') return false
+  player.seekTo(seconds, true)
+  return true
+}
+
 function loadYouTubeIframeApi(): Promise<YTGlobal> {
   if (window.YT?.Player) return Promise.resolve(window.YT)
   if (ytApiPromise) return ytApiPromise
 
   ytApiPromise = new Promise((resolve, reject) => {
-    const done = () => {
-      if (window.YT?.Player) resolve(window.YT)
-      else reject(new Error('YouTube IFrame API chưa sẵn sàng.'))
+    const prev = window.onYouTubeIframeAPIReady
+    let settled = false
+    let pollTimer: number | null = null
+    let timeoutTimer: number | null = null
+    let scriptEl: HTMLScriptElement | null = null
+
+    const cleanup = () => {
+      if (pollTimer !== null) {
+        window.clearTimeout(pollTimer)
+        pollTimer = null
+      }
+      if (timeoutTimer !== null) {
+        window.clearTimeout(timeoutTimer)
+        timeoutTimer = null
+      }
+      if (window.onYouTubeIframeAPIReady === onReady) {
+        window.onYouTubeIframeAPIReady = prev
+      }
     }
 
-    const prev = window.onYouTubeIframeAPIReady
-    window.onYouTubeIframeAPIReady = () => {
-      prev?.()
+    const done = () => {
+      if (settled) return
+      if (!window.YT?.Player) {
+        fail(new Error('YouTube IFrame API chưa sẵn sàng.'))
+        return
+      }
+      settled = true
+      cleanup()
+      resolve(window.YT)
+    }
+
+    const fail = (error: Error) => {
+      if (settled) return
+      settled = true
+      cleanup()
+      if (!window.YT?.Player) {
+        scriptEl?.remove()
+        ytApiPromise = null
+      }
+      reject(error)
+    }
+
+    const pollUntilReady = () => {
+      if (settled) return
+      if (window.YT?.Player) {
+        done()
+        return
+      }
+      pollTimer = window.setTimeout(pollUntilReady, YT_API_POLL_INTERVAL_MS)
+    }
+
+    function onReady() {
+      try {
+        prev?.()
+      } catch {
+        // Callback cũ không được làm hỏng loader hiện tại.
+      }
       done()
     }
 
-    const existing = document.querySelector('script[data-karaokeyt-yt="1"]')
-    if (existing) {
-      // Script đã được inject; chờ callback hoặc poll ngắn.
-      const t0 = Date.now()
-      const tick = () => {
-        if (window.YT?.Player) done()
-        else if (Date.now() - t0 > 8000) reject(new Error('Quá thời gian chờ YouTube IFrame API.'))
-        else window.setTimeout(tick, 50)
-      }
-      tick()
-      return
+    window.onYouTubeIframeAPIReady = onReady
+
+    scriptEl = document.querySelector<HTMLScriptElement>('script[data-karaokeyt-yt="1"]')
+    if (!scriptEl) {
+      scriptEl = document.createElement('script')
+      scriptEl.src = 'https://www.youtube.com/iframe_api'
+      scriptEl.async = true
+      scriptEl.dataset.karaokeytYt = '1'
+      scriptEl.onerror = () => fail(new Error('Không tải được YouTube IFrame API.'))
+      document.head.appendChild(scriptEl)
     }
 
-    const s = document.createElement('script')
-    s.src = 'https://www.youtube.com/iframe_api'
-    s.async = true
-    s.dataset.karaokeytYt = '1'
-    s.onerror = () => reject(new Error('Không tải được YouTube IFrame API.'))
-    document.head.appendChild(s)
+    timeoutTimer = window.setTimeout(() => {
+      fail(new Error('Quá thời gian chờ YouTube IFrame API.'))
+    }, YT_API_LOAD_TIMEOUT_MS)
+    pollUntilReady()
   })
 
   return ytApiPromise
@@ -207,9 +300,13 @@ export function useYouTubePlayer(opts: {
             setLastErrorState(null)
             setRequiresGestureVideoId(null)
             try {
-              player.setVolume(clampVolume(volumeRef.current))
-              player.unMute()
-              player.playVideo()
+              if (!coApiPlayerToiThieu(player)) {
+                setLastErrorState({ code: -2, videoId: videoIdRef.current })
+                return
+              }
+              datVolumeAnToan(player, volumeRef.current)
+              moAmThanhAnToan(player)
+              phatAnToan(player)
               if (playbackProbeRef.current !== null) {
                 window.clearTimeout(playbackProbeRef.current)
               }
@@ -263,9 +360,10 @@ export function useYouTubePlayer(opts: {
   useEffect(() => {
     if (!ready) return
     try {
-      playerRef.current?.setVolume(clampVolume(opts.volume))
-      if (clampVolume(opts.volume) > 0 && playerRef.current?.isMuted()) {
-        playerRef.current.unMute()
+      const player = playerRef.current
+      datVolumeAnToan(player, opts.volume)
+      if (clampVolume(opts.volume) > 0 && dangTatTiengAnToan(player)) {
+        moAmThanhAnToan(player)
       }
     } catch {
       // ignore
@@ -303,7 +401,10 @@ export function useYouTubePlayer(opts: {
   }, [ready])
 
   useEffect(() => {
-    setProgress({ currentTime: 0, duration: 0 })
+    const timer = window.setTimeout(() => {
+      setProgress({ currentTime: 0, duration: 0 })
+    }, 0)
+    return () => window.clearTimeout(timer)
   }, [opts.videoId])
 
   useEffect(() => {
@@ -311,8 +412,17 @@ export function useYouTubePlayer(opts: {
     const id = opts.videoId
     if (!id) return
     try {
-      playerRef.current?.loadVideoById(id)
-      playerRef.current?.playVideo()
+      const player = playerRef.current
+      if (!coApiPlayerToiThieu(player)) {
+        window.setTimeout(() => {
+          if (videoIdRef.current === id) {
+            setLastErrorState({ code: -2, videoId: id })
+          }
+        }, 0)
+        return
+      }
+      napVideoAnToan(player, id)
+      phatAnToan(player)
       if (playbackProbeRef.current !== null) {
         window.clearTimeout(playbackProbeRef.current)
       }
@@ -334,25 +444,25 @@ export function useYouTubePlayer(opts: {
     lastErrorState && lastErrorState.videoId === opts.videoId ? lastErrorState.code : null
 
   const play = useCallback(() => {
-    playerRef.current?.playVideo()
+    phatAnToan(playerRef.current)
   }, [])
 
   const pause = useCallback(() => {
-    playerRef.current?.pauseVideo()
+    tamDungAnToan(playerRef.current)
   }, [])
 
   const restart = useCallback(() => {
     const p = playerRef.current
     if (!p) return
     try {
-      p.seekTo?.(0, true)
-      p.playVideo()
+      tuaAnToan(p, 0)
+      phatAnToan(p)
     } catch {
       const currentVideoId = videoIdRef.current
       if (!currentVideoId) return
       try {
-        p.loadVideoById(currentVideoId)
-        p.playVideo()
+        napVideoAnToan(p, currentVideoId)
+        phatAnToan(p)
       } catch {
         setRequiresGestureVideoId(currentVideoId)
       }
@@ -364,7 +474,7 @@ export function useYouTubePlayer(opts: {
     if (!p) return
     const targetSeconds = clampSeconds(seconds)
     try {
-      p.seekTo?.(targetSeconds, true)
+      tuaAnToan(p, targetSeconds)
       setProgress((current) => ({
         currentTime: current.duration > 0 ? Math.min(targetSeconds, current.duration) : targetSeconds,
         duration: current.duration,
@@ -376,9 +486,10 @@ export function useYouTubePlayer(opts: {
 
   const setPlayerVolume = useCallback((v: number) => {
     const nextVolume = clampVolume(v)
-    playerRef.current?.setVolume(nextVolume)
-    if (nextVolume > 0 && playerRef.current?.isMuted()) {
-      playerRef.current.unMute()
+    const player = playerRef.current
+    datVolumeAnToan(player, nextVolume)
+    if (nextVolume > 0 && dangTatTiengAnToan(player)) {
+      moAmThanhAnToan(player)
     }
   }, [])
 
@@ -391,8 +502,8 @@ export function useYouTubePlayer(opts: {
     const p = playerRef.current
     if (!p) return
     try {
-      if (p.isMuted()) p.unMute()
-      p.playVideo()
+      if (dangTatTiengAnToan(p)) moAmThanhAnToan(p)
+      phatAnToan(p)
       // Không tắt overlay vội; chờ onStateChange xác nhận playing.
     } catch {
       setRequiresGestureVideoId(videoIdRef.current ?? null)

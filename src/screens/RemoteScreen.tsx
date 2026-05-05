@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { IScannerControls } from '@zxing/browser'
 import { AppIcon } from '../components/AppIcon'
 import { CastButton } from '../components/CastButton'
+import { PlaybackProgressBar } from '../components/PlaybackProgressBar'
+import { formatPlaybackTime } from '../lib/playbackTime'
 import {
   chuanHoaMaPhongRemote,
   chuanHoaRelayUrl,
@@ -23,6 +25,9 @@ import type { RemoteAction, RemotePresence, RemoteRelayStatus, RemoteRoomState }
 
 const emptyPresence: RemotePresence = { hosts: 0, remotes: 0, displays: 0 }
 const DEFAULT_DISPLAY_VOLUME = 100
+const SEEK_STEP_SECONDS = 10
+const DEFAULT_RELAY_PORT = 8787
+const EMPTY_PLAYER_PROGRESS = { status: 'idle' as const, volume: DEFAULT_DISPLAY_VOLUME, currentTime: 0, duration: 0 }
 
 function clampVolume(value: number) {
   if (!Number.isFinite(value)) return DEFAULT_DISPLAY_VOLUME
@@ -40,13 +45,24 @@ function layIpTuRelayUrl(relayUrl: string) {
   }
 }
 
-function taoRelayUrlTuIpLaptop(input: string) {
+function layCongTuRelayUrl(relayUrl: string) {
+  try {
+    const normalized = chuanHoaRelayUrl(relayUrl)
+    if (!normalized) return DEFAULT_RELAY_PORT
+    return Number(new URL(normalized).port || DEFAULT_RELAY_PORT)
+  } catch {
+    return DEFAULT_RELAY_PORT
+  }
+}
+
+function taoRelayUrlTuIpLaptopVaRelay(input: string, fallbackRelayUrl: string) {
   const trimmed = input.trim()
   if (!trimmed) return ''
   try {
     const withProtocol = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`
     const url = new URL(withProtocol)
-    return chuanHoaRelayUrl(`ws://${url.hostname}:8787`)
+    const port = url.port || String(layCongTuRelayUrl(fallbackRelayUrl))
+    return chuanHoaRelayUrl(`ws://${url.hostname}:${port}`)
   } catch {
     return ''
   }
@@ -222,17 +238,17 @@ export function RemoteScreen() {
   }, [capNhatUrl, joinedRoom, joinedRoomToken, relayUrlInput])
 
   const apDungIpLaptop = useCallback(() => {
-    const nextRelayUrl = taoRelayUrlTuIpLaptop(laptopIpInput)
+    const nextRelayUrl = taoRelayUrlTuIpLaptopVaRelay(laptopIpInput, relayUrlInput)
     if (!nextRelayUrl) {
       setStatusMessage('IP laptop không hợp lệ. Ví dụ đúng: 192.168.99.104')
       return null
     }
     setStatusMessage(`Đã dùng relay laptop ${nextRelayUrl}`)
     return apDungRelay(nextRelayUrl)
-  }, [apDungRelay, laptopIpInput])
+  }, [apDungRelay, laptopIpInput, relayUrlInput])
 
   const ketNoiPhong = useCallback((roomValue: string, roomTokenValue = '', relayValue = relayUrlInput) => {
-    const relayValueCanDung = relayDangTroVeMayDienThoai ? taoRelayUrlTuIpLaptop(laptopIpInput) || relayValue : relayValue
+    const relayValueCanDung = relayDangTroVeMayDienThoai ? taoRelayUrlTuIpLaptopVaRelay(laptopIpInput, relayValue) || relayValue : relayValue
     const normalizedRelay = apDungRelay(relayValueCanDung)
     if (!normalizedRelay) return
 
@@ -256,7 +272,7 @@ export function RemoteScreen() {
   }, [joinedRoom, joinedRoomToken, ketNoiPhong, relayUrlInput, roomCodeInput])
 
   const kiemTraRelay = useCallback(async () => {
-    const relayCanDung = relayDangTroVeMayDienThoai ? taoRelayUrlTuIpLaptop(laptopIpInput) || relayUrlInput : relayUrlInput
+    const relayCanDung = relayDangTroVeMayDienThoai ? taoRelayUrlTuIpLaptopVaRelay(laptopIpInput, relayUrlInput) || relayUrlInput : relayUrlInput
     const healthUrl = taoHealthUrlTuRelay(relayCanDung)
     if (!healthUrl) {
       setStatusMessage('Chưa có Relay URL hợp lệ để kiểm tra.')
@@ -271,7 +287,7 @@ export function RemoteScreen() {
   useEffect(() => {
     if (!joinedRoom || relayStatus === 'connected' || relayStatus === 'idle') return
 
-    const relayCanDung = relayDangTroVeMayDienThoai ? taoRelayUrlTuIpLaptop(laptopIpInput) || relayUrlInput : relayUrl
+    const relayCanDung = relayDangTroVeMayDienThoai ? taoRelayUrlTuIpLaptopVaRelay(laptopIpInput, relayUrlInput) || relayUrlInput : relayUrl
     const healthUrl = taoHealthUrlTuRelay(relayCanDung)
     if (!healthUrl) return
 
@@ -500,6 +516,11 @@ export function RemoteScreen() {
   }, [currentRoomVolume])
 
   const queueLength = roomState?.queue.length ?? 0
+  const playerProgress = roomState?.playerProgress ?? EMPTY_PLAYER_PROGRESS
+  const playerProgressPercent =
+    playerProgress.duration > 0 ? Math.max(0, Math.min(100, (playerProgress.currentTime / playerProgress.duration) * 100)) : 0
+  const playerProgressRemaining =
+    playerProgress.duration > 0 ? Math.max(playerProgress.duration - playerProgress.currentTime, 0) : 0
   const connectionTone = relayStatus === 'connected' && presence.hosts > 0 ? 'statusChipSuccess' : relayStatus === 'error' ? 'statusChipWarning' : ''
   const connectionLabel = !joinedRoom
     ? 'Chưa kết nối'
@@ -517,6 +538,12 @@ export function RemoteScreen() {
     type: 'TRANSPORT',
     cmd: roomState?.playerMode === 'playing' ? 'pause' : 'play',
   }
+  const tuaRemote = useCallback((delta: number) => {
+    guiLenh(() => ({ type: 'SEEK_RELATIVE', delta }))
+  }, [guiLenh])
+  const tuaRemoteDenGiay = useCallback((seconds: number) => {
+    guiLenh(() => ({ type: 'TRANSPORT', cmd: 'seek', value: Math.max(0, Math.round(seconds)) }))
+  }, [guiLenh])
 
   async function copyText(value: string, label: string) {
     if (!value) return
@@ -715,6 +742,32 @@ export function RemoteScreen() {
             ) : (
               <div className="remoteThumbnailPh">🎵</div>
             )}
+          </div>
+
+          <div className="remotePlaybackBlock">
+            <PlaybackProgressBar
+              className="remotePlaybackProgress"
+              currentTime={playerProgress.currentTime}
+              duration={playerProgress.duration}
+              disabled={!canSendRemote}
+              label="Tiến trình"
+              onSeek={tuaRemoteDenGiay}
+            />
+            <div className="remoteSeekActions">
+              <button className="ghost compactButton buttonToneMuted buttonWithIcon" disabled={!canSendRemote} onClick={() => tuaRemote(-SEEK_STEP_SECONDS)} type="button">
+                <AppIcon name="rewind" className="buttonIcon" />
+                <span className="buttonLabel">Lùi {SEEK_STEP_SECONDS}s</span>
+              </button>
+              <div className="remoteProgressHint">
+                {playerProgress.duration > 0
+                  ? `${Math.round(playerProgressPercent)}% · còn ${formatPlaybackTime(playerProgressRemaining)}`
+                  : 'Chờ thời lượng'}
+              </div>
+              <button className="ghost compactButton buttonToneMuted buttonWithIcon" disabled={!canSendRemote} onClick={() => tuaRemote(SEEK_STEP_SECONDS)} type="button">
+                <AppIcon name="forward" className="buttonIcon" />
+                <span className="buttonLabel">Tới {SEEK_STEP_SECONDS}s</span>
+              </button>
+            </div>
           </div>
 
           {/* DJ Pad Controls — 4 buttons */}

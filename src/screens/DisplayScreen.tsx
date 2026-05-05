@@ -62,8 +62,8 @@ function chuanHoaTienDoPlayer(state: PlayerState): PlayerState {
   }
 }
 
-function laLoiYoutubeChanNhung(code: number) {
-  return code === 101 || code === 150
+function laLoiYoutubeCanMoTrucTiep(code: number) {
+  return code === -2 || code === 5 || code === 101 || code === 150 || code === 153
 }
 
 function taoYoutubeWatchUrl(videoId: string) {
@@ -559,7 +559,7 @@ export function DisplayScreen() {
     phatBaoLoiPlayer(code, failedVideoId)
 
     const targetVideoId = failedVideoId || baiDangPhatVideoId
-    if (targetVideoId && laLoiYoutubeChanNhung(code)) {
+    if (targetVideoId && laLoiYoutubeCanMoTrucTiep(code)) {
       moYoutubeTrucTiep(targetVideoId)
     }
   }, [baiDangPhatVideoId, moYoutubeTrucTiep])

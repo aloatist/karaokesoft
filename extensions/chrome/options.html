@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>KaraokeYT Linker</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <main class="page">
+      <h1>KaraokeYT Linker</h1>
+      <p>Nhập URL màn hình Control của KaraokeYT. Mặc định dùng app Vite local.</p>
+      <label class="field">
+        <span>Control URL</span>
+        <input id="appUrl" type="url" placeholder="http://127.0.0.1:5173/">
+      </label>
+      <div class="actions">
+        <button id="save" type="button">Lưu</button>
+        <button id="reset" class="secondary" type="button">Về mặc định</button>
+      </div>
+      <div id="status" class="status" role="status"></div>
+    </main>
+    <script src="options.js"></script>
+  </body>
+</html>

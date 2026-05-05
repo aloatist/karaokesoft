@@ -106,9 +106,10 @@ export type RemotePresence = {
 }
 
 export type RemoteAction =
-  | { type: 'TRANSPORT'; cmd: PlayerCommand | 'prev' }
+  | { type: 'TRANSPORT'; cmd: PlayerCommand | 'prev'; value?: number }
   | { type: 'SEEK_RELATIVE'; delta: number }
   | { type: 'SET_VOLUME'; value: number }
+  | { type: 'ADD_YOUTUBE'; payload: unknown }
   | { type: 'PLAY_QUEUE_ITEM'; queueId: string }
   | { type: 'REMOVE_QUEUE_ITEM'; queueId: string }
   | { type: 'PLAYER_PROGRESS'; state: PlayerState }

@@ -76,6 +76,7 @@ const SEARCH_CACHE_TTL_MS = Math.max(60_000, Number(process.env.YOUTUBE_SEARCH_C
 const SEARCH_STALE_CACHE_TTL_MS = Math.max(SEARCH_CACHE_TTL_MS, Number(process.env.YOUTUBE_SEARCH_STALE_CACHE_TTL_MS || 6 * 60 * 60 * 1000))
 const SEARCH_CACHE_MAX_ENTRIES = Math.max(50, Number(process.env.YOUTUBE_SEARCH_CACHE_MAX_ENTRIES || 400))
 const HEARTBEAT_INTERVAL_MS = Math.max(5_000, Number(process.env.RELAY_HEARTBEAT_INTERVAL_MS || 15_000))
+const EXTENSION_BODY_LIMIT_BYTES = 32 * 1024
 const searchRateLimits = new Map()
 const youtubeSearchCache = new Map()
 const rooms = new Map()
@@ -108,13 +109,42 @@ function writeJson(req, res, status, payload, extraHeaders = {}) {
   res.writeHead(status, {
     'content-type': 'application/json; charset=utf-8',
     'access-control-allow-origin': origin,
-    'access-control-allow-methods': 'GET,OPTIONS',
+    'access-control-allow-methods': 'GET,POST,OPTIONS',
     'access-control-allow-headers': 'content-type',
+    'access-control-allow-private-network': 'true',
     'cache-control': 'no-store',
     vary: 'Origin',
     ...extraHeaders,
   })
   res.end(JSON.stringify(payload))
+}
+
+function readJsonBody(req, maxBytes = EXTENSION_BODY_LIMIT_BYTES) {
+  return new Promise((resolve, reject) => {
+    let raw = ''
+
+    req.setEncoding('utf8')
+    req.on('data', (chunk) => {
+      raw += chunk
+      if (Buffer.byteLength(raw, 'utf8') > maxBytes) {
+        reject(new Error('Payload quá lớn.'))
+        req.destroy()
+      }
+    })
+    req.on('end', () => {
+      if (!raw.trim()) {
+        resolve({})
+        return
+      }
+
+      try {
+        resolve(JSON.parse(raw))
+      } catch {
+        reject(new Error('JSON không hợp lệ.'))
+      }
+    })
+    req.on('error', reject)
+  })
 }
 
 function normalizeSearchCachePart(value) {
@@ -587,6 +617,85 @@ function handleTvDisplayRedirect(req, res, url) {
   return true
 }
 
+function cleanExtensionText(value, maxLength) {
+  return typeof value === 'string' ? value.replace(/\s+/g, ' ').trim().slice(0, maxLength) : ''
+}
+
+function normalizeExtensionAction(value) {
+  return value === 'play-now' || value === 'add-next' || value === 'add-end' ? value : 'add-end'
+}
+
+function normalizeExtensionPayload(payload) {
+  const source = payload && typeof payload === 'object' ? payload : {}
+  const videoId = cleanExtensionText(source.videoId, 32).replace(/[^A-Za-z0-9_-]/g, '').slice(0, 32)
+  const url = cleanExtensionText(source.url, 2000)
+
+  if (!videoId && !url) return null
+
+  return {
+    action: normalizeExtensionAction(source.action),
+    requestId: cleanExtensionText(source.requestId, 120) || `relay-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+    url,
+    videoId,
+    title: cleanExtensionText(source.title, 180),
+    channelTitle: cleanExtensionText(source.channelTitle, 120) || 'Từ Chrome extension',
+    thumbnail: cleanExtensionText(source.thumbnail, 500),
+  }
+}
+
+async function handleExtensionYoutubeAction(req, res, url) {
+  let body
+  try {
+    body = await readJsonBody(req)
+  } catch (error) {
+    writeJson(req, res, 400, {
+      ok: false,
+      message: error instanceof Error ? error.message : 'Không đọc được dữ liệu extension.',
+    })
+    return
+  }
+
+  const payload = normalizeExtensionPayload(body?.payload || body)
+  if (!payload) {
+    writeJson(req, res, 400, {
+      ok: false,
+      message: 'Thiếu link hoặc mã video YouTube.',
+    })
+    return
+  }
+
+  const roomCode = normalizeRoomCode(body?.roomCode || url.searchParams.get('room') || getLatestActiveRoomCode())
+  const room = roomCode ? rooms.get(roomCode) : null
+  if (!room || room.hosts.size <= 0) {
+    writeJson(req, res, 409, {
+      ok: false,
+      message: 'Chưa thấy app KaraokeYT đang chạy. Hãy mở app laptop trước rồi thử lại.',
+    })
+    return
+  }
+
+  const action = {
+    type: 'ADD_YOUTUBE',
+    payload,
+  }
+
+  for (const hostSocket of room.hosts) {
+    send(hostSocket, {
+      type: 'REMOTE_ACTION',
+      roomCode,
+      action,
+    })
+  }
+  room.updatedAt = Date.now()
+
+  writeJson(req, res, 200, {
+    ok: true,
+    roomCode,
+    hosts: room.hosts.size,
+    message: 'Đã gửi bài vào app KaraokeYT.',
+  })
+}
+
 const server = http.createServer((req, res) => {
   const url = new URL(req.url || '/', 'http://127.0.0.1')
 
@@ -619,11 +728,32 @@ const server = http.createServer((req, res) => {
     return
   }
 
+  if (req.method === 'GET' && url.pathname === '/api/extension/status') {
+    writeJson(req, res, 200, {
+      ok: true,
+      service: 'karaokeyt-remote-relay',
+      port,
+      latestActiveRoomCode: getLatestActiveRoomCode(),
+      rooms: getRoomsSnapshot(),
+    })
+    return
+  }
+
   if (req.method === 'GET' && url.pathname === '/api/youtube/search') {
     handleYoutubeSearch(req, res, url).catch((error) => {
       writeJson(req, res, 500, {
         ok: false,
         message: error instanceof Error ? error.message : 'Không tìm kiếm được YouTube.',
+      })
+    })
+    return
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/extension/youtube-action') {
+    handleExtensionYoutubeAction(req, res, url).catch((error) => {
+      writeJson(req, res, 500, {
+        ok: false,
+        message: error instanceof Error ? error.message : 'Không gửi được bài từ Chrome extension.',
       })
     })
     return
@@ -669,6 +799,17 @@ function getPresence(room) {
     remotes: room.remotes.size,
     displays: room.displays.size,
   }
+}
+
+function getRoomsSnapshot() {
+  return [...rooms.entries()]
+    .map(([roomCode, room]) => ({
+      roomCode,
+      ...getPresence(room),
+      createdAt: room.createdAt,
+      updatedAt: room.updatedAt,
+    }))
+    .sort((a, b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0))
 }
 
 function send(ws, payload) {

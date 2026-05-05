@@ -1,5 +1,6 @@
 import { ControlScreen } from './screens/ControlScreen'
 import { DisplayScreen } from './screens/DisplayScreen'
+import { RemoteScreen } from './screens/RemoteScreen'
 import { useEffect, useMemo, useState } from 'react'
 import { useSettingsStore } from './store/settingsStore'
 import { APP_VERSION, kiemTraCapNhatUngDung, moLinkCapNhat, type AppUpdateCheckResult } from './services/appUpdate'
@@ -34,7 +35,7 @@ export default function App() {
   }, [theme])
 
   useEffect(() => {
-    if (screen === 'display') return
+    if (screen === 'display' || screen === 'remote') return
     let mounted = true
     let timer: number | null = null
 
@@ -64,7 +65,7 @@ export default function App() {
   }, [dismissedVersion, screen])
 
   useEffect(() => {
-    if (screen === 'display' || !laDesktop) return
+    if (screen === 'display' || screen === 'remote' || !laDesktop) return
 
     let mounted = true
     let timer: number | null = null
@@ -152,6 +153,7 @@ export default function App() {
   }
 
   if (screen === 'display') return <DisplayScreen />
+  if (screen === 'remote') return <RemoteScreen />
 
   return (
     <>

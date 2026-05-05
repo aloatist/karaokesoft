@@ -43,6 +43,15 @@ function layThongTinLoiPlayer(code: number) {
   }
 }
 
+function taoYoutubeEmbedUrl(videoId: string) {
+  const url = new URL(`https://www.youtube-nocookie.com/embed/${videoId}`)
+  url.searchParams.set('autoplay', '1')
+  url.searchParams.set('rel', '0')
+  url.searchParams.set('playsinline', '1')
+  url.searchParams.set('enablejsapi', '0')
+  return url.toString()
+}
+
 export function YouTubePlayer({
   videoId,
   volume,
@@ -95,6 +104,7 @@ export function YouTubePlayer({
   const commandValue = command?.value
   const commandNonce = command?.nonce
   const coLoiPlayer = typeof lastError === 'number'
+  const hienTrinhPhatDuPhong = lastError === -2 && Boolean(videoId)
   const daAnTroGiupQuangCao = troGiupQuangCaoDaAn === currentVideoKey
   const hienTroGiupQuangCao = Boolean(videoId) && !coLoiPlayer && !daAnTroGiupQuangCao
   const progressStatus: PlayerStatus =
@@ -181,6 +191,16 @@ export function YouTubePlayer({
   return (
     <div className="ytWrap">
       <div ref={containerRef} className="ytStage" />
+      {hienTrinhPhatDuPhong && videoId ? (
+        <iframe
+          key={`fallback:${videoId}`}
+          className="ytFallbackFrame"
+          src={taoYoutubeEmbedUrl(videoId)}
+          title="YouTube fallback player"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+          allowFullScreen
+        />
+      ) : null}
       {hienDangTai ? (
         <div className="ytLoading">
           <div className="ytLoadingPulse" aria-hidden="true">
@@ -193,7 +213,7 @@ export function YouTubePlayer({
         </div>
       ) : null}
 
-      {thongTinLoi ? (
+      {thongTinLoi && !hienTrinhPhatDuPhong ? (
         <div className="ytErrorCard">
           <div className="ytErrorEyebrow">Trình chiếu bị gián đoạn</div>
           <div className="ytErrorTitle">{thongTinLoi.title}</div>
